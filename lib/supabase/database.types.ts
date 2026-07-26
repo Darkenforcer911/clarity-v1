@@ -286,6 +286,7 @@ export type Database = {
         Args: { p_completed: boolean; p_daily_action_id: string }
         Returns: undefined
       }
+      undo_day_close: { Args: { p_daily_plan_id: string }; Returns: undefined }
     }
     Enums: {
       daily_action_status:
