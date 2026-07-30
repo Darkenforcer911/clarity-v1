@@ -4,6 +4,7 @@ import type { Json } from "@/lib/supabase/database.types";
 import {
   addLocalDays,
   getLocalDate,
+  getLocalTime,
   localDateTimeToIso,
   resolveShapeTimes,
 } from "./date-time";
@@ -11,9 +12,16 @@ import {
   closeDayResolutionSchema,
   daySummarySchema,
   generatedPlanSchema,
+  previousDayExplanationSchema,
+  previousDayResolutionSchema,
+  previousDayUnplannedWorkSchema,
+  returnGapInputSchema,
   shapeTodaySchema,
   type CloseDayResolution,
   type DaySummary,
+  type PreviousDayResolution,
+  type PreviousDayUnplannedWork,
+  type ReturnGapInput,
   type ShapeTodayInput,
 } from "./schemas";
 import {
@@ -21,8 +29,11 @@ import {
   getDailyLoopData,
   type DailyLoopData,
 } from "./daily-loop-queries";
+import { isCatchUpEligibleAction } from "./catch-up-eligibility";
 import type { ClarityAI } from "./ai/clarity-ai";
 import { MockClarityAI } from "./ai/mock-clarity-ai";
+import type { PreviousDayInterpreter } from "./ai/previous-day-interpreter";
+import { MockPreviousDayInterpreter } from "./ai/mock-previous-day-interpreter";
 
 export class DailyLoopServiceError extends Error {
   constructor(message: string) {
@@ -38,7 +49,11 @@ function ensureRpcSucceeded(error: { message: string } | null) {
 }
 
 export class DailyLoopService {
-  constructor(private readonly clarityAI: ClarityAI = new MockClarityAI()) {}
+  constructor(
+    private readonly clarityAI: ClarityAI = new MockClarityAI(),
+    private readonly previousDayInterpreter: PreviousDayInterpreter =
+      new MockPreviousDayInterpreter(),
+  ) {}
 
   getToday() {
     return getDailyLoopData();
@@ -53,18 +68,274 @@ export class DailyLoopService {
     ensureRpcSucceeded(error);
   }
 
-  async beginDayShaping() {
-    const { supabase, profile } = await getAuthenticatedUserAndProfile();
+  async beginDayShaping(briefingContext?: string) {
+    const currentData = await getDailyLoopData();
+
+    if (
+      currentData.previousDayTransition ||
+      currentData.pendingReturnGap
+    ) {
+      throw new DailyLoopServiceError(
+        "Finish catching up before shaping today.",
+      );
+    }
+
+    const { supabase, user, profile } =
+      await getAuthenticatedUserAndProfile();
     const localDate = getLocalDate(profile.timezone);
     const { error } = await supabase.rpc("begin_day_shaping", {
       p_local_date: localDate,
     });
 
     ensureRpcSucceeded(error);
+
+    const context = briefingContext?.trim();
+
+    if (context) {
+      const { error: contextError } = await supabase
+        .from("daily_plans")
+        .update({ context_for_today: context })
+        .eq("user_id", user.id)
+        .eq("local_date", localDate)
+        .eq("status", "unshaped");
+
+      ensureRpcSucceeded(contextError);
+    }
+  }
+
+  async interpretPreviousDay(
+    data: DailyLoopData,
+    rawExplanation: string,
+  ) {
+    const explanation = previousDayExplanationSchema.parse(rawExplanation);
+    const transition = data.previousDayTransition;
+
+    if (!transition || transition.kind !== "wrap_up") {
+      throw new DailyLoopServiceError(
+        "There is no previous plan waiting for wrap-up.",
+      );
+    }
+
+    const unfinishedActions = transition.actions.filter(
+      (action) =>
+        action.approved_at &&
+        ["active", "rescheduled"].includes(action.status),
+    );
+    const interpretation = await this.previousDayInterpreter.interpret({
+      explanation,
+      actions: unfinishedActions,
+    });
+
+    if (interpretation.outcome === "needs_input") {
+      return interpretation;
+    }
+
+    return {
+      outcome: "suggestions" as const,
+      suggestions: interpretation.suggestions.map((suggestion) => ({
+        ...suggestion,
+        completedAt: suggestion.completedLocalTime
+          ? localDateTimeToIso(
+              transition.localDate,
+              suggestion.completedLocalTime,
+              data.profile.timezone,
+            )
+          : undefined,
+      })),
+      unplannedProgress: interpretation.unplannedProgress,
+      contextSummary: interpretation.contextSummary,
+      ongoingContextCandidate:
+        interpretation.ongoingContextCandidate,
+    };
+  }
+
+  async reconcilePreviousDay(
+    data: DailyLoopData,
+    rawResolutions: PreviousDayResolution[],
+    rawUnplannedWork: PreviousDayUnplannedWork[],
+    contextSummary: string | null = null,
+  ) {
+    const transition = data.previousDayTransition;
+
+    if (!transition || transition.kind !== "wrap_up") {
+      throw new DailyLoopServiceError(
+        "There is no previous plan waiting for wrap-up.",
+      );
+    }
+
+    const resolutions = rawResolutions.map((resolution) =>
+      previousDayResolutionSchema.parse(resolution),
+    );
+    const eligibleActionIds = new Set(
+      transition.actions
+        .filter(isCatchUpEligibleAction)
+        .map((action) => action.id),
+    );
+    const submittedActionIds = new Set(
+      resolutions.map((resolution) => resolution.actionId),
+    );
+
+    if (
+      resolutions.length !== eligibleActionIds.size ||
+      submittedActionIds.size !== eligibleActionIds.size ||
+      resolutions.some(
+        (resolution) => !eligibleActionIds.has(resolution.actionId),
+      )
+    ) {
+      throw new DailyLoopServiceError(
+        "Recap contains an action that was not part of the plan at rollover.",
+      );
+    }
+
+    const unplannedWork = rawUnplannedWork.map((item) =>
+      previousDayUnplannedWorkSchema.parse(item),
+    );
+
+    const { supabase } = await getAuthenticatedUserAndProfile();
+    const { error } = await callUntypedRpc(
+      supabase,
+      "reconcile_previous_day_direct_v3",
+      {
+        p_daily_plan_id: transition.plan.id,
+        p_extra_context: null,
+        p_resolutions: resolutions,
+        p_unplanned_progress: unplannedWork,
+        p_context_summary: contextSummary,
+        p_ongoing_context_candidate: null,
+      },
+    );
+
+    ensureRpcSucceeded(error);
+  }
+
+  async recordReturnGap(
+    data: DailyLoopData,
+    rawInput: ReturnGapInput,
+  ) {
+    const gap = data.pendingReturnGap;
+
+    if (!gap || data.previousDayTransition) {
+      throw new DailyLoopServiceError(
+        "There are no missed dates waiting for context.",
+      );
+    }
+
+    const input = returnGapInputSchema.parse(rawInput);
+    const { supabase } = await getAuthenticatedUserAndProfile();
+    const { error } = await callUntypedRpc(
+      supabase,
+      "record_return_gap_v2",
+      {
+        p_gap_start_date: gap.gapStartDate,
+        p_gap_end_date: gap.gapEndDate,
+        p_context_summary: input.contextSummary || null,
+        p_nothing_important: input.nothingImportant,
+      },
+    );
+
+    ensureRpcSucceeded(error);
+  }
+
+  async recordHistoricalDay(
+    data: DailyLoopData,
+    explanation: string,
+    skipped: boolean,
+  ) {
+    const transition = data.previousDayTransition;
+
+    if (!transition || transition.kind !== "unrecorded") {
+      throw new DailyLoopServiceError(
+        "There is no unrecorded previous day to resolve.",
+      );
+    }
+
+    const parsedExplanation = skipped
+      ? ""
+      : previousDayExplanationSchema.parse(explanation);
+    const { supabase } = await getAuthenticatedUserAndProfile();
+    const { error } = await callUntypedRpc(
+      supabase,
+      "record_historical_day",
+      {
+        p_local_date: transition.localDate,
+        p_explanation: parsedExplanation || null,
+        p_skipped: skipped,
+      },
+    );
+
+    ensureRpcSucceeded(error);
+  }
+
+  async setBriefingContextDecision(
+    data: DailyLoopData,
+    dayRecordId: string,
+    decision: "remembered" | "once" | "dismissed",
+  ) {
+    if (
+      !data.yesterdayRecord ||
+      data.yesterdayRecord.id !== dayRecordId
+    ) {
+      throw new DailyLoopServiceError(
+        "This context prompt is no longer available.",
+      );
+    }
+
+    const progress = data.yesterdayRecord.progress_recorded;
+
+    if (
+      !progress ||
+      typeof progress !== "object" ||
+      Array.isArray(progress)
+    ) {
+      throw new DailyLoopServiceError("Day Record is invalid.");
+    }
+
+    const candidate = progress.ongoingContextCandidate;
+
+    if (
+      !candidate ||
+      typeof candidate !== "object" ||
+      Array.isArray(candidate) ||
+      typeof candidate.label !== "string" ||
+      typeof candidate.sourceText !== "string" ||
+      candidate.decision
+    ) {
+      throw new DailyLoopServiceError(
+        "This context prompt has already been resolved.",
+      );
+    }
+
+    const { supabase, user } = await getAuthenticatedUserAndProfile();
+    const updatedProgress: Json = {
+      ...progress,
+      ongoingContextCandidate: {
+        ...candidate,
+        decision,
+        decidedAt: new Date().toISOString(),
+      },
+    };
+    const { error } = await supabase
+      .from("day_records")
+      .update({ progress_recorded: updatedProgress })
+      .eq("id", dayRecordId)
+      .eq("user_id", user.id);
+
+    ensureRpcSucceeded(error);
   }
 
   async buildPlan(rawInput: ShapeTodayInput) {
     const input = shapeTodaySchema.parse(rawInput);
+    const currentData = await getDailyLoopData();
+
+    if (
+      currentData.previousDayTransition ||
+      currentData.pendingReturnGap
+    ) {
+      throw new DailyLoopServiceError(
+        "Finish catching up before building today’s plan.",
+      );
+    }
+
     const { supabase, user, profile } =
       await getAuthenticatedUserAndProfile();
     const localDate = getLocalDate(profile.timezone);
@@ -84,18 +355,57 @@ export class DailyLoopService {
         contextForToday: input.nothingElseToday
           ? null
           : input.contextForToday,
+        currentLocalTime: getLocalTime(profile.timezone),
+        carriedActions: currentData.rescheduledContext.map((action) => ({
+          sourceActionId: action.id,
+          title: action.title,
+          estimatedMinutes: action.estimated_minutes,
+          whyItExists: action.why_it_exists,
+          definitionOfDone: action.definition_of_done,
+          suggestedMethod: action.suggested_method,
+          rescheduleCount: action.reschedule_count,
+        })),
+        previousDay: previousDayForPlanGeneration(currentData),
+        returnGap: currentData.latestReturnGapRecord
+          ? {
+              gapStartDate:
+                currentData.latestReturnGapRecord.gapStartDate,
+              gapEndDate:
+                currentData.latestReturnGapRecord.gapEndDate,
+              contextSummary:
+                currentData.latestReturnGapRecord.contextSummary,
+              nothingImportant:
+                currentData.latestReturnGapRecord.nothingImportant,
+              recordedAt:
+                currentData.latestReturnGapRecord.recordedAt,
+            }
+          : null,
       }),
     );
-    const actions: Json = generatedPlan.actions.map((action) => ({
-      ...action,
-      scheduledTime: action.scheduledTime
+    const actions: Json = generatedPlan.actions.map((action) => {
+      const scheduledTime = action.scheduledTime
         ? localDateTimeToIso(
             localDate,
             action.scheduledTime,
             profile.timezone,
           )
-        : null,
-    }));
+        : null;
+
+      if (
+        action.actionType === "fixed" &&
+        scheduledTime &&
+        new Date(scheduledTime).getTime() <= Date.now()
+      ) {
+        throw new DailyLoopServiceError(
+          "That time has already passed. Choose a later time or select Anytime today.",
+        );
+      }
+
+      return {
+        ...action,
+        scheduledTime,
+      };
+    });
     const { error } = await supabase.rpc("save_proposed_plan", {
       p_local_date: localDate,
       p_woke_at: times.wokeAt,
@@ -111,6 +421,19 @@ export class DailyLoopService {
   }
 
   async approvePlan(planId: string) {
+    const currentData = await getDailyLoopData();
+
+    if (
+      currentData.previousDayTransition ||
+      currentData.pendingReturnGap ||
+      currentData.plan?.id !== planId ||
+      currentData.plan.local_date !== currentData.localDate
+    ) {
+      throw new DailyLoopServiceError(
+        "Today has changed. Return to Today before approving this plan.",
+      );
+    }
+
     const { supabase } = await getAuthenticatedUserAndProfile();
     const { error } = await supabase.rpc("approve_daily_plan", {
       p_daily_plan_id: planId,
@@ -156,8 +479,8 @@ export class DailyLoopService {
       throw new DailyLoopServiceError("This plan is not ready for Close Day.");
     }
 
-    const unfinishedActions = data.actions.filter((action) =>
-      ["active", "rescheduled", "dropped"].includes(action.status),
+    const unfinishedActions = data.actions.filter(
+      (action) => action.approved_at && action.status === "active",
     );
 
     if (resolutions.length !== unfinishedActions.length) {
@@ -226,6 +549,94 @@ export class DailyLoopService {
   tomorrowFor(data: DailyLoopData) {
     return addLocalDays(data.localDate, 1);
   }
+}
+
+async function callUntypedRpc(
+  supabase: { rpc: unknown },
+  functionName: string,
+  args: Record<string, unknown>,
+) {
+  const rpc = supabase.rpc as (
+    name: string,
+    parameters: Record<string, unknown>,
+  ) => Promise<{
+    data: unknown;
+    error: { message: string } | null;
+  }>;
+
+  return rpc.call(supabase, functionName, args);
+}
+
+function previousDayForPlanGeneration(data: DailyLoopData) {
+  if (!data.yesterdayRecord) {
+    return null;
+  }
+
+  const summary = daySummarySchema.safeParse(
+    data.yesterdayRecord.progress_recorded,
+  );
+
+  if (!summary.success) {
+    return null;
+  }
+
+  return {
+    explanation:
+      summary.data.contextSummary ??
+      data.yesterdayRecord.notes?.trim() ??
+      null,
+    completedCount: summary.data.completedCount,
+    movedCount: summary.data.unfinishedActions.filter(
+      (action) => action.outcome === "rescheduled",
+    ).length,
+    droppedCount: summary.data.unfinishedActions.filter(
+      (action) => action.outcome === "dropped",
+    ).length,
+    historicalOutcomes: summary.data.unfinishedActions.flatMap(
+      (action) =>
+        action.outcome === "made_progress" ||
+        action.outcome === "not_done"
+          ? [
+              {
+                actionId: action.id,
+                title: action.title,
+                outcome: action.outcome,
+                notDoneContext:
+                  action.outcome === "not_done"
+                    ? (action.notDoneNote ?? null)
+                    : null,
+                progressDescription: action.progressNote ?? null,
+                remainingWork: action.remainingWork ?? null,
+                blockerNote: action.blockerNote ?? null,
+                approximateMinutes:
+                  action.approximateMinutes ?? null,
+                approximateWorkTime:
+                  action.approximateWorkTime ?? null,
+                linkedContextLabel:
+                  action.linkedContextLabel ?? null,
+                linkedContextKind:
+                  action.linkedContextKind ?? null,
+              },
+            ]
+          : [],
+    ),
+    unplannedCarryoverCandidates:
+      summary.data.unplannedProgress
+        ?.filter(
+          (
+            item,
+          ): item is Exclude<typeof item, string> =>
+            typeof item !== "string" &&
+            item.outcome === "made_progress" &&
+            item.carryoverCandidate === true,
+        )
+        .map((item) => ({
+          title: item.title,
+          estimatedMinutes: item.estimatedMinutes,
+          progressLevel: item.progressLevel ?? null,
+          progressNote: item.progressNote ?? null,
+        })) ?? [],
+  };
 }
 
 export const dailyLoopService = new DailyLoopService();

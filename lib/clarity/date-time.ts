@@ -44,6 +44,13 @@ export function getLocalDate(timeZone: string, date = new Date()) {
   ).padStart(2, "0")}`;
 }
 
+export function getLocalTime(timeZone: string, date = new Date()) {
+  const parts = partsFor(date, timeZone);
+  return `${String(parts.hour).padStart(2, "0")}:${String(
+    parts.minute,
+  ).padStart(2, "0")}`;
+}
+
 export function addLocalDays(localDate: string, days: number) {
   const [year, month, day] = localDate.split("-").map(Number);
   const date = new Date(Date.UTC(year, month - 1, day + days));
@@ -53,6 +60,32 @@ export function addLocalDays(localDate: string, days: number) {
     String(date.getUTCMonth() + 1).padStart(2, "0"),
     String(date.getUTCDate()).padStart(2, "0"),
   ].join("-");
+}
+
+export function getNextRecurrenceDate(
+  localDate: string,
+  pattern: "daily" | "weekly" | "certain_days",
+  recurrenceDays: number[],
+) {
+  if (pattern === "daily") {
+    return addLocalDays(localDate, 1);
+  }
+
+  if (pattern === "weekly") {
+    return addLocalDays(localDate, 7);
+  }
+
+  for (let offset = 1; offset <= 7; offset += 1) {
+    const candidate = addLocalDays(localDate, offset);
+    const [year, month, day] = candidate.split("-").map(Number);
+    const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+
+    if (recurrenceDays.includes(weekday)) {
+      return candidate;
+    }
+  }
+
+  throw new Error("Choose at least one recurrence day.");
 }
 
 export function localDateTimeToIso(
@@ -120,12 +153,42 @@ export function resolveShapeTimes(
   };
 }
 
+export function getShapeTimeDefaults(
+  timeZone: string,
+  date = new Date(),
+) {
+  const now = partsFor(date, timeZone);
+  const nowMinutes = now.hour * 60 + now.minute;
+  const wakeMinutes = (nowMinutes - 120 + 1440) % 1440;
+  const sleepMinutes = nowMinutes < 22 * 60 ? 23 * 60 : 7 * 60;
+
+  return {
+    wokeAt: nowMinutes < 4 * 60 ? "" : formatLocalMinutes(wakeMinutes),
+    aimingToSleepAt: formatLocalMinutes(sleepMinutes),
+  };
+}
+
 export function getGreeting(timeZone: string, name: string | null) {
-  const hour = partsFor(new Date(), timeZone).hour;
+  const period = getDayPeriod(timeZone);
   const greeting =
-    hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+    period === "late_night"
+      ? "Late night"
+      : period === "morning"
+        ? "Good morning"
+        : period === "afternoon"
+          ? "Good afternoon"
+          : "Good evening";
 
   return name ? `${greeting}, ${name}` : greeting;
+}
+
+export function getDayPeriod(timeZone: string, date = new Date()) {
+  const hour = partsFor(date, timeZone).hour;
+
+  if (hour < 5) return "late_night" as const;
+  if (hour < 12) return "morning" as const;
+  if (hour < 18) return "afternoon" as const;
+  return "evening" as const;
 }
 
 export function formatFullLocalDate(localDate: string) {
@@ -162,7 +225,30 @@ export function formatScheduledTime(
   }).format(new Date(value));
 }
 
+export function formatLocalDateTime(
+  value: string | null,
+  timeZone: string,
+) {
+  if (!value) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone,
+  }).format(new Date(value));
+}
+
 function minutesSinceMidnight(localTime: string) {
   const [hour, minute] = localTime.split(":").map(Number);
   return hour * 60 + minute;
+}
+
+function formatLocalMinutes(totalMinutes: number) {
+  const hour = Math.floor(totalMinutes / 60);
+  const minute = totalMinutes % 60;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }

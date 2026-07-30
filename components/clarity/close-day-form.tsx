@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { CalendarDays, CheckCircle2, CircleOff, MoveRight } from "lucide-react";
+import Link from "next/link";
 
 import { finishDayAction } from "@/app/(app)/today/actions";
 import type { DailyAction } from "@/lib/clarity/daily-loop-queries";
@@ -9,6 +10,7 @@ import { initialDailyLoopActionState } from "@/lib/clarity/action-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 import { PendingButton } from "./pending-button";
 
 type Outcome = "" | "tomorrow" | "choose_date" | "drop";
@@ -64,14 +66,14 @@ export function CloseDayForm({
     <form action={formAction} className="space-y-7">
       {completedActions.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-blue-100/60">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-muted-foreground">
             Completed
           </h2>
-          <div className="rounded-3xl border border-sky-200/15 bg-[#0c2b62]/90 p-5">
+          <div className="rounded-2xl border border-border bg-card p-5">
             <ul className="space-y-3">
               {completedActions.map((action) => (
                 <li key={action.id} className="flex items-center gap-3">
-                  <CheckCircle2 className="size-5 shrink-0 text-sky-300" />
+                  <CheckCircle2 className="size-5 shrink-0 text-[var(--clarity-completed)]" />
                   <span>{action.title}</span>
                 </li>
               ))}
@@ -80,21 +82,21 @@ export function CloseDayForm({
         </section>
       )}
 
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-xl font-semibold tracking-[-0.025em]">
-            Resolve unfinished actions
-          </h2>
-          <p className="mt-1 text-sm leading-6 text-blue-100/60">
-            Choose exactly one outcome for each action before finishing.
-          </p>
+      {unfinishedActions.length === 0 ? (
+        <div className="rounded-2xl border border-border bg-card p-5 leading-7 text-[var(--clarity-completed)]">
+          Everything in today&apos;s approved plan was completed. Nothing needs
+          to be resolved.
         </div>
-
-        {unfinishedActions.length === 0 ? (
-          <div className="rounded-3xl bg-sky-300/10 p-5 text-[#38a5ff]">
-            Every action is complete. Nothing needs to be moved or dropped.
+      ) : (
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-xl font-semibold tracking-[-0.025em]">
+              Resolve unfinished actions
+            </h2>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Choose exactly one outcome for each action before finishing.
+            </p>
           </div>
-        ) : (
           <div className="space-y-4">
             {unfinishedActions.map((action) => {
               const selection = selections[action.id];
@@ -102,7 +104,7 @@ export function CloseDayForm({
               return (
                 <article
                   key={action.id}
-                  className="rounded-3xl border border-sky-200/15 bg-[#0c2b62]/90 p-5 shadow-sm"
+                  className="rounded-2xl border border-border bg-card p-5 shadow-sm"
                 >
                   <input type="hidden" name="actionId" value={action.id} />
                   <input
@@ -118,7 +120,7 @@ export function CloseDayForm({
                   <h3 className="font-semibold tracking-[-0.015em]">
                     {action.title}
                   </h3>
-                  <p className="mt-1 text-sm text-blue-100/55">
+                  <p className="mt-1 text-sm text-muted-foreground">
                     {action.estimated_minutes} minutes
                   </p>
 
@@ -197,8 +199,8 @@ export function CloseDayForm({
               );
             })}
           </div>
-        )}
-      </section>
+        </section>
+      )}
 
       <section className="space-y-3">
         <Label htmlFor="notes">Anything else Clarity should remember?</Label>
@@ -207,29 +209,39 @@ export function CloseDayForm({
           name="notes"
           maxLength={5000}
           placeholder="A useful note about today."
-          className="bg-[#0c2b62]/90"
+          className="bg-card"
         />
       </section>
 
       {state.error && (
         <p
-          className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+          className="rounded-xl border border-border bg-secondary px-4 py-3 text-sm text-foreground"
           role="alert"
         >
           {state.error}
         </p>
       )}
 
-      <PendingButton
-        type="submit"
-        size="lg"
-        disabled={!canFinish}
-        pendingLabel="Finishing your day…"
-        className="h-12 w-full rounded-xl bg-[#148bff] text-base hover:bg-[#0877e0]"
-      >
-        Finish day
-        <MoveRight />
-      </PendingButton>
+      <div className="grid gap-3">
+        <Button
+          asChild
+          variant="outline"
+          size="lg"
+          className="h-12 w-full rounded-xl text-base"
+        >
+          <Link href="/today">Back to Today</Link>
+        </Button>
+        <PendingButton
+          type="submit"
+          size="lg"
+          disabled={!canFinish}
+          pendingLabel="Finishing your day…"
+          className="h-12 w-full rounded-xl text-base"
+        >
+          Finish day
+          <MoveRight />
+        </PendingButton>
+      </div>
     </form>
   );
 }
@@ -247,10 +259,12 @@ function OutcomeButton({
     <button
       type="button"
       onClick={onClick}
-      className={`flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl border px-2 text-xs font-medium transition ${
-        active
-          ? "border-[#38a5ff] bg-sky-300/10 text-[#38a5ff]"
-          : "border-sky-200/20 bg-[#0c2b62]/90 text-blue-100/60 hover:border-[#38a5ff]/40"
+      className={`flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl border px-2 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+        active && children === "Drop"
+          ? "border-destructive bg-card text-foreground"
+          : active
+          ? "border-[var(--clarity-completed)] bg-secondary text-[var(--clarity-completed)]"
+          : "border-border bg-card text-muted-foreground hover:bg-secondary hover:text-foreground"
       }`}
     >
       {children === "Tomorrow" ? (

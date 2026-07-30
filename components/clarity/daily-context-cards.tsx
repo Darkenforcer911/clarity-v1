@@ -27,14 +27,14 @@ export function DailyContextCards({
   return (
     <aside className="mb-6 grid gap-3">
       {rescheduledActions.length > 0 && (
-        <section className="rounded-2xl border border-sky-300/25 bg-sky-300/10 p-4">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-sky-100/75">
-            <RotateCcw className="size-4 text-sky-300" />
+        <section className="rounded-2xl border border-border bg-card p-4">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            <RotateCcw className="size-4 text-[var(--clarity-completed)]" />
             Carried into today
           </div>
           <ul className="mt-3 space-y-2">
             {rescheduledActions.map((action) => (
-              <li key={action.id} className="text-sm text-white">
+              <li key={action.id} className="text-sm text-foreground">
                 {action.title}
               </li>
             ))}
@@ -43,12 +43,12 @@ export function DailyContextCards({
       )}
 
       {yesterdaySummary?.success && (
-        <section className="rounded-2xl border border-blue-200/15 bg-blue-100/[0.06] p-4">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-blue-100/60">
+        <section className="rounded-2xl border border-border bg-card p-4">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
             <History className="size-4" />
             Yesterday
           </div>
-          <p className="mt-3 text-sm text-blue-50/80">
+          <p className="mt-3 text-sm text-muted-foreground">
             {yesterdaySummary.data.completedCount} of{" "}
             {yesterdaySummary.data.totalCount} approved actions completed.
           </p>

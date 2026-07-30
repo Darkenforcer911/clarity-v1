@@ -14,26 +14,28 @@ export function TodayClosed({
   summary: DaySummary;
 }) {
   return (
-    <section className="space-y-8">
-      <div className="rounded-3xl bg-[#148bff] p-6 text-white shadow-sm sm:p-8">
-        <div className="mb-8 flex size-12 items-center justify-center rounded-2xl bg-white/10">
+    <section className="space-y-5">
+      <div className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
+        <div className="mb-5 flex size-11 items-center justify-center rounded-xl bg-secondary text-[var(--clarity-completed)]">
           <CheckCircle2 className="size-6" />
         </div>
-        <p className="text-sm font-medium text-white/65">Today Closed</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-[-0.045em]">
+        <p className="text-sm font-medium text-muted-foreground">Today Closed</p>
+        <h1 className="mt-2 text-2xl font-semibold tracking-[-0.035em]">
           {formatWeekday(summary.localDate)} closed
         </h1>
 
-        <div className="mt-8 grid grid-cols-2 gap-3">
-          <div className="rounded-2xl bg-white/10 p-4">
-            <p className="text-3xl font-semibold">{summary.completedCount}</p>
-            <p className="mt-1 text-sm text-white/70">Completed</p>
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <div className="rounded-xl border border-border bg-secondary p-4">
+            <p className="text-2xl font-semibold text-[var(--clarity-completed)]">
+              {summary.completedCount}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">Completed</p>
           </div>
-          <div className="rounded-2xl bg-white/10 p-4">
-            <p className="text-3xl font-semibold">
+          <div className="rounded-xl border border-border bg-secondary p-4">
+            <p className="text-2xl font-semibold">
               {summary.unfinishedActions.length}
             </p>
-            <p className="mt-1 text-sm text-white/70">
+            <p className="mt-1 text-sm text-muted-foreground">
               Rescheduled or dropped
             </p>
           </div>
@@ -44,7 +46,7 @@ export function TodayClosed({
         asChild
         variant="outline"
         size="lg"
-        className="h-12 w-full rounded-xl border-sky-200/25 bg-transparent text-base text-[#38a5ff]"
+        className="h-12 w-full rounded-xl text-base"
       >
         <Link href="/today/summary">
           View summary
@@ -57,7 +59,7 @@ export function TodayClosed({
         <Button
           type="submit"
           variant="ghost"
-          className="h-11 w-full rounded-xl text-blue-100/70 hover:bg-white/5 hover:text-white"
+          className="h-11 w-full rounded-xl text-muted-foreground hover:bg-secondary hover:text-foreground"
         >
           Undo close
         </Button>

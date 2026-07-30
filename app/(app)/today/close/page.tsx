@@ -19,26 +19,30 @@ export default function CloseDayPage() {
 async function CloseDayContent() {
   const data = await loadTodayForRoute();
   redirectFromClose(data);
+  const completedActions = data.actions.filter(
+    (action) => action.status === "completed",
+  );
+  const unfinishedActions = data.actions.filter(
+    (action) => action.approved_at && action.status === "active",
+  );
 
   return (
     <section className="space-y-7">
       <div className="space-y-3">
-        <p className="text-sm font-medium text-blue-100/60">Close Day</p>
+        <p className="text-sm font-medium text-muted-foreground">Close Day</p>
         <h1 className="text-3xl font-semibold tracking-[-0.045em]">
           Record what happened.
         </h1>
-        <p className="max-w-xl leading-7 text-blue-100/60">
-          Keep the progress, then decide what happens to anything unfinished.
+        <p className="max-w-xl leading-7 text-muted-foreground">
+          {unfinishedActions.length > 0
+            ? "Keep the progress, then decide what happens to anything unfinished."
+            : "Keep the progress and add any final note you want Clarity to remember."}
         </p>
       </div>
 
       <CloseDayForm
-        completedActions={data.actions.filter(
-          (action) => action.status === "completed",
-        )}
-        unfinishedActions={data.actions.filter((action) =>
-          ["active", "rescheduled", "dropped"].includes(action.status),
-        )}
+        completedActions={completedActions}
+        unfinishedActions={unfinishedActions}
         tomorrow={dailyLoopService.tomorrowFor(data)}
       />
     </section>

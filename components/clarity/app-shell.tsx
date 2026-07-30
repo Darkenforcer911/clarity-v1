@@ -1,30 +1,82 @@
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { AppActivityTracker } from "./app-activity-tracker";
+import { AccountMenu } from "./account-menu";
 import { BottomNavigation } from "./bottom-navigation";
+import { TransientNotice } from "./transient-notice";
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  contained = false,
+  enableActivityTracking = true,
+  enableTransientNotices = true,
+  allowAccountSignOut = true,
+  allowProductNavigation = true,
+}: {
+  children: React.ReactNode;
+  contained?: boolean;
+  enableActivityTracking?: boolean;
+  enableTransientNotices?: boolean;
+  allowAccountSignOut?: boolean;
+  allowProductNavigation?: boolean;
+}) {
+  const brandClassName =
+    "flex items-center gap-2 rounded-lg text-lg font-semibold tracking-[-0.03em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  const brand = (
+    <>
+      <span className="size-2.5 rounded-full bg-primary" />
+      Clarity
+    </>
+  );
+
   return (
-    <div className="min-h-svh bg-[radial-gradient(circle_at_50%_-10%,#174f9f_0%,#0a2a63_36%,#061737_76%,#040e25_100%)] text-white">
-      <AppActivityTracker />
-      <header className="border-b border-sky-200/10 bg-[#071a42]/60 backdrop-blur-xl">
-        <div className="mx-auto flex h-14 w-full max-w-lg items-center justify-between px-4">
-          <Link
-            href="/today"
-            className="flex items-center gap-2 text-lg font-semibold tracking-[-0.03em]"
-          >
-            <span className="size-2.5 rounded-full bg-[#148bff] shadow-[0_0_18px_#38a5ff]" />
-            Clarity
-          </Link>
-          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-100/50">
-            Daily
-          </span>
-        </div>
-      </header>
-      <main className="mx-auto w-full max-w-lg px-4 pb-28 pt-5 sm:pt-8">
-        {children}
-      </main>
-      <BottomNavigation />
+    <div
+      className={
+        contained
+          ? "relative h-full min-h-0 bg-background text-foreground"
+          : "min-h-svh bg-background text-foreground"
+      }
+    >
+      {enableActivityTracking && <AppActivityTracker />}
+      {enableTransientNotices && (
+        <Suspense>
+          <TransientNotice />
+        </Suspense>
+      )}
+      <div
+        className={
+          contained
+            ? "relative mx-auto flex h-full min-h-0 w-full max-w-[480px] flex-col overflow-hidden border-x-0 border-border bg-background"
+            : "mx-auto min-h-svh w-full max-w-[480px] border-x-0 border-border bg-background min-[481px]:border-x"
+        }
+      >
+        <header className="shrink-0 border-b border-border bg-background pt-[env(safe-area-inset-top)]">
+          <div className="flex h-14 w-full items-center justify-between px-4">
+            {allowProductNavigation ? (
+              <Link href="/today" className={brandClassName}>
+                {brand}
+              </Link>
+            ) : (
+              <span className={brandClassName}>{brand}</span>
+            )}
+            <AccountMenu allowSignOut={allowAccountSignOut} />
+          </div>
+        </header>
+        <main
+          className={
+            contained
+              ? "min-h-0 w-full flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-5"
+              : "w-full px-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-5 sm:px-5 sm:pt-7"
+          }
+        >
+          {children}
+        </main>
+        <BottomNavigation
+          contained={contained}
+          allowNavigation={allowProductNavigation}
+        />
+      </div>
     </div>
   );
 }

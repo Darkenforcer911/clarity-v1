@@ -24,6 +24,7 @@ async function DaySummaryContent() {
     <DaySummary
       summary={dailyLoopService.parseDaySummary(data)}
       notes={data.dayRecord?.notes ?? null}
+      timezone={data.profile.timezone}
     />
   );
 }

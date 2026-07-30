@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 
 import { dailyLoopService } from "@/lib/clarity/daily-loop-service";
 import {
@@ -34,8 +34,10 @@ export async function recordAppOpenedAction(timezone: string) {
   }
 }
 
-export async function startMyDayAction() {
-  await dailyLoopService.beginDayShaping();
+export async function startMyDayAction(formData: FormData) {
+  await dailyLoopService.beginDayShaping(
+    String(formData.get("briefingContext") ?? ""),
+  );
   redirect("/today/shape");
 }
 
@@ -72,6 +74,17 @@ export async function setActionCompletionAction(formData: FormData) {
 
   await dailyLoopService.setActionCompletion(actionId, completed);
   revalidatePath("/today");
+  revalidatePath(`/today/actions/${actionId}`);
+}
+
+export async function markActionIncompleteAction(formData: FormData) {
+  const actionId = z.string().uuid().parse(formData.get("actionId"));
+  const returnToDetail = formData.get("returnTo") === "detail";
+
+  await dailyLoopService.setActionCompletion(actionId, false);
+  revalidatePath("/today");
+  revalidatePath(`/today/actions/${actionId}`);
+  redirect(returnToDetail ? `/today/actions/${actionId}` : "/today");
 }
 
 export async function beginCloseDayAction(formData: FormData) {

@@ -18,7 +18,19 @@ export async function loadTodayForRoute() {
   }
 }
 
+function redirectForPendingTransition(data: DailyLoopData) {
+  if (data.previousDayTransition?.kind === "wrap_up") {
+    redirect("/today/catch-up");
+  }
+
+  if (data.pendingReturnGap) {
+    redirect("/today/catch-up/gap");
+  }
+}
+
 export function redirectFromShape(data: DailyLoopData) {
+  redirectForPendingTransition(data);
+
   switch (data.plan?.status) {
     case "proposed":
       redirect("/today/plan");
@@ -34,6 +46,8 @@ export function redirectFromShape(data: DailyLoopData) {
 }
 
 export function redirectFromPlan(data: DailyLoopData) {
+  redirectForPendingTransition(data);
+
   switch (data.plan?.status) {
     case "proposed":
       return;
@@ -49,6 +63,8 @@ export function redirectFromPlan(data: DailyLoopData) {
 }
 
 export function redirectFromClose(data: DailyLoopData) {
+  redirectForPendingTransition(data);
+
   switch (data.plan?.status) {
     case "closing":
       return;
@@ -60,6 +76,8 @@ export function redirectFromClose(data: DailyLoopData) {
 }
 
 export function redirectFromSummary(data: DailyLoopData) {
+  redirectForPendingTransition(data);
+
   if (data.plan?.status !== "closed" || !data.dayRecord) {
     redirect("/today");
   }

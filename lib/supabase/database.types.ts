@@ -14,15 +14,95 @@ export type Database = {
   }
   public: {
     Tables: {
+      action_assistant_messages: {
+        Row: {
+          content: string
+          created_at: string
+          daily_action_id: string
+          id: string
+          role: Database["public"]["Enums"]["action_assistant_role"]
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          daily_action_id: string
+          id?: string
+          role: Database["public"]["Enums"]["action_assistant_role"]
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          daily_action_id?: string
+          id?: string
+          role?: Database["public"]["Enums"]["action_assistant_role"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "action_assistant_messages_action_owner_fkey"
+            columns: ["daily_action_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "daily_actions"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
+      }
+      action_notes: {
+        Row: {
+          created_at: string
+          daily_action_id: string
+          id: string
+          note: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          daily_action_id: string
+          id?: string
+          note: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          daily_action_id?: string
+          id?: string
+          note?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "action_notes_action_owner_fkey"
+            columns: ["daily_action_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "daily_actions"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
+      }
       daily_actions: {
         Row: {
           action_type: string
+          approved_at: string | null
+          clarification_answer: string | null
+          clarification_question: string | null
           completed_at: string | null
+          completion_recorded_at: string | null
+          completion_time_unknown: boolean
           created_at: string
           daily_plan_id: string
           definition_of_done: string
           estimated_minutes: number
           id: string
+          linked_context_kind: string | null
+          linked_context_label: string | null
+          ongoing_context_decision: string | null
+          ongoing_context_suggestion: string | null
+          original_input: string | null
+          recurrence_days: number[]
+          recurrence_pattern: string
+          reschedule_count: number
           rescheduled_for: string | null
           resolution_note: string | null
           scheduled_time: string | null
@@ -36,12 +116,25 @@ export type Database = {
         }
         Insert: {
           action_type: string
+          approved_at?: string | null
+          clarification_answer?: string | null
+          clarification_question?: string | null
           completed_at?: string | null
+          completion_recorded_at?: string | null
+          completion_time_unknown?: boolean
           created_at?: string
           daily_plan_id: string
           definition_of_done: string
           estimated_minutes: number
           id: string
+          linked_context_kind?: string | null
+          linked_context_label?: string | null
+          ongoing_context_decision?: string | null
+          ongoing_context_suggestion?: string | null
+          original_input?: string | null
+          recurrence_days?: number[]
+          recurrence_pattern?: string
+          reschedule_count?: number
           rescheduled_for?: string | null
           resolution_note?: string | null
           scheduled_time?: string | null
@@ -55,12 +148,25 @@ export type Database = {
         }
         Update: {
           action_type?: string
+          approved_at?: string | null
+          clarification_answer?: string | null
+          clarification_question?: string | null
           completed_at?: string | null
+          completion_recorded_at?: string | null
+          completion_time_unknown?: boolean
           created_at?: string
           daily_plan_id?: string
           definition_of_done?: string
           estimated_minutes?: number
           id?: string
+          linked_context_kind?: string | null
+          linked_context_label?: string | null
+          ongoing_context_decision?: string | null
+          ongoing_context_suggestion?: string | null
+          original_input?: string | null
+          recurrence_days?: number[]
+          recurrence_pattern?: string
+          reschedule_count?: number
           rescheduled_for?: string | null
           resolution_note?: string | null
           scheduled_time?: string | null
@@ -93,6 +199,7 @@ export type Database = {
           id: string
           local_date: string
           proposed_at: string | null
+          record_kind: string
           status: Database["public"]["Enums"]["daily_plan_status"]
           updated_at: string
           user_id: string
@@ -108,6 +215,7 @@ export type Database = {
           id?: string
           local_date: string
           proposed_at?: string | null
+          record_kind?: string
           status?: Database["public"]["Enums"]["daily_plan_status"]
           updated_at?: string
           user_id: string
@@ -123,6 +231,7 @@ export type Database = {
           id?: string
           local_date?: string
           proposed_at?: string | null
+          record_kind?: string
           status?: Database["public"]["Enums"]["daily_plan_status"]
           updated_at?: string
           user_id?: string
@@ -238,11 +347,77 @@ export type Database = {
         }
         Relationships: []
       }
+      return_gap_records: {
+        Row: {
+          context_summary: string | null
+          gap_end_date: string
+          gap_start_date: string
+          id: string
+          nothing_important: boolean
+          recorded_at: string
+          user_id: string
+        }
+        Insert: {
+          context_summary?: string | null
+          gap_end_date: string
+          gap_start_date: string
+          id?: string
+          nothing_important?: boolean
+          recorded_at?: string
+          user_id: string
+        }
+        Update: {
+          context_summary?: string | null
+          gap_end_date?: string
+          gap_start_date?: string
+          id?: string
+          nothing_important?: boolean
+          recorded_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      adapt_daily_action: {
+        Args: {
+          p_action_type: string
+          p_daily_action_id: string
+          p_definition_of_done: string
+          p_estimated_minutes: number
+          p_outcome?: string
+          p_scheduled_time: string
+          p_suggested_method: string
+          p_target_date?: string
+          p_title: string
+          p_why_it_exists: string
+        }
+        Returns: undefined
+      }
+      add_daily_action: {
+        Args: {
+          p_action_type: string
+          p_clarification_answer?: string
+          p_clarification_question?: string
+          p_daily_plan_id: string
+          p_definition_of_done?: string
+          p_estimated_minutes: number
+          p_linked_context_kind?: string
+          p_linked_context_label?: string
+          p_ongoing_context_suggestion?: string
+          p_original_input?: string
+          p_recurrence_days?: number[]
+          p_recurrence_pattern?: string
+          p_scheduled_time?: string
+          p_suggested_method?: string
+          p_title: string
+          p_why_it_exists?: string
+        }
+        Returns: string
+      }
       approve_daily_plan: {
         Args: { p_daily_plan_id: string }
         Returns: undefined
@@ -252,14 +427,122 @@ export type Database = {
         Returns: undefined
       }
       begin_day_shaping: { Args: { p_local_date: string }; Returns: string }
+      correct_action_completion_time: {
+        Args: {
+          p_completed_at?: string
+          p_daily_action_id: string
+          p_time_unknown?: boolean
+        }
+        Returns: undefined
+      }
+      delete_action_note: {
+        Args: { p_action_note_id: string }
+        Returns: string
+      }
       finish_day: {
         Args: { p_daily_plan_id: string; p_notes?: string }
         Returns: string
       }
+      get_latest_return_gap_record: { Args: never; Returns: Json }
       is_valid_timezone: { Args: { p_timezone: string }; Returns: boolean }
+      log_action_note: {
+        Args: { p_daily_action_id: string; p_note: string }
+        Returns: string
+      }
+      reconcile_previous_day: {
+        Args: {
+          p_context_summary?: string
+          p_daily_plan_id: string
+          p_explanation: string
+          p_ongoing_context_candidate?: Json
+          p_resolutions: Json
+          p_unplanned_progress?: Json
+        }
+        Returns: string
+      }
+      reconcile_previous_day_direct: {
+        Args: {
+          p_context_summary?: string
+          p_daily_plan_id: string
+          p_extra_context?: string
+          p_ongoing_context_candidate?: Json
+          p_resolutions: Json
+          p_unplanned_progress?: Json
+        }
+        Returns: string
+      }
+      reconcile_previous_day_direct_v2: {
+        Args: {
+          p_context_summary?: string
+          p_daily_plan_id: string
+          p_extra_context?: string
+          p_ongoing_context_candidate?: Json
+          p_resolutions: Json
+          p_unplanned_progress?: Json
+        }
+        Returns: string
+      }
+      reconcile_previous_day_direct_v3: {
+        Args: {
+          p_context_summary?: string
+          p_daily_plan_id: string
+          p_extra_context?: string
+          p_ongoing_context_candidate?: Json
+          p_resolutions: Json
+          p_unplanned_progress?: Json
+        }
+        Returns: string
+      }
       record_app_opened: { Args: { p_timezone: string }; Returns: undefined }
+      record_historical_day: {
+        Args: {
+          p_explanation?: string
+          p_local_date: string
+          p_skipped?: boolean
+        }
+        Returns: string
+      }
+      record_return_gap: {
+        Args: {
+          p_context_summary?: string
+          p_gap_end_date: string
+          p_gap_start_date: string
+          p_nothing_important?: boolean
+        }
+        Returns: string
+      }
+      record_return_gap_v2: {
+        Args: {
+          p_context_summary?: string
+          p_gap_end_date: string
+          p_gap_start_date: string
+          p_nothing_important?: boolean
+        }
+        Returns: string
+      }
+      remove_action_from_today: {
+        Args: { p_daily_action_id: string }
+        Returns: undefined
+      }
       remove_proposed_action: {
         Args: { p_daily_action_id: string }
+        Returns: undefined
+      }
+      replace_active_action: {
+        Args: {
+          p_action_type: string
+          p_daily_action_id: string
+          p_definition_of_done: string
+          p_estimated_minutes: number
+          p_scheduled_time: string
+          p_suggested_method: string
+          p_title: string
+          p_why_it_exists: string
+        }
+        Returns: string
+      }
+      reschedule_proposed_action: {
+        Args: { p_daily_action_id: string; p_target_date: string }
         Returns: undefined
       }
       resolve_daily_action: {
@@ -268,6 +551,14 @@ export type Database = {
           p_outcome: string
           p_resolution_note?: string
           p_selected_date?: string
+        }
+        Returns: undefined
+      }
+      save_action_assistant_exchange: {
+        Args: {
+          p_daily_action_id: string
+          p_question: string
+          p_response: string
         }
         Returns: undefined
       }
@@ -286,9 +577,27 @@ export type Database = {
         Args: { p_completed: boolean; p_daily_action_id: string }
         Returns: undefined
       }
+      set_action_context_decision: {
+        Args: { p_daily_action_id: string; p_decision: string }
+        Returns: undefined
+      }
       undo_day_close: { Args: { p_daily_plan_id: string }; Returns: undefined }
+      update_daily_action: {
+        Args: {
+          p_action_type: string
+          p_daily_action_id: string
+          p_definition_of_done: string
+          p_estimated_minutes: number
+          p_scheduled_time: string
+          p_suggested_method: string
+          p_title: string
+          p_why_it_exists: string
+        }
+        Returns: undefined
+      }
     }
     Enums: {
+      action_assistant_role: "user" | "assistant"
       daily_action_status:
         | "proposed"
         | "active"
@@ -296,6 +605,7 @@ export type Database = {
         | "rescheduled"
         | "removed"
         | "dropped"
+        | "missed"
       daily_plan_status:
         | "unshaped"
         | "proposed"
@@ -429,6 +739,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      action_assistant_role: ["user", "assistant"],
       daily_action_status: [
         "proposed",
         "active",
@@ -436,6 +747,7 @@ export const Constants = {
         "rescheduled",
         "removed",
         "dropped",
+        "missed",
       ],
       daily_plan_status: [
         "unshaped",

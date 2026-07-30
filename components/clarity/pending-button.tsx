@@ -5,7 +5,7 @@ import { useFormStatus } from "react-dom";
 import { Button, type ButtonProps } from "@/components/ui/button";
 
 type PendingButtonProps = ButtonProps & {
-  pendingLabel?: string;
+  pendingLabel?: React.ReactNode;
 };
 
 export function PendingButton({

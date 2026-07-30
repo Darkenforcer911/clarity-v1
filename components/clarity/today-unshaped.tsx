@@ -6,14 +6,14 @@ import { PendingButton } from "./pending-button";
 export function TodayUnshaped() {
   return (
     <section>
-      <div className="rounded-3xl border border-sky-200/15 bg-[#0c2b62]/90 p-6 shadow-sm sm:p-8">
-        <div className="mb-8 flex size-12 items-center justify-center rounded-2xl bg-sky-300/10 text-[#38a5ff]">
+      <div className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
+        <div className="mb-6 flex size-12 items-center justify-center rounded-xl bg-secondary text-[var(--clarity-completed)]">
           <Sunrise className="size-6" />
         </div>
         <h2 className="max-w-md text-2xl font-semibold tracking-[-0.035em]">
           Your day hasn&apos;t been shaped yet.
         </h2>
-        <p className="mt-3 max-w-md leading-7 text-blue-100/60">
+        <p className="mt-3 max-w-md leading-7 text-muted-foreground">
           Give Clarity a few anchors and get a focused, realistic plan for
           today.
         </p>
@@ -22,7 +22,7 @@ export function TodayUnshaped() {
             type="submit"
             size="lg"
             pendingLabel="Opening Shape Today…"
-            className="h-12 w-full rounded-xl bg-[#148bff] text-base hover:bg-[#0877e0] sm:w-auto"
+            className="h-12 w-full rounded-xl text-base sm:w-auto"
           >
             Start my day
             <ArrowRight />
