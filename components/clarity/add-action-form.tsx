@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowLeft, Lightbulb, Plus, X } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { addActionAction } from "@/app/(app)/today/action-workspace-actions";
 import { Button } from "@/components/ui/button";
@@ -16,15 +16,35 @@ import { PendingButton } from "./pending-button";
 
 export function AddActionForm({
   planId,
-  proposed = false,
+  open: controlledOpen,
+  onOpenChange,
+  hideTrigger = false,
+  onActionSaved,
 }: {
   planId: string;
   proposed?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
+  onActionSaved?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const label = proposed ? "Add to proposed plan" : "Add action";
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = controlledOpen ?? localOpen;
+  const label = "Add action";
+  const setOpen = useCallback(
+    (nextOpen: boolean) => {
+      setLocalOpen(nextOpen);
+      onOpenChange?.(nextOpen);
+    },
+    [onOpenChange],
+  );
+  const closePanel = useCallback(() => setOpen(false), [setOpen]);
 
   if (!open) {
+    if (hideTrigger) {
+      return null;
+    }
+
     return (
       <Button
         type="button"
@@ -43,7 +63,8 @@ export function AddActionForm({
     <AddActionPanel
       planId={planId}
       label={label}
-      onClose={() => setOpen(false)}
+      onClose={closePanel}
+      onActionSaved={onActionSaved}
     />
   );
 }
@@ -52,15 +73,18 @@ function AddActionPanel({
   planId,
   label,
   onClose,
+  onActionSaved,
 }: {
   planId: string;
   label: string;
   onClose: () => void;
+  onActionSaved?: () => void;
 }) {
   const [state, setState] = useState<DailyLoopActionState>(
     initialDailyLoopActionState,
   );
   const [responseVersion, setResponseVersion] = useState(0);
+  const panelRef = useRef<HTMLElement>(null);
   const feedback = state.addActionFeedback;
   const timeWarning = state.addActionTimeWarning;
   const contextPrompt = state.addActionContextPrompt;
@@ -71,10 +95,53 @@ function AddActionPanel({
     feedback?.classification === "ambiguous" &&
     feedback.exhausted;
 
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const panel = panelRef.current;
+
+      if (!panel) {
+        return;
+      }
+
+      const bounds = panel.getBoundingClientRect();
+      const navigation = document.querySelector<HTMLElement>(
+        'nav[aria-label="Primary"]',
+      );
+      const visibleBottom =
+        (navigation?.getBoundingClientRect().top ?? window.innerHeight) - 12;
+      let adjustment = 0;
+
+      if (bounds.top < 12) {
+        adjustment = bounds.top - 12;
+      } else if (bounds.top > visibleBottom - 44) {
+        adjustment = bounds.top - (visibleBottom - 44);
+      }
+
+      if (Math.abs(adjustment) > 1) {
+        const reduceMotion = window.matchMedia(
+          "(prefers-reduced-motion: reduce)",
+        ).matches;
+
+        window.scrollBy({
+          top: adjustment,
+          behavior: reduceMotion ? "auto" : "smooth",
+        });
+      }
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, []);
+
   async function submitAction(formData: FormData) {
     const nextState = await addActionAction(state, formData);
     setState(nextState);
     setResponseVersion((version) => version + 1);
+
+    if (nextState.addActionContextPrompt) {
+      onActionSaved?.();
+    }
   }
 
   function resetAttempt() {
@@ -96,7 +163,10 @@ function AddActionPanel({
   }
 
   return (
-    <section className="rounded-2xl border border-[var(--clarity-completed)] bg-secondary p-5">
+    <section
+      ref={panelRef}
+      className="w-full min-w-0 max-w-full rounded-2xl border border-[var(--clarity-completed)] bg-secondary p-5"
+    >
       <div className="mb-5 flex items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-[var(--clarity-completed)]">
@@ -112,30 +182,22 @@ function AddActionPanel({
           size="icon"
           onClick={onClose}
           aria-label="Close add action form"
-          className="rounded-xl"
+          className="size-11 min-h-11 min-w-11 rounded-xl"
         >
           <X />
         </Button>
       </div>
 
       {contextPrompt ? (
-        <div className="space-y-3">
-          <p
-            role="status"
-            className="rounded-xl bg-card px-4 py-3 text-sm font-semibold text-[var(--clarity-completed)]"
-          >
-            Action added.
-          </p>
-          <OngoingContextPrompt
-            actionId={contextPrompt.actionId}
-            suggestion={contextPrompt.suggestion}
-            destination={contextPrompt.destination}
-          />
-        </div>
+        <OngoingContextPrompt
+          actionId={contextPrompt.actionId}
+          suggestion={contextPrompt.suggestion}
+          destination={contextPrompt.destination}
+        />
       ) : (
         <form
           action={submitAction}
-          className="space-y-5"
+          className="w-full min-w-0 max-w-full space-y-5"
         >
           <input type="hidden" name="planId" value={planId} />
           <ActionFields

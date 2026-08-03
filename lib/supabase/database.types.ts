@@ -285,6 +285,59 @@ export type Database = {
           },
         ]
       }
+      overnight_day_states: {
+        Row: {
+          attempt_count: number
+          created_at: string
+          day_started_at: string | null
+          id: string
+          interrupted_sleep_reported_at: string | null
+          local_date: string
+          outcome_reported_at: string | null
+          reported_wake_at: string | null
+          sleep_attempted_at: string | null
+          sleep_outcome: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attempt_count?: number
+          created_at?: string
+          day_started_at?: string | null
+          id?: string
+          interrupted_sleep_reported_at?: string | null
+          local_date: string
+          outcome_reported_at?: string | null
+          reported_wake_at?: string | null
+          sleep_attempted_at?: string | null
+          sleep_outcome?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attempt_count?: number
+          created_at?: string
+          day_started_at?: string | null
+          id?: string
+          interrupted_sleep_reported_at?: string | null
+          local_date?: string
+          outcome_reported_at?: string | null
+          reported_wake_at?: string | null
+          sleep_attempted_at?: string | null
+          sleep_outcome?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "overnight_day_states_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_events: {
         Row: {
           created_at: string
@@ -422,11 +475,19 @@ export type Database = {
         Args: { p_daily_plan_id: string }
         Returns: undefined
       }
+      approve_daily_plan_v2: {
+        Args: { p_allow_empty?: boolean; p_daily_plan_id: string }
+        Returns: undefined
+      }
       begin_day_closing: {
         Args: { p_daily_plan_id: string }
         Returns: undefined
       }
       begin_day_shaping: { Args: { p_local_date: string }; Returns: string }
+      cancel_day_closing: {
+        Args: { p_daily_plan_id: string }
+        Returns: undefined
+      }
       correct_action_completion_time: {
         Args: {
           p_completed_at?: string
@@ -443,6 +504,7 @@ export type Database = {
         Args: { p_daily_plan_id: string; p_notes?: string }
         Returns: string
       }
+      get_current_overnight_state: { Args: never; Returns: Json }
       get_latest_return_gap_record: { Args: never; Returns: Json }
       is_valid_timezone: { Args: { p_timezone: string }; Returns: boolean }
       log_action_note: {
@@ -520,6 +582,16 @@ export type Database = {
         }
         Returns: string
       }
+      record_return_gap_v3: {
+        Args: {
+          p_context_summary?: string
+          p_gap_end_date: string
+          p_gap_start_date: string
+          p_nothing_important?: boolean
+        }
+        Returns: string
+      }
+      record_sleep_attempt: { Args: never; Returns: string }
       remove_action_from_today: {
         Args: { p_daily_action_id: string }
         Returns: undefined
@@ -540,6 +612,10 @@ export type Database = {
           p_why_it_exists: string
         }
         Returns: string
+      }
+      report_overnight_outcome: {
+        Args: { p_outcome: string }
+        Returns: undefined
       }
       reschedule_proposed_action: {
         Args: { p_daily_action_id: string; p_target_date: string }
@@ -562,7 +638,27 @@ export type Database = {
         }
         Returns: undefined
       }
+      save_context_only_proposed_plan: {
+        Args: {
+          p_actions: Json
+          p_context_for_today: string
+          p_focus: string
+          p_local_date: string
+        }
+        Returns: string
+      }
       save_proposed_plan: {
+        Args: {
+          p_actions: Json
+          p_aiming_to_sleep_at: string
+          p_context_for_today: string
+          p_focus: string
+          p_local_date: string
+          p_woke_at: string
+        }
+        Returns: string
+      }
+      save_proposed_plan_with_optional_wake: {
         Args: {
           p_actions: Json
           p_aiming_to_sleep_at: string
@@ -581,6 +677,8 @@ export type Database = {
         Args: { p_daily_action_id: string; p_decision: string }
         Returns: undefined
       }
+      start_current_day: { Args: never; Returns: string }
+      start_current_day_v2: { Args: never; Returns: Json }
       undo_day_close: { Args: { p_daily_plan_id: string }; Returns: undefined }
       update_daily_action: {
         Args: {

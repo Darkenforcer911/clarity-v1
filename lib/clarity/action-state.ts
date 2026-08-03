@@ -33,6 +33,7 @@ export type DailyLoopActionState = {
   error: string | null;
   fieldErrors?: Record<string, string[]>;
   success?: string;
+  updateSucceededAt?: number;
   addActionFeedback?: AddActionFeedback;
   addActionDraft?: AddActionDraft;
   addActionTimeWarning?: AddActionTimeWarning;

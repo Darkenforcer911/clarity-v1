@@ -34,8 +34,8 @@ export function AppShell({
     <div
       className={
         contained
-          ? "relative h-full min-h-0 bg-background text-foreground"
-          : "min-h-svh bg-background text-foreground"
+          ? "relative h-full min-h-0 overflow-x-clip bg-background text-foreground"
+          : "min-h-svh overflow-x-clip bg-background text-foreground"
       }
     >
       {enableActivityTracking && <AppActivityTracker />}
@@ -47,8 +47,8 @@ export function AppShell({
       <div
         className={
           contained
-            ? "relative mx-auto flex h-full min-h-0 w-full max-w-[480px] flex-col overflow-hidden border-x-0 border-border bg-background"
-            : "mx-auto min-h-svh w-full max-w-[480px] border-x-0 border-border bg-background min-[481px]:border-x"
+            ? "relative mx-auto flex h-full min-h-0 w-full min-w-0 max-w-[480px] flex-col overflow-hidden border-x-0 border-border bg-background"
+            : "mx-auto min-h-svh w-full min-w-0 max-w-[480px] overflow-x-clip border-x-0 border-border bg-background min-[481px]:border-x"
         }
       >
         <header className="shrink-0 border-b border-border bg-background pt-[env(safe-area-inset-top)]">
@@ -66,8 +66,8 @@ export function AppShell({
         <main
           className={
             contained
-              ? "min-h-0 w-full flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-5"
-              : "w-full px-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-5 sm:px-5 sm:pt-7"
+              ? "min-h-0 w-full min-w-0 max-w-full flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-5"
+              : "w-full min-w-0 max-w-full px-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-5 sm:px-5 sm:pt-7"
           }
         >
           {children}

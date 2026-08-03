@@ -1,9 +1,8 @@
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
-import { DailyContextCards } from "@/components/clarity/daily-context-cards";
-import { getShapeTimeDefaults } from "@/lib/clarity/date-time";
 import { PageLoading } from "@/components/clarity/page-loading";
-import { ShapeTodayForm } from "@/components/clarity/shape-today-form";
+import { dailyLoopService } from "@/lib/clarity/daily-loop-service";
 import {
   loadTodayForRoute,
   redirectFromShape,
@@ -12,35 +11,17 @@ import {
 export default function ShapeTodayPage() {
   return (
     <Suspense fallback={<PageLoading />}>
-      <ShapeTodayContent />
+      <ShapeTodayRedirect />
     </Suspense>
   );
 }
 
-async function ShapeTodayContent() {
+async function ShapeTodayRedirect() {
   const data = await loadTodayForRoute();
   redirectFromShape(data);
 
-  return (
-    <section className="space-y-7">
-      <div className="space-y-3">
-        <p className="text-sm font-medium text-muted-foreground">Shape Today</p>
-        <h1 className="text-3xl font-semibold tracking-[-0.045em]">
-          A few anchors for today.
-        </h1>
-        <p className="max-w-xl leading-7 text-muted-foreground">
-          Clarity will use these details to build a focused plan that fits the
-          day you actually have.
-        </p>
-      </div>
-      <DailyContextCards
-        rescheduledActions={data.rescheduledContext}
-        yesterdayRecord={data.yesterdayRecord}
-      />
-      <ShapeTodayForm
-        defaults={getShapeTimeDefaults(data.profile.timezone)}
-        initialContext={data.plan?.context_for_today ?? ""}
-      />
-    </section>
-  );
+  await dailyLoopService.ensureInitialPlanProposal();
+  redirect("/today/plan");
+
+  return null;
 }

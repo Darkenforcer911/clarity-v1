@@ -1,8 +1,6 @@
-import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
 
 import { ActionDetail } from "@/components/clarity/action-detail";
-import { PageLoading } from "@/components/clarity/page-loading";
 import { actionWorkspaceService } from "@/lib/clarity/action-workspace-service";
 import {
   ActionNotFoundError,
@@ -10,16 +8,12 @@ import {
 } from "@/lib/clarity/daily-loop-queries";
 import { getLocalDate } from "@/lib/clarity/date-time";
 
-export default function ActionDetailPage({
+export default async function ActionDetailPage({
   params,
 }: {
   params: Promise<{ actionId: string }>;
 }) {
-  return (
-    <Suspense fallback={<PageLoading />}>
-      <ActionDetailContent params={params} />
-    </Suspense>
-  );
+  return <ActionDetailContent params={params} />;
 }
 
 async function ActionDetailContent({
@@ -72,9 +66,11 @@ async function ActionDetailContent({
       updates={data.notes}
       readOnly={historicalAction}
       backHref={
-        historicalAction && data.plan.local_date === currentLocalDate
-          ? "/today/summary"
-          : "/today"
+        activeAction
+          ? "/today/active"
+          : historicalAction && data.plan.local_date === currentLocalDate
+            ? "/today/summary"
+            : "/today"
       }
     />
   );

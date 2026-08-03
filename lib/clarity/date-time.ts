@@ -51,6 +51,35 @@ export function getLocalTime(timeZone: string, date = new Date()) {
   ).padStart(2, "0")}`;
 }
 
+export function hasScheduledMinutePassed(
+  scheduledTime: string | null,
+  planLocalDate: string,
+  timeZone: string,
+  now = new Date(),
+) {
+  if (!scheduledTime) {
+    return false;
+  }
+
+  const scheduledDate = new Date(scheduledTime);
+
+  if (Number.isNaN(scheduledDate.getTime())) {
+    return false;
+  }
+
+  const scheduledWallClock = getLocalTime(timeZone, scheduledDate);
+  const scheduledOnPlanDate = localDateTimeToIso(
+    planLocalDate,
+    scheduledWallClock,
+    timeZone,
+  );
+
+  return (
+    Math.floor(new Date(scheduledOnPlanDate).getTime() / 60_000) <
+    Math.floor(now.getTime() / 60_000)
+  );
+}
+
 export function addLocalDays(localDate: string, days: number) {
   const [year, month, day] = localDate.split("-").map(Number);
   const date = new Date(Date.UTC(year, month - 1, day + days));
@@ -132,6 +161,25 @@ export function localDateTimeToIso(
   return new Date(candidate).toISOString();
 }
 
+export function resolveFutureLocalDateTime(
+  value: string,
+  timeZone: string,
+  now = new Date(),
+) {
+  if (!/^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d$/.test(value)) {
+    throw new Error("Enter a valid local date and time.");
+  }
+
+  const [localDate, localTime] = value.split("T");
+  const resolved = localDateTimeToIso(localDate, localTime, timeZone);
+
+  if (new Date(resolved).getTime() <= now.getTime()) {
+    throw new Error("Choose a date and time later than now.");
+  }
+
+  return resolved;
+}
+
 export function resolveShapeTimes(
   localDate: string,
   wokeAt: string,
@@ -151,6 +199,20 @@ export function resolveShapeTimes(
       timeZone,
     ),
   };
+}
+
+export function resolveSleepTarget(
+  localDate: string,
+  aimingToSleepAt: string,
+  referenceTime: string,
+  timeZone: string,
+) {
+  const referenceMinutes = minutesSinceMidnight(referenceTime);
+  const sleepMinutes = minutesSinceMidnight(aimingToSleepAt);
+  const sleepDate =
+    sleepMinutes <= referenceMinutes ? addLocalDays(localDate, 1) : localDate;
+
+  return localDateTimeToIso(sleepDate, aimingToSleepAt, timeZone);
 }
 
 export function getShapeTimeDefaults(
@@ -187,8 +249,9 @@ export function getDayPeriod(timeZone: string, date = new Date()) {
 
   if (hour < 5) return "late_night" as const;
   if (hour < 12) return "morning" as const;
-  if (hour < 18) return "afternoon" as const;
-  return "evening" as const;
+  if (hour < 17) return "afternoon" as const;
+  if (hour < 21) return "evening" as const;
+  return "late_night" as const;
 }
 
 export function formatFullLocalDate(localDate: string) {

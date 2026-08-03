@@ -7,7 +7,6 @@ import { z, ZodError } from "zod";
 import { dailyLoopService } from "@/lib/clarity/daily-loop-service";
 import {
   closeDayResolutionSchema,
-  shapeTodaySchema,
   type CloseDayResolution,
 } from "@/lib/clarity/schemas";
 import type { DailyLoopActionState } from "@/lib/clarity/action-state";
@@ -34,38 +33,39 @@ export async function recordAppOpenedAction(timezone: string) {
   }
 }
 
-export async function startMyDayAction(formData: FormData) {
-  await dailyLoopService.beginDayShaping(
-    String(formData.get("briefingContext") ?? ""),
-  );
-  redirect("/today/shape");
-}
+export async function startMyDayAction() {
+  const result = await dailyLoopService.beginDayShaping();
 
-export async function buildPlanAction(
-  _previousState: DailyLoopActionState,
-  formData: FormData,
-): Promise<DailyLoopActionState> {
-  try {
-    const input = shapeTodaySchema.parse({
-      wokeAt: String(formData.get("wokeAt") ?? ""),
-      aimingToSleepAt: String(formData.get("aimingToSleepAt") ?? ""),
-      contextForToday: String(formData.get("contextForToday") ?? ""),
-      nothingElseToday: formData.get("nothingElseToday") === "on",
-    });
+  switch (result.outcome) {
+    case "started": {
+      await dailyLoopService.ensureInitialPlanProposal();
+      redirect("/today/plan");
+    }
+    case "previous_plan_unresolved":
+      redirect("/today/catch-up");
+    case "return_gap_required":
+      redirect("/today/catch-up/gap");
+    case "current_day_already_started": {
+      if (result.planStatus === "unshaped") {
+        await dailyLoopService.ensureInitialPlanProposal();
+        redirect("/today/plan");
+      }
 
-    await dailyLoopService.buildPlan(input);
-  } catch (error) {
-    return actionError(error);
+      if (result.planStatus === "proposed") {
+        redirect("/today/plan");
+      }
+
+      redirect("/today");
+    }
   }
-
-  redirect("/today/plan");
 }
 
 export async function approvePlanAction(formData: FormData) {
   const planId = String(formData.get("planId") ?? "");
-  await dailyLoopService.approvePlan(planId);
+  const allowEmptyPlan = formData.get("allowEmptyPlan") === "true";
+  await dailyLoopService.approvePlan(planId, allowEmptyPlan);
   revalidatePath("/today");
-  redirect("/today");
+  redirect("/today/active");
 }
 
 export async function setActionCompletionAction(formData: FormData) {
@@ -94,11 +94,36 @@ export async function beginCloseDayAction(formData: FormData) {
   redirect("/today/close");
 }
 
+export async function cancelCloseDayAction(formData: FormData) {
+  const planId = z.string().uuid().parse(formData.get("planId"));
+  await dailyLoopService.cancelDayClosing(planId);
+  revalidatePath("/today");
+  revalidatePath("/today/close");
+  redirect("/today");
+}
+
 export async function undoCloseDayAction(formData: FormData) {
   const planId = String(formData.get("planId") ?? "");
   await dailyLoopService.undoDayClose(planId);
   revalidatePath("/today");
   redirect("/today");
+}
+
+export async function undoCloseDayFromSummaryAction(
+  _previousState: DailyLoopActionState,
+  formData: FormData,
+): Promise<DailyLoopActionState> {
+  try {
+    const planId = z.string().uuid().parse(formData.get("planId"));
+    await dailyLoopService.undoDayClose(planId);
+    revalidatePath("/today");
+    revalidatePath("/today/active");
+    revalidatePath("/today/summary");
+  } catch (error) {
+    return actionError(error);
+  }
+
+  redirect("/today/active");
 }
 
 export async function finishDayAction(

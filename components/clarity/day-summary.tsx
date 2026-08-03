@@ -12,15 +12,18 @@ import {
   formatWeekday,
 } from "@/lib/clarity/date-time";
 import { Button } from "@/components/ui/button";
+import { UndoDaySummaryClose } from "./undo-day-summary-close";
 
 export function DaySummary({
   summary,
   notes,
   timezone,
+  canUndoClose = false,
 }: {
   summary: DaySummaryData;
   notes: string | null;
   timezone: string;
+  canUndoClose?: boolean;
 }) {
   const completedActions = [...summary.completedActions].sort(
     (left, right) => {
@@ -296,6 +299,15 @@ export function DaySummary({
           <ArrowRight />
         </Link>
       </Button>
+
+      {canUndoClose && (
+        <UndoDaySummaryClose
+          planId={summary.dailyPlanId}
+          day={formatWeekday(summary.localDate)}
+          localDate={summary.localDate}
+          timezone={timezone}
+        />
+      )}
     </section>
   );
 }

@@ -1,26 +1,13 @@
-import { History, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 
-import type {
-  DailyAction,
-  DayRecord,
-} from "@/lib/clarity/daily-loop-queries";
-import { daySummarySchema } from "@/lib/clarity/schemas";
+import type { DailyAction } from "@/lib/clarity/daily-loop-queries";
 
 export function DailyContextCards({
   rescheduledActions,
-  yesterdayRecord,
 }: {
   rescheduledActions: DailyAction[];
-  yesterdayRecord: DayRecord | null;
 }) {
-  const yesterdaySummary = yesterdayRecord
-    ? daySummarySchema.safeParse(yesterdayRecord.progress_recorded)
-    : null;
-
-  if (
-    rescheduledActions.length === 0 &&
-    (!yesterdaySummary || !yesterdaySummary.success)
-  ) {
+  if (rescheduledActions.length === 0) {
     return null;
   }
 
@@ -39,19 +26,6 @@ export function DailyContextCards({
               </li>
             ))}
           </ul>
-        </section>
-      )}
-
-      {yesterdaySummary?.success && (
-        <section className="rounded-2xl border border-border bg-card p-4">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            <History className="size-4" />
-            Yesterday
-          </div>
-          <p className="mt-3 text-sm text-muted-foreground">
-            {yesterdaySummary.data.completedCount} of{" "}
-            {yesterdaySummary.data.totalCount} approved actions completed.
-          </p>
         </section>
       )}
     </aside>

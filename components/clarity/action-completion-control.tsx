@@ -1,14 +1,10 @@
 "use client";
 
 import { Check, Circle } from "lucide-react";
-import { useState } from "react";
+import { startTransition, useOptimistic, useState } from "react";
 
-import {
-  markActionIncompleteAction,
-  setActionCompletionAction,
-} from "@/app/(app)/today/actions";
+import { setActionCompletionAction } from "@/app/(app)/today/actions";
 import { Button } from "@/components/ui/button";
-import { PendingButton } from "./pending-button";
 
 export function ActionCompletionControl({
   actionId,
@@ -20,22 +16,56 @@ export function ActionCompletionControl({
   completionTime: string | null;
 }) {
   const [confirmingIncomplete, setConfirmingIncomplete] = useState(false);
+  const [optimisticCompleted, setOptimisticCompleted] = useOptimistic(
+    completed,
+    (_current, next: boolean) => next,
+  );
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  if (!completed) {
+  function updateCompletion(nextCompleted: boolean) {
+    const formData = new FormData();
+    formData.set("actionId", actionId);
+    formData.set("completed", String(nextCompleted));
+    setPending(true);
+    setError(null);
+
+    startTransition(async () => {
+      setOptimisticCompleted(nextCompleted);
+
+      try {
+        await setActionCompletionAction(formData);
+      } catch {
+        setError(
+          nextCompleted
+            ? "Couldn’t complete the action. Try again."
+            : "Couldn’t mark the action incomplete. Try again.",
+        );
+      } finally {
+        setPending(false);
+      }
+    });
+  }
+
+  if (!optimisticCompleted) {
     return (
-      <form action={setActionCompletionAction}>
-        <input type="hidden" name="actionId" value={actionId} />
-        <input type="hidden" name="completed" value="true" />
-        <PendingButton
-          type="submit"
+      <div className="space-y-2">
+        <Button
+          type="button"
           size="lg"
-          pendingLabel="Completing…"
+          disabled={pending}
+          onClick={() => updateCompletion(true)}
           className="h-12 w-full rounded-xl text-base"
         >
           <Check />
-          Complete
-        </PendingButton>
-      </form>
+          {pending ? "Completing…" : "Complete"}
+        </Button>
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
+      </div>
     );
   }
 
@@ -45,6 +75,7 @@ export function ActionCompletionControl({
         type="button"
         size="lg"
         variant="outline"
+        disabled={pending}
         className="h-12 w-full rounded-xl text-base"
         onClick={() => setConfirmingIncomplete(true)}
       >
@@ -69,19 +100,24 @@ export function ActionCompletionControl({
             >
               Keep completed
             </Button>
-            <form action={markActionIncompleteAction}>
-              <input type="hidden" name="actionId" value={actionId} />
-              <input type="hidden" name="returnTo" value="detail" />
-              <PendingButton
-                type="submit"
-                pendingLabel="Marking incomplete…"
+            <Button
+                type="button"
+                disabled={pending}
+                onClick={() => {
+                  setConfirmingIncomplete(false);
+                  updateCompletion(false);
+                }}
                 className="h-11 w-full rounded-xl"
               >
-                Mark incomplete
-              </PendingButton>
-            </form>
+                {pending ? "Marking incomplete…" : "Mark incomplete"}
+              </Button>
           </div>
         </section>
+      )}
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
       )}
     </div>
   );

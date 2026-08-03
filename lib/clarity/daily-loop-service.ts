@@ -1,12 +1,13 @@
 import "server-only";
 
 import type { Json } from "@/lib/supabase/database.types";
+import { z } from "zod";
 import {
   addLocalDays,
   getLocalDate,
   getLocalTime,
+  hasScheduledMinutePassed,
   localDateTimeToIso,
-  resolveShapeTimes,
 } from "./date-time";
 import {
   closeDayResolutionSchema,
@@ -42,6 +43,34 @@ export class DailyLoopServiceError extends Error {
   }
 }
 
+const startCurrentDayResultSchema = z.discriminatedUnion("outcome", [
+  z.object({
+    outcome: z.literal("started"),
+    planId: z.string().uuid(),
+    localDate: z.string(),
+  }),
+  z.object({
+    outcome: z.literal("previous_plan_unresolved"),
+    previousLocalDate: z.string(),
+    previousPlanStatus: z.enum(["proposed", "active", "closing"]),
+  }),
+  z.object({
+    outcome: z.literal("return_gap_required"),
+    gapStartDate: z.string(),
+    gapEndDate: z.string(),
+  }),
+  z.object({
+    outcome: z.literal("current_day_already_started"),
+    planId: z.string().uuid(),
+    localDate: z.string(),
+    planStatus: z.string(),
+  }),
+]);
+
+type BeginDayShapingResult = z.infer<
+  typeof startCurrentDayResultSchema
+>;
+
 function ensureRpcSucceeded(error: { message: string } | null) {
   if (error) {
     throw new DailyLoopServiceError(error.message);
@@ -68,39 +97,45 @@ export class DailyLoopService {
     ensureRpcSucceeded(error);
   }
 
-  async beginDayShaping(briefingContext?: string) {
+  async beginDayShaping(): Promise<BeginDayShapingResult> {
     const currentData = await getDailyLoopData();
 
-    if (
-      currentData.previousDayTransition ||
-      currentData.pendingReturnGap
-    ) {
+    if (currentData.previousDayTransition?.kind === "wrap_up") {
+      return {
+        outcome: "previous_plan_unresolved",
+        previousLocalDate: currentData.previousDayTransition.localDate,
+        previousPlanStatus: currentData.previousDayTransition.plan.status as
+          | "proposed"
+          | "active"
+          | "closing",
+      };
+    }
+
+    if (currentData.pendingReturnGap) {
+      return {
+        outcome: "return_gap_required",
+        gapStartDate: currentData.pendingReturnGap.gapStartDate,
+        gapEndDate: currentData.pendingReturnGap.gapEndDate,
+      };
+    }
+
+    const { supabase } = await getAuthenticatedUserAndProfile();
+    const { data, error } = await callUntypedRpc(
+      supabase,
+      "start_current_day_v2",
+      {},
+    );
+
+    ensureRpcSucceeded(error);
+    const parsed = startCurrentDayResultSchema.safeParse(data);
+
+    if (!parsed.success) {
       throw new DailyLoopServiceError(
-        "Finish catching up before shaping today.",
+        "Clarity couldn't verify the day-start result.",
       );
     }
 
-    const { supabase, user, profile } =
-      await getAuthenticatedUserAndProfile();
-    const localDate = getLocalDate(profile.timezone);
-    const { error } = await supabase.rpc("begin_day_shaping", {
-      p_local_date: localDate,
-    });
-
-    ensureRpcSucceeded(error);
-
-    const context = briefingContext?.trim();
-
-    if (context) {
-      const { error: contextError } = await supabase
-        .from("daily_plans")
-        .update({ context_for_today: context })
-        .eq("user_id", user.id)
-        .eq("local_date", localDate)
-        .eq("status", "unshaped");
-
-      ensureRpcSucceeded(contextError);
-    }
+    return parsed.data;
   }
 
   async interpretPreviousDay(
@@ -224,7 +259,7 @@ export class DailyLoopService {
     const { supabase } = await getAuthenticatedUserAndProfile();
     const { error } = await callUntypedRpc(
       supabase,
-      "record_return_gap_v2",
+      "record_return_gap_v3",
       {
         p_gap_start_date: gap.gapStartDate,
         p_gap_end_date: gap.gapEndDate,
@@ -329,33 +364,27 @@ export class DailyLoopService {
 
     if (
       currentData.previousDayTransition ||
-      currentData.pendingReturnGap
+      currentData.pendingReturnGap ||
+      !currentData.plan ||
+      currentData.plan.status !== "unshaped"
     ) {
       throw new DailyLoopServiceError(
-        "Finish catching up before building today’s plan.",
+        "Start today before building its plan.",
       );
     }
 
     const { supabase, user, profile } =
       await getAuthenticatedUserAndProfile();
     const localDate = getLocalDate(profile.timezone);
-    const times = resolveShapeTimes(
-      localDate,
-      input.wokeAt,
-      input.aimingToSleepAt,
-      profile.timezone,
-    );
+    const currentLocalTime = getLocalTime(profile.timezone);
+    const statedContextForToday = input.contextForToday;
     const generatedPlan = generatedPlanSchema.parse(
       await this.clarityAI.buildPlan({
         userId: user.id,
         localDate,
         timezone: profile.timezone,
-        wokeAt: times.wokeAt,
-        aimingToSleepAt: times.aimingToSleepAt,
-        contextForToday: input.nothingElseToday
-          ? null
-          : input.contextForToday,
-        currentLocalTime: getLocalTime(profile.timezone),
+        contextForToday: statedContextForToday || null,
+        currentLocalTime,
         carriedActions: currentData.rescheduledContext.map((action) => ({
           sourceActionId: action.id,
           title: action.title,
@@ -406,21 +435,56 @@ export class DailyLoopService {
         scheduledTime,
       };
     });
-    const { error } = await supabase.rpc("save_proposed_plan", {
-      p_local_date: localDate,
-      p_woke_at: times.wokeAt,
-      p_aiming_to_sleep_at: times.aimingToSleepAt,
-      p_context_for_today: input.nothingElseToday
-        ? ""
-        : input.contextForToday,
-      p_focus: generatedPlan.focus,
-      p_actions: actions,
-    });
+    const { error } = await callUntypedRpc(
+      supabase,
+      "save_context_only_proposed_plan",
+      {
+        p_local_date: localDate,
+        p_context_for_today: statedContextForToday,
+        p_focus: generatedPlan.focus,
+        p_actions: actions,
+      },
+    );
 
     ensureRpcSucceeded(error);
   }
 
-  async approvePlan(planId: string) {
+  async ensureInitialPlanProposal() {
+    const data = await getDailyLoopData();
+
+    if (
+      data.previousDayTransition ||
+      data.pendingReturnGap ||
+      !data.plan
+    ) {
+      throw new DailyLoopServiceError(
+        "Finish the previous-day transition before starting today.",
+      );
+    }
+
+    if (data.plan.status === "proposed") {
+      return data.plan.id;
+    }
+
+    if (data.plan.status !== "unshaped") {
+      throw new DailyLoopServiceError(
+        "Today can no longer create an initial proposal.",
+      );
+    }
+
+    await this.buildPlan({});
+
+    const proposedData = await getDailyLoopData();
+    if (proposedData.plan?.status !== "proposed") {
+      throw new DailyLoopServiceError(
+        "Clarity couldn't create today's proposal.",
+      );
+    }
+
+    return proposedData.plan.id;
+  }
+
+  async approvePlan(planId: string, allowEmptyPlan = false) {
     const currentData = await getDailyLoopData();
 
     if (
@@ -434,10 +498,35 @@ export class DailyLoopService {
       );
     }
 
+    const hasUnresolvedPassedTime = currentData.actions.some(
+      (action) =>
+        action.status === "proposed" &&
+        action.action_type === "fixed" &&
+        hasScheduledMinutePassed(
+          action.scheduled_time,
+          currentData.plan!.local_date,
+          currentData.profile.timezone,
+        ),
+    );
+
+    if (hasUnresolvedPassedTime) {
+      throw new DailyLoopServiceError(
+        "Resolve passed action times before beginning.",
+      );
+    }
+
     const { supabase } = await getAuthenticatedUserAndProfile();
-    const { error } = await supabase.rpc("approve_daily_plan", {
-      p_daily_plan_id: planId,
-    });
+    const hasCompletedEvidence = currentData.actions.some(
+      (action) => action.status === "completed",
+    );
+    const { error } = allowEmptyPlan || hasCompletedEvidence
+      ? await callUntypedRpc(supabase, "approve_daily_plan_v2", {
+          p_daily_plan_id: planId,
+          p_allow_empty: allowEmptyPlan,
+        })
+      : await supabase.rpc("approve_daily_plan", {
+          p_daily_plan_id: planId,
+        });
 
     ensureRpcSucceeded(error);
   }
@@ -457,6 +546,19 @@ export class DailyLoopService {
     const { error } = await supabase.rpc("begin_day_closing", {
       p_daily_plan_id: planId,
     });
+
+    ensureRpcSucceeded(error);
+  }
+
+  async cancelDayClosing(planId: string) {
+    const { supabase } = await getAuthenticatedUserAndProfile();
+    const { error } = await callUntypedRpc(
+      supabase,
+      "cancel_day_closing",
+      {
+        p_daily_plan_id: planId,
+      },
+    );
 
     ensureRpcSucceeded(error);
   }

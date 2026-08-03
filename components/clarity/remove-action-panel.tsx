@@ -1,6 +1,7 @@
 "use client";
 
 import { Trash2, X } from "lucide-react";
+import { useActionState } from "react";
 
 import { removeActionFromTodayAction } from "@/app/(app)/today/action-workspace-actions";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,12 @@ export function RemoveActionPanel({
   actionId: string;
   onClose: () => void;
 }) {
+  const [state, formAction] = useActionState(removeActionFromTodayAction, {
+    success: false,
+    error: null,
+    actionId: null,
+  });
+
   return (
     <section className="rounded-2xl bg-card p-5">
       <div className="flex items-start justify-between gap-3">
@@ -33,7 +40,7 @@ export function RemoveActionPanel({
           <X />
         </Button>
       </div>
-      <form action={removeActionFromTodayAction} className="mt-5 grid gap-2">
+      <form action={formAction} className="mt-5 grid gap-2">
         <input type="hidden" name="actionId" value={actionId} />
         <PendingButton
           type="submit"
@@ -52,6 +59,11 @@ export function RemoveActionPanel({
         >
           Cancel
         </Button>
+        {state.error && (
+          <p role="alert" className="text-sm leading-6 text-destructive">
+            {state.error}
+          </p>
+        )}
       </form>
     </section>
   );

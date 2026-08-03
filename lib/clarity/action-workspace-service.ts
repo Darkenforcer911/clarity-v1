@@ -55,8 +55,11 @@ async function callPendingActionWorkspaceRpc(
   functionName:
     | "adapt_daily_action"
     | "correct_action_completion_time"
+    | "complete_proposed_action"
     | "delete_action_note"
     | "replace_active_action"
+    | "restore_action_to_today"
+    | "restore_removed_proposed_actions"
     | "update_daily_action",
   args: Record<string, unknown>,
 ) {
@@ -229,6 +232,7 @@ export class ActionWorkspaceService {
     });
 
     ensureRpcSucceeded(error);
+
     return {
       outcome: "saved" as const,
       planStatus: plan.status,
@@ -390,6 +394,42 @@ export class ActionWorkspaceService {
     ensureRpcSucceeded(error);
   }
 
+  async restoreRemovedProposedActions(planId: string) {
+    const { supabase } = await getAuthenticatedUserAndProfile();
+    const { data, error } = await callPendingActionWorkspaceRpc(
+      supabase,
+      "restore_removed_proposed_actions",
+      { p_daily_plan_id: planId },
+    );
+
+    ensureRpcSucceeded(error);
+    return Number(data ?? 0);
+  }
+
+  async completeProposedAction(actionId: string) {
+    const data = await this.getAction(actionId);
+
+    if (
+      data.plan.status !== "proposed" ||
+      data.action.status !== "proposed" ||
+      data.action.action_type !== "fixed" ||
+      !data.action.scheduled_time
+    ) {
+      throw new ActionWorkspaceServiceError(
+        "Only a passed specific-time action in a proposed plan can be completed.",
+      );
+    }
+
+    const { supabase } = await getAuthenticatedUserAndProfile();
+    const { error } = await callPendingActionWorkspaceRpc(
+      supabase,
+      "complete_proposed_action",
+      { p_daily_action_id: actionId },
+    );
+
+    ensureRpcSucceeded(error);
+  }
+
   async makeProposedActionEasier(actionId: string) {
     const data = await this.getAction(actionId);
 
@@ -513,6 +553,17 @@ export class ActionWorkspaceService {
     const { error } = await supabase.rpc("remove_action_from_today", {
       p_daily_action_id: actionId,
     });
+
+    ensureRpcSucceeded(error);
+  }
+
+  async restoreToToday(actionId: string) {
+    const { supabase } = await getAuthenticatedUserAndProfile();
+    const { error } = await callPendingActionWorkspaceRpc(
+      supabase,
+      "restore_action_to_today",
+      { p_daily_action_id: actionId },
+    );
 
     ensureRpcSucceeded(error);
   }
@@ -658,6 +709,11 @@ function resolveNewActionTiming(
     input.scheduledTime,
     timezone,
   );
+  assertScheduledWallClock(
+    scheduledTime,
+    input.scheduledTime,
+    timezone,
+  );
 
   if (new Date(scheduledTime).getTime() <= Date.now()) {
     if (input.recurrencePattern === "none") {
@@ -675,6 +731,11 @@ function resolveNewActionTiming(
     );
     scheduledTime = localDateTimeToIso(
       targetDate,
+      input.scheduledTime,
+      timezone,
+    );
+    assertScheduledWallClock(
+      scheduledTime,
       input.scheduledTime,
       timezone,
     );
@@ -719,6 +780,11 @@ function resolveNewActionTiming(
       input.scheduledTime,
       timezone,
     );
+    assertScheduledWallClock(
+      scheduledTime,
+      input.scheduledTime,
+      timezone,
+    );
   }
 
   return {
@@ -727,6 +793,22 @@ function resolveNewActionTiming(
     scheduledTime,
     startOn: targetDate === plan.local_date ? null : targetDate,
   };
+}
+
+function assertScheduledWallClock(
+  scheduledTime: string,
+  selectedLocalTime: string,
+  timezone: string,
+) {
+  if (
+    getLocalTime(timezone, new Date(scheduledTime)) !==
+    selectedLocalTime
+  ) {
+    throw new ActionWorkspaceServiceError(
+      "The selected time could not be preserved. Choose the time again.",
+      "scheduledTime",
+    );
+  }
 }
 
 function sleepTimeForTargetDate(

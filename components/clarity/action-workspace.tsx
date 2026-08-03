@@ -7,7 +7,6 @@ import {
   NotebookPen,
   Trash2,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -53,7 +52,6 @@ export function ActionWorkspace({
   scheduledTimeInput: string;
   completionTimeInput: string;
 }) {
-  const router = useRouter();
   const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [deletedUpdateIds, setDeletedUpdateIds] = useState<
@@ -66,34 +64,29 @@ export function ActionWorkspace({
   const handleUpdateSaved = useCallback(() => {
     setOpenPanel(null);
     setStatusMessage("Update saved.");
-    router.refresh();
-  }, [router]);
+  }, []);
 
   const handleTimeSaved = useCallback(() => {
     setOpenPanel(null);
     setStatusMessage("Changes saved.");
-    router.refresh();
-  }, [router]);
+  }, []);
 
   const handleCompletionTimeSaved = useCallback(() => {
     setOpenPanel(null);
     setStatusMessage("Completion time updated.");
-    router.refresh();
-  }, [router]);
+  }, []);
 
   const handleUpdateDeleted = useCallback(
     (updateId: string) => {
       setDeletedUpdateIds((current) => new Set(current).add(updateId));
       setStatusMessage("Update deleted.");
-      router.refresh();
     },
-    [router],
+    [],
   );
 
   const handleClarityChangeApplied = useCallback(() => {
     setStatusMessage("Changes saved.");
-    router.refresh();
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     if (!statusMessage) {

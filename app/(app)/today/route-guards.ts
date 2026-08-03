@@ -31,6 +31,10 @@ function redirectForPendingTransition(data: DailyLoopData) {
 export function redirectFromShape(data: DailyLoopData) {
   redirectForPendingTransition(data);
 
+  if (!data.plan) {
+    redirect("/today");
+  }
+
   switch (data.plan?.status) {
     case "proposed":
       redirect("/today/plan");
@@ -59,6 +63,23 @@ export function redirectFromPlan(data: DailyLoopData) {
       redirect("/today");
     default:
       redirect("/today/shape");
+  }
+}
+
+export function redirectFromActive(data: DailyLoopData) {
+  redirectForPendingTransition(data);
+
+  switch (data.plan?.status) {
+    case "active":
+      return;
+    case "proposed":
+      redirect("/today/plan");
+    case "closing":
+      redirect("/today/close");
+    case "closed":
+      redirect("/today/summary");
+    default:
+      redirect("/today");
   }
 }
 

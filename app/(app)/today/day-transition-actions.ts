@@ -14,7 +14,9 @@ import {
   recapContextSummarySchema,
   previousDayExplanationSchema,
   previousDayResolutionSchema,
+  previousDayUnplannedWorkSchema,
   type PreviousDayResolution,
+  type PreviousDayUnplannedWork,
 } from "@/lib/clarity/schemas";
 import { loadTodayForRoute } from "./route-guards";
 
@@ -130,11 +132,39 @@ export async function confirmPreviousDayAction(
       recapContextSummarySchema.parse(
         String(formData.get("contextSummary") ?? ""),
       ) || null;
+    const unplannedItemIds = formData
+      .getAll("unplannedItemId")
+      .map((value) => z.string().uuid().parse(String(value)));
+
+    if (new Set(unplannedItemIds).size !== unplannedItemIds.length) {
+      throw new Error("A completed item was submitted more than once.");
+    }
+
+    const unplannedWork: PreviousDayUnplannedWork[] =
+      unplannedItemIds.map((id) => {
+        const completionTime = String(
+          formData.get(`unplannedCompletionTime:${id}`) ?? "",
+        );
+
+        return previousDayUnplannedWorkSchema.parse({
+          title: formData.get(`unplannedTitle:${id}`),
+          outcome: "finished",
+          completedAt: completionTime
+            ? localDateTimeToIso(
+                transition.localDate,
+                completionTime,
+                data.profile.timezone,
+              )
+            : undefined,
+          completionTimeUnknown: !completionTime,
+          estimatedMinutes: null,
+        });
+      });
 
     await dailyLoopService.reconcilePreviousDay(
       data,
       resolutions,
-      [],
+      unplannedWork,
       contextSummary,
     );
     redirectTo = `/today?notice=recap-captured&day=${encodeURIComponent(

@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { User } from "@supabase/supabase-js";
+import { cache } from "react";
 
 import { createClient } from "@/lib/supabase/server";
 import type { Tables } from "@/lib/supabase/database.types";
@@ -9,6 +10,8 @@ import {
   isCatchUpEligibleAction,
 } from "./catch-up-eligibility";
 import { addLocalDays, getLocalDate } from "./date-time";
+import { startServerTimer } from "./server-performance";
+import { resolvePreviousDayRouting } from "./previous-day-routing";
 
 export type DailyPlan = Tables<"daily_plans"> & {
   record_kind: "planned" | "recorded_without_plan" | "skipped";
@@ -56,10 +59,12 @@ export type DailyLoopData = {
   localDate: string;
   plan: DailyPlan | null;
   actions: DailyAction[];
+  removedProposedActions: DailyAction[];
   dayRecord: DayRecord | null;
   rescheduledContext: DailyAction[];
   carriedActions: CarriedAction[];
   yesterdayRecord: DayRecord | null;
+  previousPlan: DailyPlan | null;
   previousDayTransition: PreviousDayTransition | null;
   pendingReturnGap: PendingReturnGap | null;
   latestReturnGapRecord: ReturnGapRecord | null;
@@ -79,31 +84,47 @@ export class ActionNotFoundError extends Error {
   }
 }
 
-export async function getAuthenticatedUserAndProfile() {
+const getAuthenticatedUser = cache(async () => {
+  const timer = startServerTimer("authentication");
   const supabase = await createClient();
   const {
     data: { user },
     error: userError,
-  } = await supabase.auth.getUser();
+  } = await timer.measure("session_verification", () =>
+    supabase.auth.getUser(),
+  );
 
   if (userError || !user) {
     throw new AuthenticationRequiredError();
   }
 
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .single();
+  timer.finish();
+  return { supabase, user };
+});
+
+export const getAuthenticatedUserAndProfile = cache(async () => {
+  const timer = startServerTimer("authentication_and_profile");
+  const { supabase, user } = await getAuthenticatedUser();
+  const { data: profile, error: profileError } = await timer.measure(
+    "profile_loading",
+    () =>
+      supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single(),
+  );
 
   if (profileError || !profile) {
     throw new Error(profileError?.message ?? "Profile not found.");
   }
 
+  timer.finish();
   return { supabase, user, profile };
-}
+});
 
 export async function getDailyLoopData(): Promise<DailyLoopData> {
+  const timer = startServerTimer("today_daily_loop");
   const { supabase, user, profile } = await getAuthenticatedUserAndProfile();
   const localDate = getLocalDate(profile.timezone);
   const yesterdayDate = addLocalDays(localDate, -1);
@@ -111,12 +132,13 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
     planResult,
     rescheduledResult,
     previousPlanResult,
-    yesterdayPlanResult,
+    latestClosedPlanResult,
     latestReturnGapResult,
-  ] = await Promise.all([
+  ] = await timer.measure("primary_parallel_queries", () =>
+    Promise.all([
       supabase
         .from("daily_plans")
-        .select("*")
+        .select("*, daily_actions(*), day_records(*)")
         .eq("user_id", user.id)
         .eq("local_date", localDate)
         .maybeSingle(),
@@ -129,7 +151,7 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
         .order("sort_order"),
       supabase
         .from("daily_plans")
-        .select("*")
+        .select("*, daily_actions(*), day_records(*)")
         .eq("user_id", user.id)
         .lt("local_date", localDate)
         .order("local_date", { ascending: false })
@@ -137,12 +159,16 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
         .maybeSingle(),
       supabase
         .from("daily_plans")
-        .select("*")
+        .select("local_date")
         .eq("user_id", user.id)
-        .eq("local_date", yesterdayDate)
+        .eq("status", "closed")
+        .lt("local_date", localDate)
+        .order("local_date", { ascending: false })
+        .limit(1)
         .maybeSingle(),
       callUntypedRpc(supabase, "get_latest_return_gap_record", {}),
-    ]);
+    ]),
+  );
 
   if (planResult.error) {
     throw new Error(planResult.error.message);
@@ -160,11 +186,13 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
   ];
   const sourcePlansResult =
     sourcePlanIds.length > 0
-      ? await supabase
-          .from("daily_plans")
-          .select("id, local_date")
-          .eq("user_id", user.id)
-          .in("id", sourcePlanIds)
+      ? await timer.measure("carried_action_sources", () =>
+          supabase
+            .from("daily_plans")
+            .select("id, local_date")
+            .eq("user_id", user.id)
+            .in("id", sourcePlanIds),
+        )
       : { data: [], error: null };
 
   if (sourcePlansResult.error) {
@@ -191,107 +219,86 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
     throw new Error(previousPlanResult.error.message);
   }
 
-  if (yesterdayPlanResult.error) {
-    throw new Error(yesterdayPlanResult.error.message);
+  if (latestClosedPlanResult.error) {
+    throw new Error(latestClosedPlanResult.error.message);
   }
 
   if (latestReturnGapResult.error) {
     throw new Error(latestReturnGapResult.error.message);
   }
 
-  const plan = planResult.data as DailyPlan | null;
-  const previousPlan = previousPlanResult.data as DailyPlan | null;
-  const yesterdayPlan = yesterdayPlanResult.data as DailyPlan | null;
+  const planRow = planResult.data as PlanWithDailyData | null;
+  const previousPlanRow =
+    previousPlanResult.data as PlanWithDailyData | null;
+  const plan = stripPlanRelations(planRow);
+  const previousPlan = stripPlanRelations(previousPlanRow);
   const latestReturnGapRecord = parseReturnGapRecord(
     latestReturnGapResult.data,
   );
-  const needsPreviousWrap =
-    previousPlan !== null &&
-    ["proposed", "active", "closing"].includes(previousPlan.status);
-  const [actionsResult, recordResult, yesterdayRecordResult, previousActionsResult] =
-    await Promise.all([
-      plan
-        ? supabase
-            .from("daily_actions")
-            .select("*")
-            .eq("user_id", user.id)
-            .eq("daily_plan_id", plan.id)
-            .neq("status", "removed")
-            .order("sort_order")
-        : Promise.resolve({ data: [] as DailyAction[], error: null }),
-      plan
-        ? supabase
-            .from("day_records")
-            .select("*")
-            .eq("user_id", user.id)
-            .eq("daily_plan_id", plan.id)
-            .maybeSingle()
-        : Promise.resolve({ data: null, error: null }),
-      yesterdayPlan?.status === "closed"
-        ? supabase
-            .from("day_records")
-            .select("*")
-            .eq("user_id", user.id)
-            .eq("daily_plan_id", yesterdayPlan.id)
-            .maybeSingle()
-        : Promise.resolve({ data: null, error: null }),
-      needsPreviousWrap && previousPlan
-        ? supabase
-            .from("daily_actions")
-            .select("*")
-            .eq("user_id", user.id)
-            .eq("daily_plan_id", previousPlan.id)
-            .in("status", [...CATCH_UP_ELIGIBLE_STATUSES])
-            .not("approved_at", "is", null)
-            .order("sort_order")
-        : Promise.resolve({ data: [] as Tables<"daily_actions">[], error: null }),
-    ]);
+  const previousDayRouting = resolvePreviousDayRouting({
+    currentLocalDate: localDate,
+    previousPlan: previousPlan
+      ? {
+          localDate: previousPlan.local_date,
+          status: previousPlan.status,
+          approvedAt: previousPlan.approved_at,
+          hasApprovedActions: (
+            previousPlanRow?.daily_actions ?? []
+          ).some((action) => action.approved_at !== null),
+        }
+      : null,
+    latestClosedPlanDate:
+      latestClosedPlanResult.data?.local_date ?? null,
+    latestGapEndDate:
+      latestReturnGapRecord?.gapEndDate ?? null,
+  });
 
-  if (actionsResult.error) {
-    throw new Error(actionsResult.error.message);
+  if (previousDayRouting.kind === "inconsistent_unapproved_plan") {
+    throw new Error(
+      "A previous daily plan has an invalid approval state.",
+    );
   }
-
-  if (recordResult.error) {
-    throw new Error(recordResult.error.message);
-  }
-
-  if (yesterdayRecordResult.error) {
-    throw new Error(yesterdayRecordResult.error.message);
-  }
-
-  if (previousActionsResult.error) {
-    throw new Error(previousActionsResult.error.message);
-  }
+  const currentActions = (planRow?.daily_actions ?? [])
+    .filter((action) => action.status !== "removed")
+    .sort((left, right) => left.sort_order - right.sort_order);
+  const removedProposedActions = (planRow?.daily_actions ?? [])
+    .filter(
+      (action) =>
+        action.status === "removed" && action.approved_at === null,
+    )
+    .sort((left, right) => left.sort_order - right.sort_order);
+  const dayRecord = firstRecord(planRow?.day_records);
+  const yesterdayRecord =
+    previousPlan?.local_date === yesterdayDate &&
+    previousPlan.status === "closed"
+      ? firstRecord(previousPlanRow?.day_records)
+      : null;
+  const previousActions = (previousPlanRow?.daily_actions ?? [])
+    .filter(
+      (action) =>
+        CATCH_UP_ELIGIBLE_STATUSES.some(
+          (status) => status === action.status,
+        ) &&
+        action.approved_at !== null,
+    )
+    .sort((left, right) => left.sort_order - right.sort_order);
 
   const previousDayTransition: PreviousDayTransition | null =
-    needsPreviousWrap && previousPlan
+    previousDayRouting.kind === "quick_recap" && previousPlan
       ? {
           kind: "wrap_up",
           localDate: previousPlan.local_date,
           plan: previousPlan,
-          actions: (
-            previousActionsResult.data as DailyAction[]
-          ).filter(isCatchUpEligibleAction),
+          actions: previousActions.filter(isCatchUpEligibleAction),
         }
       : null;
-  const gapAnchorDate = latestDate(
-    previousPlan?.local_date ?? null,
-    latestReturnGapRecord?.gapEndDate ?? null,
-  );
-  const gapStartDate = gapAnchorDate
-    ? addLocalDays(gapAnchorDate, 1)
-    : null;
   const pendingReturnGap =
-    !needsPreviousWrap &&
-    previousPlan?.status === "closed" &&
-    gapStartDate &&
-    gapStartDate <= yesterdayDate
+    previousDayRouting.kind === "gap"
       ? {
-          gapStartDate,
-          gapEndDate: yesterdayDate,
+          gapStartDate: previousDayRouting.gapStartDate,
+          gapEndDate: previousDayRouting.gapEndDate,
         }
       : null;
-  const currentActions = actionsResult.data as DailyAction[];
   const adoptedTitles = new Set(
     currentActions
       .filter((action) =>
@@ -303,26 +310,47 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
     (action) => !adoptedTitles.has(action.title.trim().toLowerCase()),
   );
 
-  return {
+  const result = {
     user,
     profile,
     localDate,
     plan,
     actions: currentActions,
-    dayRecord: recordResult.data,
+    removedProposedActions,
+    dayRecord,
     rescheduledContext,
     carriedActions,
-    yesterdayRecord: yesterdayRecordResult.data,
+    yesterdayRecord,
+    previousPlan,
     previousDayTransition,
     pendingReturnGap,
     latestReturnGapRecord,
   };
+
+  timer.finish();
+  return result;
 }
 
-function latestDate(left: string | null, right: string | null) {
-  if (!left) return right;
-  if (!right) return left;
-  return left > right ? left : right;
+type PlanWithDailyData = DailyPlan & {
+  daily_actions: DailyAction[];
+  day_records: DayRecord[];
+};
+
+function stripPlanRelations(
+  plan: PlanWithDailyData | null,
+): DailyPlan | null {
+  if (!plan) {
+    return null;
+  }
+
+  const row = { ...plan };
+  delete (row as Partial<PlanWithDailyData>).daily_actions;
+  delete (row as Partial<PlanWithDailyData>).day_records;
+  return row as DailyPlan;
+}
+
+function firstRecord(records: DayRecord[] | undefined) {
+  return records?.[0] ?? null;
 }
 
 function parseReturnGapRecord(value: unknown): ReturnGapRecord | null {
@@ -379,46 +407,52 @@ async function callUntypedRpc(
 }
 
 export async function getActionWorkspaceData(actionId: string) {
-  const { supabase, user, profile } = await getAuthenticatedUserAndProfile();
-  const { data: action, error: actionError } = await supabase
-    .from("daily_actions")
-    .select("*")
-    .eq("id", actionId)
-    .eq("user_id", user.id)
-    .neq("status", "removed")
-    .maybeSingle();
+  const timer = startServerTimer("action_workspace");
+  const { supabase, user } = await getAuthenticatedUser();
+  const [profileResult, actionResult, notesResult, messagesResult] =
+    await timer.measure("parallel_workspace_queries", () =>
+      Promise.all([
+        supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .single(),
+        supabase
+          .from("daily_actions")
+          .select(
+            "*, daily_plans!daily_actions_plan_owner_fkey(*)",
+          )
+          .eq("id", actionId)
+          .eq("user_id", user.id)
+          .neq("status", "removed")
+          .maybeSingle(),
+        supabase
+          .from("action_notes")
+          .select("*")
+          .eq("daily_action_id", actionId)
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("action_assistant_messages")
+          .select("*")
+          .eq("daily_action_id", actionId)
+          .eq("user_id", user.id)
+          .order("created_at"),
+      ]),
+    );
 
-  if (actionError) {
-    throw new Error(actionError.message);
+  if (profileResult.error || !profileResult.data) {
+    throw new Error(profileResult.error?.message ?? "Profile not found.");
   }
 
-  if (!action) {
+  if (actionResult.error) {
+    throw new Error(actionResult.error.message);
+  }
+
+  const actionWithPlan = actionResult.data;
+
+  if (!actionWithPlan) {
     throw new ActionNotFoundError();
-  }
-
-  const [planResult, notesResult, messagesResult] = await Promise.all([
-    supabase
-      .from("daily_plans")
-      .select("*")
-      .eq("id", action.daily_plan_id)
-      .eq("user_id", user.id)
-      .single(),
-    supabase
-      .from("action_notes")
-      .select("*")
-      .eq("daily_action_id", action.id)
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("action_assistant_messages")
-      .select("*")
-      .eq("daily_action_id", action.id)
-      .eq("user_id", user.id)
-      .order("created_at"),
-  ]);
-
-  if (planResult.error) {
-    throw new Error(planResult.error.message);
   }
 
   if (notesResult.error) {
@@ -429,12 +463,24 @@ export async function getActionWorkspaceData(actionId: string) {
     throw new Error(messagesResult.error.message);
   }
 
-  return {
+  const {
+    daily_plans: plan,
+    ...action
+  } = actionWithPlan;
+
+  if (!plan) {
+    throw new Error("Daily plan not found.");
+  }
+
+  const result = {
     user,
-    profile,
+    profile: profileResult.data,
     action: action as DailyAction,
-    plan: planResult.data as DailyPlan,
+    plan: plan as DailyPlan,
     notes: notesResult.data,
     messages: messagesResult.data,
   };
+
+  timer.finish();
+  return result;
 }

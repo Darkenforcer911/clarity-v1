@@ -1,11 +1,15 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Clock3 } from "lucide-react";
 import { useState } from "react";
 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { DailyLoopActionState } from "@/lib/clarity/action-state";
+import {
+  resolveEstimatedDuration,
+  splitEstimatedDuration,
+} from "@/lib/clarity/duration";
 
 export type ActionFieldValues = {
   title?: string;
@@ -25,20 +29,24 @@ export function ActionFields({
   state,
   detailsRequired = false,
   simple = false,
+  hideGeneratedDetails = false,
   onTitleChange,
 }: {
   initialValues?: ActionFieldValues;
   state: DailyLoopActionState;
   detailsRequired?: boolean;
   simple?: boolean;
+  hideGeneratedDetails?: boolean;
   onTitleChange?: (value: string) => void;
 }) {
   const [timing, setTiming] = useState(
     initialValues.actionType === "fixed" ? "fixed" : "flexible",
   );
-
+  const [scheduledTime, setScheduledTime] = useState(
+    initialValues.scheduledTime ?? "",
+  );
   return (
-    <div className="space-y-5">
+    <div className="w-full min-w-0 max-w-full space-y-5">
       <Field label="What needs to be done?" error={state.fieldErrors?.title?.[0]}>
         <Input
           name="title"
@@ -50,9 +58,9 @@ export function ActionFields({
         />
       </Field>
 
-      <fieldset className="space-y-2">
+      <fieldset className="w-full min-w-0 max-w-full space-y-2">
         <legend className="text-sm font-medium">When?</legend>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid min-w-0 grid-cols-2 gap-2">
           <TimingChoice
             checked={timing === "flexible"}
             label="Anytime today"
@@ -69,43 +77,50 @@ export function ActionFields({
       </fieldset>
 
       {timing === "fixed" && (
-        <Field
-          label="Specific time"
-          error={state.fieldErrors?.scheduledTime?.[0]}
-        >
-          <Input
-            name="scheduledTime"
-            type="time"
-            defaultValue={initialValues.scheduledTime}
-            required
-            className="h-12 rounded-xl"
-          />
-        </Field>
+        <div className="w-full min-w-0 max-w-full space-y-2">
+          <label className="flex min-h-12 w-full min-w-0 max-w-full items-center gap-3 rounded-xl border border-border bg-card px-3">
+            <span className="shrink-0 text-sm font-medium">Time</span>
+            <span className="relative ml-auto flex min-h-11 min-w-0 max-w-[9rem] flex-1 cursor-pointer items-center justify-end gap-2 overflow-hidden rounded-lg px-2 text-sm font-semibold text-foreground focus-within:ring-2 focus-within:ring-ring">
+              <Clock3
+                className="size-4 shrink-0 text-[var(--clarity-completed)]"
+                aria-hidden="true"
+              />
+              <span className="truncate text-right">
+                {formatTimeDisplay(scheduledTime)}
+              </span>
+              <Input
+                name="scheduledTime"
+                type="time"
+                value={scheduledTime}
+                onChange={(event) =>
+                  setScheduledTime(event.currentTarget.value)
+                }
+                required
+                aria-label="Time"
+                className="absolute inset-0 h-full w-full cursor-pointer border-0 p-0 opacity-0"
+              />
+            </span>
+          </label>
+          {state.fieldErrors?.scheduledTime?.[0] && (
+            <p className="text-sm text-[var(--clarity-completed)]">
+              {state.fieldErrors.scheduledTime[0]}
+            </p>
+          )}
+        </div>
       )}
       {timing === "flexible" && (
         <input type="hidden" name="scheduledTime" value="" />
       )}
 
-      <Field
-        label="How long?"
+      <DurationFields
+        initialMinutes={initialValues.estimatedMinutes ?? 30}
         error={state.fieldErrors?.estimatedMinutes?.[0]}
-      >
-        <Input
-          name="estimatedMinutes"
-          type="number"
-          min={1}
-          max={1440}
-          inputMode="numeric"
-          defaultValue={initialValues.estimatedMinutes ?? 30}
-          required
-          className="h-12 rounded-xl"
-        />
-      </Field>
+      />
 
       {simple && (
         <>
           <Field
-            label="Anything Clarity should know? — optional"
+            label="Details — optional"
             error={state.fieldErrors?.context?.[0]}
           >
             <Textarea
@@ -126,47 +141,168 @@ export function ActionFields({
 
       {!simple && (
         <>
-          <Field
-            label={`Why it matters${detailsRequired ? "" : " (optional)"}`}
-            error={state.fieldErrors?.whyItExists?.[0]}
-          >
-            <Textarea
-              name="whyItExists"
-              defaultValue={initialValues.whyItExists}
-              maxLength={1000}
-              required={detailsRequired}
-              className="min-h-20"
-            />
-          </Field>
+          {hideGeneratedDetails ? (
+            <>
+              <input
+                type="hidden"
+                name="whyItExists"
+                defaultValue={initialValues.whyItExists}
+              />
+              <input
+                type="hidden"
+                name="definitionOfDone"
+                defaultValue={initialValues.definitionOfDone}
+              />
+              <input
+                type="hidden"
+                name="suggestedMethod"
+                defaultValue={initialValues.suggestedMethod}
+              />
+            </>
+          ) : (
+            <>
+              <Field
+                label={`Why it matters${detailsRequired ? "" : " (optional)"}`}
+                error={state.fieldErrors?.whyItExists?.[0]}
+              >
+                <Textarea
+                  name="whyItExists"
+                  defaultValue={initialValues.whyItExists}
+                  maxLength={1000}
+                  required={detailsRequired}
+                  className="min-h-20"
+                />
+              </Field>
 
-          <Field
-            label={`Definition of done${detailsRequired ? "" : " (optional)"}`}
-            error={state.fieldErrors?.definitionOfDone?.[0]}
-          >
-            <Textarea
-              name="definitionOfDone"
-              defaultValue={initialValues.definitionOfDone}
-              maxLength={1000}
-              required={detailsRequired}
-              className="min-h-20"
-            />
-          </Field>
+              <Field
+                label={`Definition of done${detailsRequired ? "" : " (optional)"}`}
+                error={state.fieldErrors?.definitionOfDone?.[0]}
+              >
+                <Textarea
+                  name="definitionOfDone"
+                  defaultValue={initialValues.definitionOfDone}
+                  maxLength={1000}
+                  required={detailsRequired}
+                  className="min-h-20"
+                />
+              </Field>
 
-          <Field
-            label={`Suggested method${detailsRequired ? "" : " (optional)"}`}
-            error={state.fieldErrors?.suggestedMethod?.[0]}
-          >
-            <Textarea
-              name="suggestedMethod"
-              defaultValue={initialValues.suggestedMethod}
-              maxLength={2000}
-              required={detailsRequired}
-              className="min-h-20"
-            />
-          </Field>
+              <Field
+                label={`Suggested method${detailsRequired ? "" : " (optional)"}`}
+                error={state.fieldErrors?.suggestedMethod?.[0]}
+              >
+                <Textarea
+                  name="suggestedMethod"
+                  defaultValue={initialValues.suggestedMethod}
+                  maxLength={2000}
+                  required={detailsRequired}
+                  className="min-h-20"
+                />
+              </Field>
+            </>
+          )}
         </>
       )}
     </div>
+  );
+}
+
+function formatTimeDisplay(value: string) {
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) {
+    return "Choose time";
+  }
+
+  const [hours, minutes] = value.split(":").map(Number);
+  const period = hours < 12 ? "am" : "pm";
+  const displayHours = hours % 12 || 12;
+
+  return `${displayHours}:${String(minutes).padStart(2, "0")} ${period}`;
+}
+
+export function DurationFields({
+  initialMinutes = 30,
+  error,
+}: {
+  initialMinutes?: string | number;
+  error?: string;
+}) {
+  const initialDuration = splitEstimatedDuration(initialMinutes);
+  const [hours, setHours] = useState(initialDuration.hours);
+  const [minutes, setMinutes] = useState(initialDuration.minutes);
+  const duration = resolveEstimatedDuration(hours, minutes);
+  const minutesMax = hours === "24" ? 0 : 59;
+  const displayedError = duration.error ?? error;
+
+  return (
+    <fieldset className="w-full min-w-0 max-w-full space-y-2">
+      <legend className="text-sm font-medium">Estimated duration</legend>
+      <input
+        type="hidden"
+        name="estimatedMinutes"
+        value={duration.totalMinutes ?? ""}
+      />
+      <div className="grid min-w-0 grid-cols-2 gap-3">
+        <label className="block min-w-0 space-y-2">
+          <span className="block text-xs font-medium text-muted-foreground">
+            Hours
+          </span>
+          <span className="relative block min-w-0">
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={24}
+              step={1}
+              required
+              value={hours}
+              aria-invalid={Boolean(displayedError)}
+              onChange={(event) => {
+                const value = event.currentTarget.value;
+                if (/^\d*$/.test(value)) {
+                  setHours(value);
+                }
+              }}
+              className="duration-number-input h-12 w-full min-w-0 max-w-full rounded-xl pr-9"
+            />
+            <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
+              h
+            </span>
+          </span>
+        </label>
+        <label className="block min-w-0 space-y-2">
+          <span className="block text-xs font-medium text-muted-foreground">
+            Minutes
+          </span>
+          <span className="relative block min-w-0">
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={hours === "0" ? 1 : 0}
+              max={minutesMax}
+              step={1}
+              required
+              value={minutes}
+              aria-invalid={Boolean(displayedError)}
+              onChange={(event) => {
+                const value = event.currentTarget.value;
+                if (/^\d*$/.test(value)) {
+                  setMinutes(value);
+                }
+              }}
+              className="duration-number-input h-12 w-full min-w-0 max-w-full rounded-xl pr-9"
+            />
+            <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
+              m
+            </span>
+          </span>
+        </label>
+      </div>
+      {displayedError && (
+        <p className="text-sm text-[var(--clarity-completed)]">
+          {displayedError}
+        </p>
+      )}
+    </fieldset>
   );
 }
 
@@ -317,7 +453,7 @@ function TimingChoice({
 }) {
   return (
     <label
-      className={`flex min-h-14 cursor-pointer items-center justify-center rounded-xl border px-3 text-center text-sm font-semibold transition-colors active:scale-[0.99] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring ${
+      className={`flex min-h-14 min-w-0 cursor-pointer items-center justify-center rounded-xl border px-3 text-center text-sm font-semibold transition-colors active:scale-[0.99] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring ${
         checked
           ? "border-[var(--clarity-completed)] bg-secondary text-foreground"
           : "border-border bg-card text-muted-foreground hover:bg-secondary hover:text-foreground"
@@ -346,7 +482,7 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <label className="block space-y-2">
+    <label className="block w-full min-w-0 max-w-full space-y-2">
       <span className="block text-sm font-medium">{label}</span>
       {children}
       {error && (

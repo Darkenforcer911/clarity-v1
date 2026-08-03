@@ -10,6 +10,7 @@ import {
   formatWeekday,
 } from "@/lib/clarity/date-time";
 import type { RecapActionDraft } from "./recap-action-panel";
+import type { RecapCompletedItem } from "./recap-completed-item-form";
 import { RecapScreen } from "./recap-screen";
 import { useCurrentLocalDate } from "./use-current-local-date";
 
@@ -36,12 +37,14 @@ export function PreviousDayCatchUp({
     () => initialDrafts(plannedActions, timezone),
   );
   const [dayContext, setDayContext] = useState("");
+  const [completedItems, setCompletedItems] = useState<
+    RecapCompletedItem[]
+  >([]);
   const liveCurrentLocalDate = useCurrentLocalDate(
     timezone,
     currentLocalDate,
   );
   const recapDay = formatWeekday(transition.localDate);
-  const currentDay = formatWeekday(liveCurrentLocalDate);
   const hasCompleteGap =
     addLocalDays(transition.localDate, 1) <
     liveCurrentLocalDate;
@@ -139,6 +142,23 @@ export function PreviousDayCatchUp({
         name="contextSummary"
         value={dayContext}
       />
+      {completedItems.map((item) => (
+        <span key={item.id}>
+          <input type="hidden" name="unplannedItemId" value={item.id} />
+          <input
+            type="hidden"
+            name={`unplannedTitle:${item.id}`}
+            value={item.title}
+          />
+          {item.completionTime && (
+            <input
+              type="hidden"
+              name={`unplannedCompletionTime:${item.id}`}
+              value={item.completionTime}
+            />
+          )}
+        </span>
+      ))}
     </>
   );
 
@@ -155,18 +175,27 @@ export function PreviousDayCatchUp({
           initiallyConfirmed: action.status === "completed",
         })),
         drafts,
-        activities: [],
+        activities: completedItems,
         onDraftChange: updateDraft,
-        onDeleteActivity: () => undefined,
+        onAddActivity: (activity) =>
+          setCompletedItems((current) => [...current, activity]),
+        onUpdateActivity: (activity) =>
+          setCompletedItems((current) =>
+            current.map((item) =>
+              item.id === activity.id ? activity : item,
+            ),
+          ),
+        onDeleteActivity: (activityId) =>
+          setCompletedItems((current) =>
+            current.filter((item) => item.id !== activityId),
+          ),
         heading: `Quick recap of ${recapDay}`,
         supportingCopy: hasCompleteGap
-          ? "Just confirm the rough picture, then continue catching up. This should take under 30 seconds."
-          : `Just confirm the rough picture, then move straight into ${currentDay}. This should take under 30 seconds.`,
+          ? "Confirm what happened, then continue catching up. This should take under 30 seconds."
+          : `Confirm what happened ${recapDay}. This should take under 30 seconds.`,
         dayContext,
         onDayContextChange: setDayContext,
-        continueLabel: hasCompleteGap
-          ? `Save ${recapDay} and continue`
-          : `Save ${recapDay} and shape ${currentDay}`,
+        continueLabel: `Save ${recapDay} and continue`,
         error: state.error,
       }}
     />

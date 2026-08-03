@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { DailyAction } from "@/lib/clarity/daily-loop-queries";
 import { initialDailyLoopActionState } from "@/lib/clarity/action-state";
+import { DurationFields } from "./action-fields";
 import { PendingButton } from "./pending-button";
 
 export function ChangeActionTimeForm({
@@ -91,24 +92,10 @@ export function ChangeActionTimeForm({
           </label>
         )}
 
-        <label className="block space-y-2">
-          <span className="block text-sm font-medium">Duration</span>
-          <Input
-            name="estimatedMinutes"
-            type="number"
-            min={1}
-            max={1440}
-            inputMode="numeric"
-            defaultValue={action.estimated_minutes}
-            required
-            className="h-12 rounded-xl"
-          />
-          {state.fieldErrors?.estimatedMinutes?.[0] && (
-            <span className="block text-sm text-[var(--clarity-completed)]">
-              {state.fieldErrors.estimatedMinutes[0]}
-            </span>
-          )}
-        </label>
+        <DurationFields
+          initialMinutes={action.estimated_minutes}
+          error={state.fieldErrors?.estimatedMinutes?.[0]}
+        />
 
         {state.error && (
           <p

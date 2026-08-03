@@ -27,7 +27,7 @@ async function CloseDayContent() {
   );
 
   return (
-    <section className="space-y-7">
+    <section className="w-full min-w-0 max-w-full space-y-7 pt-[env(safe-area-inset-top)]">
       <div className="space-y-3">
         <p className="text-sm font-medium text-muted-foreground">Close Day</p>
         <h1 className="text-3xl font-semibold tracking-[-0.045em]">
@@ -41,6 +41,7 @@ async function CloseDayContent() {
       </div>
 
       <CloseDayForm
+        planId={data.plan!.id}
         completedActions={completedActions}
         unfinishedActions={unfinishedActions}
         tomorrow={dailyLoopService.tomorrowFor(data)}

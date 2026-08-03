@@ -1,21 +1,17 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  addLocalDays,
-  formatFullLocalDate,
-  formatWeekday,
-} from "@/lib/clarity/date-time";
+import { formatFullLocalDate, formatWeekday } from "@/lib/clarity/date-time";
 import { progressExplanationError } from "@/lib/clarity/recap-validation";
-import {
-  HistoricalActivityForm,
-  type HistoricalActivity,
-} from "./historical-activity-form";
 import { PendingButton } from "./pending-button";
+import {
+  RecapCompletedItemForm,
+  type RecapCompletedItem,
+} from "./recap-completed-item-form";
 import {
   RecapActionPanel,
   type RecapActionDraft,
@@ -30,7 +26,6 @@ export type RecapPlanAction = {
 
 export function RecapExperience({
   recapDate,
-  currentDate,
   actions,
   drafts,
   activities,
@@ -38,7 +33,6 @@ export function RecapExperience({
   onDeleteActivity,
   onAddActivity,
   onUpdateActivity,
-  onAddMissing,
   continueType = "submit",
   onContinue,
   error,
@@ -55,18 +49,14 @@ export function RecapExperience({
   currentDate: string;
   actions: RecapPlanAction[];
   drafts: Record<string, RecapActionDraft>;
-  activities: HistoricalActivity[];
+  activities: RecapCompletedItem[];
   onDraftChange: (
     actionId: string,
     update: Partial<RecapActionDraft>,
   ) => void;
   onDeleteActivity: (activityId: string) => void;
-  onAddActivity?: (activity: HistoricalActivity) => void;
-  onUpdateActivity?: (activity: HistoricalActivity) => void;
-  onAddMissing?: (entry: {
-    localDate: string | null;
-    description: string;
-  }) => void | Promise<void>;
+  onAddActivity?: (activity: RecapCompletedItem) => void;
+  onUpdateActivity?: (activity: RecapCompletedItem) => void;
   continueType?: "submit" | "button";
   onContinue?: () => void;
   error?: string | null;
@@ -86,17 +76,9 @@ export function RecapExperience({
       )?.id ?? null,
   );
   const [reviewDetailsOpen, setReviewDetailsOpen] = useState(true);
-  const [editingActivityId, setEditingActivityId] = useState<
-    string | "new" | null
-  >(null);
-  const [addingMissing, setAddingMissing] = useState(false);
-  const [missingDay, setMissingDay] = useState(() =>
-    addLocalDays(recapDate, 1) === currentDate ? recapDate : "",
+  const [auxiliaryPanel, setAuxiliaryPanel] = useState<string | null>(
+    null,
   );
-  const [missingDescription, setMissingDescription] = useState("");
-  const [missingError, setMissingError] = useState<string | null>(null);
-  const [addingMissingPending, setAddingMissingPending] =
-    useState(false);
   const [plansChangedOpen, setPlansChangedOpen] = useState(false);
   const [plansChangedDraft, setPlansChangedDraft] = useState("");
   const [internalDayContext, setInternalDayContext] = useState("");
@@ -104,8 +86,6 @@ export function RecapExperience({
     new Map<string, HTMLDivElement>(),
   );
   const day = formatWeekday(recapDate);
-  const currentDay = formatWeekday(currentDate);
-  const nextDayReturn = addLocalDays(recapDate, 1) === currentDate;
   const unresolved = actions.filter(
     (action) => !isRecapDraftResolved(drafts[action.id]),
   );
@@ -186,8 +166,7 @@ export function RecapExperience({
           subdued={subdued}
           onToggle={() => {
             setPlansChangedOpen(false);
-            setAddingMissing(false);
-            setEditingActivityId(null);
+            setAuxiliaryPanel(null);
             setOpenActionId((current) =>
               current === action.id ? null : action.id,
             );
@@ -213,9 +192,7 @@ export function RecapExperience({
         {(supportingCopy || !allResolved) && (
           <p className="leading-6 text-muted-foreground">
             {supportingCopy ??
-              (nextDayReturn
-                ? `${unresolvedCount} ${actionWord} ${verb} a quick check before Clarity shapes ${currentDay}.`
-                : `${unresolvedCount} ${actionWord} ${verb} a quick check before Clarity catches up and shapes ${currentDay}.`)}
+              `${unresolvedCount} ${actionWord} ${verb} a quick check before you continue.`}
           </p>
         )}
       </header>
@@ -237,8 +214,7 @@ export function RecapExperience({
                   setOpenActionId(null);
                 }
                 setReviewDetailsOpen((current) => !current);
-                setAddingMissing(false);
-                setEditingActivityId(null);
+                setAuxiliaryPanel(null);
               }}
               className="mt-1 h-10 rounded-xl px-0 text-muted-foreground"
             >
@@ -267,6 +243,7 @@ export function RecapExperience({
                       return;
                     }
 
+                    setAuxiliaryPanel(null);
                     setPlansChangedDraft(contextValue);
                     setPlansChangedOpen(true);
                   }}
@@ -301,7 +278,6 @@ export function RecapExperience({
                         return;
                       }
 
-                      updateDayContext(explanation);
                       unresolved.forEach((action) => {
                         onDraftChange(action.id, {
                           outcome: "not_done",
@@ -355,222 +331,112 @@ export function RecapExperience({
         </div>
       </section>
 
-      <RecapDayContextField
-        key={`day-context-${contextValue}`}
-        day={day}
-        value={contextValue}
-        onChange={updateDayContext}
-      />
+      <section className="space-y-2 border-t border-border/70 pt-4">
+        {activities.map((activity) =>
+          auxiliaryPanel === `completed:${activity.id}` &&
+          onUpdateActivity ? (
+            <RecapCompletedItemForm
+              key={activity.id}
+              initialItem={activity}
+              onSave={(updated) => {
+                onUpdateActivity(updated);
+                setAuxiliaryPanel(null);
+              }}
+              onCancel={() => setAuxiliaryPanel(null)}
+            />
+          ) : (
+            <article
+              key={activity.id}
+              className="flex min-h-11 items-center gap-3 rounded-xl px-2 py-1.5"
+            >
+              <Check
+                aria-hidden="true"
+                className="size-4 shrink-0 text-[var(--clarity-completed)]"
+              />
+              <p className="min-w-0 flex-1 text-sm font-medium">
+                {activity.title}
+                {activity.completionTime && (
+                  <span className="font-normal text-muted-foreground">
+                    {` · ${formatLocalTimeLabel(activity.completionTime)}`}
+                  </span>
+                )}
+              </p>
+              {onUpdateActivity && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setOpenActionId(null);
+                    setPlansChangedOpen(false);
+                    setAuxiliaryPanel(`completed:${activity.id}`);
+                  }}
+                  className="h-9 px-2 text-xs text-muted-foreground"
+                >
+                  Edit
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  onDeleteActivity(activity.id);
+                  if (auxiliaryPanel === `completed:${activity.id}`) {
+                    setAuxiliaryPanel(null);
+                  }
+                }}
+                className="h-9 px-2 text-xs text-destructive hover:text-destructive"
+              >
+                Remove
+              </Button>
+            </article>
+          ),
+        )}
+
+        {auxiliaryPanel === "completed:new" && onAddActivity ? (
+          <RecapCompletedItemForm
+            onSave={(activity) => {
+              onAddActivity(activity);
+              setAuxiliaryPanel(null);
+            }}
+            onCancel={() => setAuxiliaryPanel(null)}
+          />
+        ) : (
+          onAddActivity && (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setOpenActionId(null);
+                setPlansChangedOpen(false);
+                setAuxiliaryPanel("completed:new");
+              }}
+              className="h-11 w-full justify-start rounded-xl px-2 text-muted-foreground"
+            >
+              + Add something completed
+            </Button>
+          )
+        )}
+
+        <RecapDayContextField
+          day={day}
+          value={contextValue}
+          open={auxiliaryPanel === "note"}
+          onOpenChange={(open) => {
+            if (open) {
+              setOpenActionId(null);
+              setPlansChangedOpen(false);
+              setAuxiliaryPanel("note");
+            } else {
+              setAuxiliaryPanel(null);
+            }
+          }}
+          onChange={updateDayContext}
+        />
+      </section>
 
       {afterActionSections}
-
-      {activities.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-semibold text-muted-foreground">
-            Also recorded {day}
-          </h2>
-          {activities.map((activity) =>
-            editingActivityId === activity.id && onUpdateActivity ? (
-              <HistoricalActivityForm
-                key={activity.id}
-                day={day}
-                initialActivity={activity}
-                onSave={(updated) => {
-                  onUpdateActivity(updated);
-                  setEditingActivityId(null);
-                }}
-                onCancel={() => setEditingActivityId(null)}
-              />
-            ) : (
-              <article
-                key={activity.id}
-                className="rounded-2xl border border-border bg-card px-4 py-3"
-              >
-                <p className="font-semibold">{activity.title}</p>
-                <p className="mt-0.5 text-sm text-[var(--clarity-completed)]">
-                  {historicalActivityLabel(activity)}
-                </p>
-                <div className="mt-1 flex gap-1">
-                  {onUpdateActivity && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setOpenActionId(null);
-                        setAddingMissing(false);
-                        setEditingActivityId(activity.id);
-                      }}
-                      className="h-9 px-2 text-xs text-muted-foreground"
-                    >
-                      Edit
-                    </Button>
-                  )}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onDeleteActivity(activity.id)}
-                    className="h-9 px-2 text-xs text-destructive hover:text-destructive"
-                  >
-                    Delete entry
-                  </Button>
-                </div>
-              </article>
-            ),
-          )}
-        </section>
-      )}
-
-      {nextDayReturn && onAddActivity && editingActivityId === "new" && (
-        <HistoricalActivityForm
-          day={day}
-          onSave={(activity) => {
-            onAddActivity(activity);
-            setEditingActivityId(null);
-          }}
-          onCancel={() => setEditingActivityId(null)}
-        />
-      )}
-
-      {nextDayReturn && onAddActivity && editingActivityId !== "new" && (
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => {
-            setOpenActionId(null);
-            setAddingMissing(false);
-            setEditingActivityId("new");
-          }}
-          className="h-11 w-full justify-start rounded-xl px-2 text-muted-foreground"
-        >
-          + Add something that happened {day}
-        </Button>
-      )}
-
-      {!nextDayReturn && allResolved && onAddMissing && addingMissing ? (
-        <section className="space-y-4 border-t border-border/70 pt-4">
-          <header className="space-y-1.5">
-            <h2 className="font-semibold">What did Clarity miss?</h2>
-            <p className="text-sm leading-6 text-muted-foreground">
-              {nextDayReturn
-                ? `Add anything meaningful that happened ${day} but was not in the plan.`
-                : "Add anything meaningful from while you were away that Clarity missed."}
-            </p>
-          </header>
-          {!nextDayReturn && (
-            <fieldset className="space-y-2">
-              <legend className="text-sm font-semibold">
-                Day <span className="font-normal text-muted-foreground">(optional)</span>
-              </legend>
-              <div className="flex flex-wrap gap-2">
-                {returnDayOptions(recapDate, currentDate).map(
-                  (option) => (
-                    <button
-                      key={option.value || "unsure"}
-                      type="button"
-                      aria-pressed={missingDay === option.value}
-                      onClick={() => setMissingDay(option.value)}
-                      className={`min-h-11 rounded-full border px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                        missingDay === option.value
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-border text-muted-foreground"
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  ),
-                )}
-              </div>
-            </fieldset>
-          )}
-          <label className="block">
-            <span className="sr-only">
-              Describe what Clarity missed
-            </span>
-            <Textarea
-              value={missingDescription}
-              maxLength={500}
-              onChange={(event) => {
-                setMissingDescription(event.currentTarget.value);
-                setMissingError(null);
-              }}
-              className="min-h-24 rounded-xl"
-            />
-          </label>
-          {missingError && (
-            <p role="alert" className="text-sm text-destructive">
-              {missingError}
-            </p>
-          )}
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              disabled={addingMissingPending}
-              onClick={() => {
-                setAddingMissing(false);
-                setMissingDescription("");
-                setMissingDay(nextDayReturn ? recapDate : "");
-                setMissingError(null);
-              }}
-              className="h-11 rounded-xl"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              disabled={
-                !missingDescription.trim() || addingMissingPending
-              }
-              onClick={async () => {
-                const description = missingDescription.trim();
-
-                if (!description) {
-                  setMissingError("Describe what Clarity missed.");
-                  return;
-                }
-
-                setAddingMissingPending(true);
-
-                try {
-                  await onAddMissing({
-                    localDate: nextDayReturn
-                      ? recapDate
-                      : missingDay || null,
-                    description,
-                  });
-                  setAddingMissing(false);
-                  setMissingDescription("");
-                  setMissingDay(nextDayReturn ? recapDate : "");
-                  setMissingError(null);
-                } catch {
-                  setMissingError(
-                    "Couldn’t add that context. Try again.",
-                  );
-                } finally {
-                  setAddingMissingPending(false);
-                }
-              }}
-              className="h-11 rounded-xl"
-            >
-              {addingMissingPending ? "Adding…" : "Add"}
-            </Button>
-          </div>
-        </section>
-      ) : !nextDayReturn && allResolved && onAddMissing ? (
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => {
-            setOpenActionId(null);
-            setAddingMissing(true);
-          }}
-          className="h-11 w-full justify-start rounded-xl px-2 text-muted-foreground"
-        >
-          + Add something missing
-        </Button>
-      ) : null}
 
       {error && (
         <p
@@ -586,35 +452,17 @@ export function RecapExperience({
         size="lg"
         disabled={
           unresolvedCount > 0 ||
-          continueDisabled
+          continueDisabled ||
+          auxiliaryPanel?.startsWith("completed:")
         }
-        pendingLabel={
-          nextDayReturn
-            ? `Continuing to ${currentDay}…`
-            : "Continuing…"
-        }
+        pendingLabel={`Saving ${day}…`}
         onClick={continueType === "button" ? onContinue : undefined}
         className="h-12 w-full rounded-xl text-base"
       >
-        {continueLabel ??
-          (nextDayReturn
-            ? `Continue to ${currentDay}`
-            : "Continue catching up")}
+        {continueLabel ?? `Save ${day} and continue`}
       </PendingButton>
     </section>
   );
-}
-
-function historicalActivityLabel(activity: HistoricalActivity) {
-  if (activity.outcome === "finished") {
-    return activity.completionTime && !activity.timeUnknown
-      ? `Finished · ${formatLocalTimeLabel(activity.completionTime)}`
-      : "Finished · Time not recorded";
-  }
-
-  return activity.progressNote
-    ? `Made progress · ${shortText(activity.progressNote)}`
-    : "Made progress";
 }
 
 function formatLocalTimeLabel(value: string) {
@@ -702,29 +550,6 @@ function outcomeSummary(counts: ReturnType<typeof countOutcomes>) {
   return parts.length > 0
     ? parts.join(" · ")
     : "No planned outcomes recorded";
-}
-
-function returnDayOptions(recapDate: string, currentDate: string) {
-  const options: Array<{ value: string; label: string }> = [];
-  let cursor = recapDate;
-
-  while (cursor < currentDate) {
-    options.push({
-      value: cursor,
-      label: formatWeekday(cursor),
-    });
-    cursor = addLocalDays(cursor, 1);
-  }
-
-  options.push({ value: "", label: "Not sure" });
-  return options;
-}
-
-function shortText(value: string) {
-  const normalized = value.trim().replace(/\s+/g, " ");
-  return normalized.length > 64
-    ? `${normalized.slice(0, 61).trimEnd()}…`
-    : normalized;
 }
 
 function scrollIntoViewIfNeeded(element: HTMLElement | undefined) {

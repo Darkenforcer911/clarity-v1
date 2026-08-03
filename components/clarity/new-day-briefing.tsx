@@ -2,214 +2,173 @@
 
 import {
   ArrowRight,
-  Bookmark,
-  Clock3,
-  RotateCcw,
+  Moon,
+  Sun,
+  Sunrise,
+  Sunset,
+  type LucideIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 
 import { startMyDayAction } from "@/app/(app)/today/actions";
-import { decideBriefingContextAction } from "@/app/(app)/today/day-transition-actions";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import type { NewDayBriefing as Briefing } from "@/lib/clarity/new-day-briefing";
-import { formatWeekday } from "@/lib/clarity/date-time";
+import {
+  formatFullLocalDate,
+  formatWeekday,
+  getDayPeriod,
+  getLocalDate,
+} from "@/lib/clarity/date-time";
 import { PendingButton } from "./pending-button";
 
 export function NewDayBriefing({
   briefing,
   currentLocalDate,
+  timezone,
+  initialNow,
 }: {
   briefing: Briefing;
   currentLocalDate: string;
+  timezone: string;
+  initialNow: string;
 }) {
-  const [context, setContext] = useState("");
-  const [deferredUntilSleep, setDeferredUntilSleep] = useState(false);
-  const currentDay = formatWeekday(currentLocalDate);
-  const previousDay = formatWeekday(briefing.previousLocalDate);
-  const deferKey = `clarity:late-night-deferred:${currentLocalDate}`;
+  const [now, setNow] = useState(() => new Date(initialNow));
+  const router = useRouter();
+  const refreshedForDate = useRef<string | null>(null);
 
   useEffect(() => {
-    if (briefing.lateNight) {
-      const frame = window.requestAnimationFrame(() => {
-        setDeferredUntilSleep(
-          window.sessionStorage.getItem(deferKey) === "true",
-        );
-      });
+    const refreshNow = () => setNow(new Date());
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        refreshNow();
+      }
+    };
+    const interval = window.setInterval(refreshNow, 30_000);
 
-      return () => window.cancelAnimationFrame(frame);
+    window.addEventListener("focus", refreshNow);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshNow);
+      document.removeEventListener(
+        "visibilitychange",
+        refreshWhenVisible,
+      );
+    };
+  }, []);
+
+  const liveLocalDate = getLocalDate(timezone, now);
+  const currentDay = formatWeekday(liveLocalDate);
+  const heading = `Are you starting ${currentDay} now?`;
+  const fullLocalDate = formatFullLocalDate(liveLocalDate);
+  const previousDay = formatWeekday(briefing.previousLocalDate);
+  const summary = previousDaySummary(briefing, previousDay);
+  const daypart = daypartPresentation(getDayPeriod(timezone, now));
+  const DaypartIcon = daypart.icon;
+  const localTime = new Intl.DateTimeFormat("en-AU", {
+    timeZone: timezone,
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(now);
+
+  useEffect(() => {
+    if (
+      liveLocalDate !== currentLocalDate &&
+      refreshedForDate.current !== liveLocalDate
+    ) {
+      refreshedForDate.current = liveLocalDate;
+      router.refresh();
     }
-  }, [briefing.lateNight, deferKey]);
+  }, [currentLocalDate, liveLocalDate, router]);
 
   return (
-    <section className="space-y-6">
-      <div className="space-y-3">
-        <p className="text-sm font-semibold text-[var(--clarity-completed)]">
-          {currentDay} briefing
+    <section className="w-full min-w-0 max-w-full space-y-10 pt-[clamp(2rem,7svh,4.5rem)]">
+      <div className="space-y-2.5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          Today
         </p>
-        <h1 className="text-3xl font-semibold tracking-[-0.045em]">
-          Start with what is real.
+        <p
+          className="text-sm leading-6 text-muted-foreground"
+          suppressHydrationWarning
+        >
+          {fullLocalDate} · {localTime}
+        </p>
+        <div className="clarity-greeting-enter flex min-h-7 items-center gap-2 text-[var(--clarity-completed)]">
+          <DaypartIcon className="size-5" aria-hidden="true" />
+          <p className="text-sm font-semibold">{daypart.greeting}</p>
+        </div>
+        <h1
+          className="clarity-heading-enter text-3xl font-semibold tracking-[-0.045em]"
+          suppressHydrationWarning
+        >
+          {heading}
         </h1>
-        <p className="leading-7 text-muted-foreground">
-          {previousDay}: {briefing.completedCount} completed ·{" "}
-          {briefing.movedCount} moved · {briefing.droppedCount} dropped
-        </p>
+        {summary && (
+          <p className="text-sm text-muted-foreground">{summary}</p>
+        )}
       </div>
 
-      {briefing.carriedActions.length > 0 && (
-        <section className="rounded-2xl border border-border bg-card p-4">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            <RotateCcw className="size-4 text-[var(--clarity-completed)]" />
-            Carried into today
-          </div>
-          <ul className="mt-3 space-y-2">
-            {briefing.carriedActions.map((action) => (
-              <li key={action.id} className="text-sm">
-                {action.title}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {briefing.explanation && (
-        <div className="rounded-2xl border border-border bg-card p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            What changed
-          </p>
-          <p className="mt-3 text-sm leading-6">{briefing.explanation}</p>
-        </div>
-      )}
-
-      {briefing.ongoingContextCandidate && (
-        <BriefingContextPrompt
-          dayRecordId={briefing.dayRecordId}
-          label={briefing.ongoingContextCandidate.label}
-          sourceText={briefing.ongoingContextCandidate.sourceText}
-        />
-      )}
-
-      {briefing.lateNight && deferredUntilSleep ? (
-        <div className="rounded-2xl border border-border bg-card p-5">
-          <p className="font-semibold">{currentDay} is still unshaped.</p>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Come back after sleep when you&apos;re ready to shape the day.
-          </p>
-        </div>
-      ) : (
-        <form action={startMyDayAction} className="space-y-5">
-          <label className="block space-y-2">
-            <span className="text-sm font-semibold">
-              Anything changed or missing?
-            </span>
-            <Textarea
-              name="briefingContext"
-              value={context}
-              onChange={(event) => setContext(event.target.value)}
-              maxLength={2000}
-              placeholder="Optional context for today."
-            />
-          </label>
-
-          {briefing.lateNight && (
-            <p className="font-semibold">
-              Are you starting {currentDay} now?
-            </p>
-          )}
-
+      <div className="space-y-3">
+        <form action={startMyDayAction}>
           <PendingButton
             type="submit"
             size="lg"
-            pendingLabel={`Opening Shape ${currentDay}…`}
+            pendingLabel={`Starting ${currentDay}…`}
             className="h-12 w-full rounded-xl text-base"
           >
-            {briefing.lateNight
-              ? `Start ${currentDay} now`
-              : `Shape ${currentDay}`}
+            Start {currentDay} now
             <ArrowRight />
           </PendingButton>
-
-          {briefing.lateNight && (
-            <Button
-              type="button"
-              variant="ghost"
-              className="h-11 w-full rounded-xl"
-              onClick={() => {
-                window.sessionStorage.setItem(deferKey, "true");
-                setDeferredUntilSleep(true);
-              }}
-            >
-              I&apos;ll start after sleep
-            </Button>
-          )}
         </form>
-      )}
-    </section>
-  );
-}
 
-function BriefingContextPrompt({
-  dayRecordId,
-  label,
-  sourceText,
-}: {
-  dayRecordId: string;
-  label: string;
-  sourceText: string;
-}) {
-  return (
-    <section className="rounded-2xl border border-border bg-card p-4">
-      <p className="font-semibold">
-        You mentioned {sourceText.toLowerCase()}. Should Clarity remember{" "}
-        {label} as something ongoing?
-      </p>
-      <div className="mt-4 grid gap-2">
-        <ContextDecision
-          dayRecordId={dayRecordId}
-          decision="remembered"
-          icon={<Bookmark />}
-        >
-          Remember it
-        </ContextDecision>
-        <ContextDecision dayRecordId={dayRecordId} decision="once">
-          Just this once
-        </ContextDecision>
-        <ContextDecision
-          dayRecordId={dayRecordId}
-          decision="dismissed"
-          icon={<Clock3 />}
-        >
-          Not now
-        </ContextDecision>
+        <div className="space-y-1 text-center">
+          <Link
+            href="/calendar"
+            className="inline-flex min-h-11 items-center justify-center rounded-lg px-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            I&apos;m planning ahead
+          </Link>
+          <p className="text-xs leading-5 text-muted-foreground">
+            Opens Calendar without starting {currentDay}.
+          </p>
+        </div>
       </div>
     </section>
   );
 }
 
-function ContextDecision({
-  dayRecordId,
-  decision,
-  icon,
-  children,
-}: {
-  dayRecordId: string;
-  decision: "remembered" | "once" | "dismissed";
-  icon?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <form action={decideBriefingContextAction}>
-      <input type="hidden" name="dayRecordId" value={dayRecordId} />
-      <input type="hidden" name="decision" value={decision} />
-      <PendingButton
-        type="submit"
-        variant={decision === "remembered" ? "outline" : "ghost"}
-        pendingLabel="Saving…"
-        className="h-10 w-full rounded-xl"
-      >
-        {icon}
-        {children}
-      </PendingButton>
-    </form>
-  );
+function daypartPresentation(
+  period: ReturnType<typeof getDayPeriod>,
+): { greeting: string; icon: LucideIcon } {
+  switch (period) {
+    case "morning":
+      return { greeting: "Good morning", icon: Sunrise };
+    case "afternoon":
+      return { greeting: "Good afternoon", icon: Sun };
+    case "evening":
+      return { greeting: "Good evening", icon: Sunset };
+    case "late_night":
+      return { greeting: "Late night", icon: Moon };
+  }
+}
+
+function previousDaySummary(
+  briefing: Briefing,
+  previousDay: string,
+) {
+  const counts = [
+    briefing.completedCount > 0
+      ? `${briefing.completedCount} completed`
+      : null,
+    briefing.movedCount > 0 ? `${briefing.movedCount} moved` : null,
+    briefing.droppedCount > 0
+      ? `${briefing.droppedCount} dropped`
+      : null,
+  ].filter((value): value is string => Boolean(value));
+
+  return counts.length > 0
+    ? `${previousDay}: ${counts.join(" · ")}`
+    : null;
 }

@@ -8,15 +8,26 @@ import {
   Circle,
   Clock3,
   LoaderCircle,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  startTransition,
+  useEffect,
+  useOptimistic,
+  useRef,
+  useState,
+} from "react";
 
 import {
   beginCloseDayAction,
-  markActionIncompleteAction,
   setActionCompletionAction,
 } from "@/app/(app)/today/actions";
+import {
+  removeActionFromTodayInlineAction,
+  restoreActionToTodayAction,
+} from "@/app/(app)/today/action-workspace-actions";
 import type {
   CarriedAction,
   DailyAction,
@@ -24,10 +35,20 @@ import type {
   Profile,
 } from "@/lib/clarity/daily-loop-queries";
 import {
+  ACTIVE_ACTION_SWIPE_REVEAL_PX,
+  resolveActiveActionSwipeOpen,
+} from "@/lib/clarity/active-today-swipe";
+import {
+  getActiveActionTiming,
+  selectNextActiveAction,
+  type ActiveActionTiming,
+} from "@/lib/clarity/active-today-scheduling";
+import {
   addLocalDays,
   formatScheduledTime,
   formatWeekday,
 } from "@/lib/clarity/date-time";
+import { formatDuration } from "@/lib/clarity/proposed-plan-summary";
 import { Button } from "@/components/ui/button";
 import { AddActionForm } from "./add-action-form";
 import { PendingButton } from "./pending-button";
@@ -38,6 +59,8 @@ type ActiveTodayProps = {
   carriedActions: CarriedAction[];
   profile: Profile;
   isClosing?: boolean;
+  initialRemovedActionId?: string | null;
+  initialNow: string;
 };
 
 export function ActiveToday({
@@ -46,9 +69,64 @@ export function ActiveToday({
   carriedActions,
   profile,
   isClosing = false,
+  initialRemovedActionId = null,
+  initialNow,
 }: ActiveTodayProps) {
-  const remaining = actions.filter((action) => action.status === "active");
-  const completed = actions
+  const [now, setNow] = useState(() => new Date(initialNow));
+  const [optimisticActions, updateOptimisticAction] = useOptimistic(
+    actions,
+    (
+      current,
+      update: {
+        actionId: string;
+        completed: boolean;
+        completedAt: string;
+      },
+    ) =>
+      current.map((action) =>
+        action.id === update.actionId
+          ? {
+              ...action,
+              status: update.completed ? "completed" : "active",
+              completed_at: update.completed
+                ? update.completedAt
+                : null,
+              completion_recorded_at: update.completed
+                ? update.completedAt
+                : null,
+              completion_time_unknown: false,
+            }
+          : action,
+      ),
+  );
+  const [pendingActionIds, setPendingActionIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const [completionError, setCompletionError] = useState<string | null>(
+    null,
+  );
+  const [removedActionIds, setRemovedActionIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const [removingActionIds, setRemovingActionIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const [pendingRemovalIds, setPendingRemovalIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const [swipedActionId, setSwipedActionId] = useState<string | null>(null);
+  const [removalNoticeActionId, setRemovalNoticeActionId] = useState<
+    string | null
+  >(initialRemovedActionId);
+  const [removalError, setRemovalError] = useState<string | null>(null);
+  const [undoPending, setUndoPending] = useState(false);
+  const visibleActions = optimisticActions.filter(
+    (action) => !removedActionIds.has(action.id),
+  );
+  const remaining = visibleActions.filter(
+    (action) => action.status === "active",
+  );
+  const completed = visibleActions
     .filter((action) => action.status === "completed")
     .sort((left, right) => {
       const leftTime = left.completed_at
@@ -72,8 +150,27 @@ export function ActiveToday({
 
       return left.sort_order - right.sort_order;
     });
-  const nextAction = remaining[0];
-  const laterActions = remaining.slice(1);
+  const nextAction = selectNextActiveAction(
+    remaining,
+    plan.local_date,
+    profile.timezone,
+    now,
+  );
+  const laterActions = remaining.filter(
+    (action) => action.id !== nextAction?.id,
+  );
+  const timingByActionId = new Map(
+    remaining.map((action) => [
+      action.id,
+      getActiveActionTiming(
+        action,
+        plan.local_date,
+        profile.timezone,
+        now,
+      ),
+    ]),
+  );
+  const router = useRouter();
   const total = remaining.length + completed.length;
   const carriedFromByActionId = matchCarriedActions(
     actions,
@@ -83,6 +180,167 @@ export function ActiveToday({
   const carriedFromYesterdayCount = [
     ...carriedFromByActionId.values(),
   ].filter((localDate) => localDate === previousLocalDate).length;
+
+  useEffect(() => {
+    let minuteTimeout: number | undefined;
+
+    const refreshNow = () => setNow(new Date());
+    const scheduleMinuteRefresh = () => {
+      refreshNow();
+      const delay = 60_000 - (Date.now() % 60_000) + 25;
+      minuteTimeout = window.setTimeout(scheduleMinuteRefresh, delay);
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        refreshNow();
+      }
+    };
+
+    scheduleMinuteRefresh();
+    window.addEventListener("focus", refreshNow);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      if (minuteTimeout !== undefined) {
+        window.clearTimeout(minuteTimeout);
+      }
+      window.removeEventListener("focus", refreshNow);
+      document.removeEventListener(
+        "visibilitychange",
+        refreshWhenVisible,
+      );
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!swipedActionId) {
+      return;
+    }
+
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      const target = event.target;
+
+      if (!(target instanceof Element)) {
+        setSwipedActionId(null);
+        return;
+      }
+
+      const swipedCard = target.closest<HTMLElement>(
+        "[data-swipe-action-id]",
+      );
+
+      if (swipedCard?.dataset.swipeActionId !== swipedActionId) {
+        setSwipedActionId(null);
+      }
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsidePress);
+    return () =>
+      document.removeEventListener("pointerdown", closeOnOutsidePress);
+  }, [swipedActionId]);
+
+  useEffect(() => {
+    if (!nextAction) {
+      return;
+    }
+
+    router.prefetch(`/today/actions/${nextAction.id}`);
+  }, [nextAction, router]);
+
+  function updateCompletion(actionId: string, completed: boolean) {
+    const completedAt = new Date().toISOString();
+    const formData = new FormData();
+    formData.set("actionId", actionId);
+    formData.set("completed", String(completed));
+    setCompletionError(null);
+    setSwipedActionId(null);
+    setPendingActionIds((current) => new Set(current).add(actionId));
+
+    startTransition(async () => {
+      updateOptimisticAction({ actionId, completed, completedAt });
+
+      try {
+        await setActionCompletionAction(formData);
+      } catch {
+        setCompletionError(
+          completed
+            ? "Couldn’t complete the action. Try again."
+            : "Couldn’t mark the action incomplete. Try again.",
+        );
+      } finally {
+        setPendingActionIds((current) => {
+          const next = new Set(current);
+          next.delete(actionId);
+          return next;
+        });
+      }
+    });
+  }
+
+  async function removeAction(actionId: string) {
+    setRemovalError(null);
+    setPendingRemovalIds((current) => new Set(current).add(actionId));
+
+    const result = await removeActionFromTodayInlineAction(actionId);
+
+    setPendingRemovalIds((current) => {
+      const next = new Set(current);
+      next.delete(actionId);
+      return next;
+    });
+
+    if (!result.success) {
+      setSwipedActionId(null);
+      setRemovalError(
+        result.error ?? "Couldn’t remove the action from today. Try again.",
+      );
+      return;
+    }
+
+    setRemovingActionIds((current) => new Set(current).add(actionId));
+    setSwipedActionId(null);
+    const removalDelay = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches
+      ? 0
+      : 190;
+    window.setTimeout(() => {
+      setRemovedActionIds((current) => new Set(current).add(actionId));
+      setRemovingActionIds((current) => {
+        const next = new Set(current);
+        next.delete(actionId);
+        return next;
+      });
+      setRemovalNoticeActionId(actionId);
+      router.refresh();
+    }, removalDelay);
+  }
+
+  async function undoRemoval() {
+    if (!removalNoticeActionId || undoPending) {
+      return;
+    }
+
+    setUndoPending(true);
+    setRemovalError(null);
+    const actionId = removalNoticeActionId;
+    const result = await restoreActionToTodayAction(actionId);
+    setUndoPending(false);
+
+    if (!result.success) {
+      setRemovalError(result.error ?? "Couldn’t restore the action. Try again.");
+      return;
+    }
+
+    setRemovedActionIds((current) => {
+      const next = new Set(current);
+      next.delete(actionId);
+      return next;
+    });
+    setRemovalNoticeActionId(null);
+    router.replace("/today/active", { scroll: false });
+    router.refresh();
+  }
 
   return (
     <section className="space-y-7">
@@ -103,6 +361,43 @@ export function ActiveToday({
         <p className="text-muted-foreground">
           {remaining.length} remaining · {total} total
         </p>
+        {completionError && (
+          <p role="alert" className="text-sm text-destructive">
+            {completionError}
+          </p>
+        )}
+        {removalError && !removalNoticeActionId && (
+          <p role="alert" className="text-sm text-destructive">
+            {removalError}
+          </p>
+        )}
+        {removalNoticeActionId && (
+          <div
+            role="status"
+            className="inline-flex min-h-11 max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-xl bg-secondary px-3 py-1.5 text-sm"
+          >
+            <span className="font-medium text-foreground">
+              Action removed
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={undoPending}
+              onClick={undoRemoval}
+              className="h-9 px-2 text-[var(--clarity-completed)]"
+            >
+              {undoPending ? "Restoring…" : "Undo"}
+            </Button>
+            {removalError && (
+              <span
+                role="alert"
+                className="basis-full pb-1 text-xs text-destructive"
+              >
+                {removalError}
+              </span>
+            )}
+          </div>
+        )}
         {isClosing && (
           <p className="rounded-xl border border-border bg-card px-4 py-3 text-sm leading-6 text-muted-foreground">
             Close Day is in progress. Review today here, or continue when
@@ -116,13 +411,24 @@ export function ActiveToday({
           <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-muted-foreground">
             Next action
           </h2>
-          <ActionCard
+          <SwipeableActionCard
             action={nextAction}
+            timing={timingByActionId.get(nextAction.id)}
             timezone={profile.timezone}
             carriedFrom={carriedFromByActionId.get(nextAction.id)}
             prominent
             canToggle={!isClosing}
             canOpen={!isClosing}
+            pending={pendingActionIds.has(nextAction.id)}
+            onCompletionChange={updateCompletion}
+            open={swipedActionId === nextAction.id}
+            onOpenChange={(open) =>
+              setSwipedActionId(open ? nextAction.id : null)
+            }
+            onRemove={removeAction}
+            removalPending={pendingRemovalIds.has(nextAction.id)}
+            removing={removingActionIds.has(nextAction.id)}
+            enabled={!isClosing}
           />
         </div>
       ) : (
@@ -142,13 +448,24 @@ export function ActiveToday({
           </h2>
           <div className="space-y-3">
             {laterActions.map((action) => (
-              <ActionCard
+              <SwipeableActionCard
                 key={action.id}
                 action={action}
+                timing={timingByActionId.get(action.id)}
                 timezone={profile.timezone}
                 carriedFrom={carriedFromByActionId.get(action.id)}
                 canToggle={!isClosing}
                 canOpen={!isClosing}
+                pending={pendingActionIds.has(action.id)}
+                onCompletionChange={updateCompletion}
+                open={swipedActionId === action.id}
+                onOpenChange={(open) =>
+                  setSwipedActionId(open ? action.id : null)
+                }
+                onRemove={removeAction}
+                removalPending={pendingRemovalIds.has(action.id)}
+                removing={removingActionIds.has(action.id)}
+                enabled={!isClosing}
               />
             ))}
           </div>
@@ -169,6 +486,8 @@ export function ActiveToday({
                 carriedFrom={carriedFromByActionId.get(action.id)}
                 canToggle={!isClosing}
                 canOpen={!isClosing}
+                pending={pendingActionIds.has(action.id)}
+                onCompletionChange={updateCompletion}
               />
             ))}
           </div>
@@ -190,6 +509,8 @@ export function ActiveToday({
                 carriedFrom={carriedFromByActionId.get(action.id)}
                 canToggle={!isClosing}
                 canOpen={!isClosing}
+                pending={pendingActionIds.has(action.id)}
+                onCompletionChange={updateCompletion}
               />
             ))}
           </div>
@@ -217,10 +538,10 @@ export function ActiveToday({
               type="submit"
               variant="outline"
               size="lg"
-              pendingLabel="Opening Close Day…"
+              pendingLabel="Preparing recap..."
               className="h-12 w-full rounded-xl text-base"
             >
-              Close day
+              Close {formatWeekday(plan.local_date)}
               <ArrowRight />
             </PendingButton>
           </form>
@@ -230,20 +551,221 @@ export function ActiveToday({
   );
 }
 
+function SwipeableActionCard({
+  action,
+  open,
+  onOpenChange,
+  onRemove,
+  removalPending,
+  removing,
+  enabled,
+  ...cardProps
+}: Omit<React.ComponentProps<typeof ActionCard>, "action"> & {
+  action: DailyAction;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onRemove: (actionId: string) => void;
+  removalPending: boolean;
+  removing: boolean;
+  enabled: boolean;
+}) {
+  const [dragOffset, setDragOffset] = useState<number | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const offset =
+    dragOffset ?? (open ? -ACTIVE_ACTION_SWIPE_REVEAL_PX : 0);
+  const currentOffsetRef = useRef(offset);
+  const suppressClickRef = useRef(false);
+  const gestureRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startOffset: number;
+    horizontal: boolean | null;
+  } | null>(null);
+
+  function moveCard(nextOffset: number) {
+    currentOffsetRef.current = nextOffset;
+    setDragOffset(nextOffset);
+  }
+
+  function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (
+      !enabled ||
+      event.button !== 0 ||
+      (event.target instanceof Element &&
+        event.target.closest("[data-swipe-remove-control]"))
+    ) {
+      return;
+    }
+
+    gestureRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startOffset: offset,
+      horizontal: null,
+    };
+    currentOffsetRef.current = offset;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    const gesture = gestureRef.current;
+
+    if (!gesture || gesture.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const deltaX = event.clientX - gesture.startX;
+    const deltaY = event.clientY - gesture.startY;
+
+    if (gesture.horizontal === null) {
+      if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) < 7) {
+        return;
+      }
+
+      const startedOpen = gesture.startOffset < 0;
+      gesture.horizontal =
+        Math.abs(deltaX) > Math.abs(deltaY) &&
+        (startedOpen || deltaX < 0);
+    }
+
+    if (!gesture.horizontal) {
+      return;
+    }
+
+    event.preventDefault();
+    setDragging(true);
+    suppressClickRef.current = true;
+    moveCard(
+      Math.max(
+        -ACTIVE_ACTION_SWIPE_REVEAL_PX,
+        Math.min(0, gesture.startOffset + deltaX),
+      ),
+    );
+  }
+
+  function finishGesture(event: React.PointerEvent<HTMLDivElement>) {
+    const gesture = gestureRef.current;
+
+    if (!gesture || gesture.pointerId !== event.pointerId) {
+      return;
+    }
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    gestureRef.current = null;
+    setDragging(false);
+
+    if (!gesture.horizontal) {
+      return;
+    }
+
+    const shouldOpen = resolveActiveActionSwipeOpen(
+      gesture.startOffset,
+      currentOffsetRef.current,
+    );
+    setDragOffset(null);
+    onOpenChange(shouldOpen);
+    window.setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 50);
+  }
+
+  function handleClickCapture(event: React.MouseEvent<HTMLDivElement>) {
+    if (
+      event.target instanceof Element &&
+      event.target.closest("[data-swipe-remove-control]")
+    ) {
+      return;
+    }
+
+    if (suppressClickRef.current) {
+      event.preventDefault();
+      event.stopPropagation();
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 0);
+      return;
+    }
+
+    if (offset < 0) {
+      event.preventDefault();
+      event.stopPropagation();
+      onOpenChange(false);
+      setDragOffset(null);
+    }
+  }
+
+  return (
+    <div
+      data-swipe-action-id={action.id}
+      className="relative min-w-0 overflow-hidden rounded-2xl [touch-action:pan-y]"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={finishGesture}
+      onPointerCancel={finishGesture}
+      onClickCapture={handleClickCapture}
+    >
+      <div
+        className="absolute inset-y-0 right-0 flex items-stretch justify-end rounded-r-2xl bg-destructive"
+        style={{ width: ACTIVE_ACTION_SWIPE_REVEAL_PX }}
+      >
+        <button
+          type="button"
+          data-swipe-remove-control
+          disabled={removalPending}
+          onClick={() => onRemove(action.id)}
+          aria-label={`Remove ${action.title} from today`}
+          className="flex min-h-11 w-full flex-col items-center justify-center gap-1.5 px-2 text-sm font-semibold text-destructive-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:opacity-70"
+        >
+          {removalPending ? (
+            <LoaderCircle className="size-5 animate-spin" />
+          ) : (
+            <Trash2 className="size-5" />
+          )}
+          <span>{removalPending ? "Removing…" : "Remove"}</span>
+        </button>
+      </div>
+      <div
+        className={`relative z-10 min-w-0 w-full will-change-transform transition-[transform,opacity] duration-200 ease-out motion-reduce:transition-none motion-reduce:will-change-auto ${
+          dragging ? "transition-none" : ""
+        }`}
+        style={{
+          transform: removing
+            ? "translateX(-110%)"
+            : `translateX(${offset}px)`,
+          opacity: removing ? 0 : 1,
+        }}
+      >
+        <ActionCard action={action} {...cardProps} />
+      </div>
+    </div>
+  );
+}
+
 function ActionCard({
   action,
+  timing,
   timezone,
   carriedFrom,
   prominent = false,
   canToggle = true,
   canOpen = true,
+  pending = false,
+  onCompletionChange,
 }: {
   action: DailyAction;
+  timing?: ActiveActionTiming;
   timezone: string;
   carriedFrom?: string;
   prominent?: boolean;
   canToggle?: boolean;
   canOpen?: boolean;
+  pending?: boolean;
+  onCompletionChange: (actionId: string, completed: boolean) => void;
 }) {
   const [confirmingIncomplete, setConfirmingIncomplete] = useState(false);
   const completed = action.status === "completed";
@@ -252,10 +774,22 @@ function ActionCard({
     action.completed_at,
     timezone,
   );
+  const scheduledStatus =
+    scheduledTime && timing?.kind === "overdue"
+      ? `${scheduledTime} · ${formatDuration(
+          timing.minutesFromNow,
+        )} overdue`
+      : scheduledTime && timing?.kind === "now"
+        ? `${scheduledTime} · Now`
+        : scheduledTime;
 
   return (
     <article
-      className={`relative rounded-2xl border border-border p-4 shadow-sm sm:p-5 ${
+      className={`relative rounded-2xl border p-4 shadow-sm sm:p-5 ${
+        timing?.kind === "overdue"
+          ? "border-primary/70"
+          : "border-border"
+      } ${
         prominent
           ? "bg-secondary text-foreground"
           : canOpen
@@ -277,6 +811,7 @@ function ActionCard({
               type="button"
               size="icon"
               variant="outline"
+              disabled={pending}
               onClick={() => setConfirmingIncomplete(true)}
               className="relative z-10 mt-0.5 flex size-8 items-center justify-center rounded-full border border-border bg-secondary text-[var(--clarity-completed)] transition-colors hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label={`Mark ${action.title} incomplete`}
@@ -284,23 +819,21 @@ function ActionCard({
               <Check className="size-4" />
             </Button>
           ) : (
-            <form
-              action={setActionCompletionAction}
-              className="relative z-10"
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              disabled={pending}
+              onClick={() => onCompletionChange(action.id, true)}
+              className="relative z-10 mt-0.5 flex size-8 items-center justify-center rounded-full border border-border bg-card text-muted-foreground transition-colors hover:bg-secondary hover:text-[var(--clarity-completed)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label={`Mark ${action.title} complete`}
             >
-              <input type="hidden" name="actionId" value={action.id} />
-              <input type="hidden" name="completed" value="true" />
-              <PendingButton
-                type="submit"
-                size="icon"
-                variant="outline"
-                pendingLabel={<LoaderCircle className="animate-spin" />}
-                className="mt-0.5 flex size-8 items-center justify-center rounded-full border border-border bg-card text-muted-foreground transition-colors hover:bg-secondary hover:text-[var(--clarity-completed)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label={`Mark ${action.title} complete`}
-              >
+              {pending ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
                 <Circle className="size-4" />
-              </PendingButton>
-            </form>
+              )}
+            </Button>
           )
         ) : (
           <span
@@ -341,16 +874,16 @@ function ActionCard({
                 </span>
                 <span aria-hidden="true">·</span>
               </>
-            ) : scheduledTime ? (
+            ) : scheduledStatus ? (
               <>
                 <span className="flex items-center gap-1 font-semibold text-[var(--clarity-completed)]">
                   <Clock3 className="size-3" />
-                  {scheduledTime}
+                  {scheduledStatus}
                 </span>
                 <span>·</span>
               </>
             ) : null}
-            <span>{action.estimated_minutes} min</span>
+            <span>{formatDuration(action.estimated_minutes)}</span>
           </div>
         </div>
       </div>
@@ -371,16 +904,17 @@ function ActionCard({
             >
               Keep completed
             </Button>
-            <form action={markActionIncompleteAction}>
-              <input type="hidden" name="actionId" value={action.id} />
-              <PendingButton
-                type="submit"
-                pendingLabel="Marking incomplete…"
+            <Button
+                type="button"
+                disabled={pending}
+                onClick={() => {
+                  setConfirmingIncomplete(false);
+                  onCompletionChange(action.id, false);
+                }}
                 className="h-10 w-full rounded-lg"
               >
-                Mark incomplete
-              </PendingButton>
-            </form>
+                {pending ? "Marking incomplete…" : "Mark incomplete"}
+              </Button>
           </div>
         </section>
       )}

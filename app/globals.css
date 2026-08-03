@@ -2,6 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes clarity-greeting-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@layer utilities {
+  .clarity-greeting-enter {
+    animation: clarity-greeting-enter 220ms ease-out both;
+  }
+
+  .clarity-heading-enter {
+    animation: clarity-greeting-enter 240ms ease-out 40ms both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .clarity-greeting-enter,
+    .clarity-heading-enter {
+      animation: none;
+    }
+  }
+}
+
 @layer base {
   :root {
     --clarity-page: #071A33;
@@ -36,17 +64,96 @@
   }
 }
 
+@layer components {
+  .duration-number-input {
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+
+  .duration-number-input::-webkit-inner-spin-button,
+  .duration-number-input::-webkit-outer-spin-button {
+    margin: 0;
+    -webkit-appearance: none;
+  }
+}
+
 @layer base {
   * {
     @apply border-border;
+    box-sizing: border-box;
+  }
+  html {
+    max-width: 100%;
+    overflow-x: clip;
   }
   body {
     @apply bg-background text-foreground;
     min-height: 100svh;
+    max-width: 100%;
+    overflow-x: clip;
     background-color: var(--clarity-page);
     color: var(--clarity-text);
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
     -webkit-tap-highlight-color: transparent;
+  }
+
+  input[type="date"],
+  input[type="time"],
+  input[type="datetime-local"] {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    inline-size: 100%;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  input[type="date"]::-webkit-date-and-time-value,
+  input[type="time"]::-webkit-date-and-time-value,
+  input[type="datetime-local"]::-webkit-date-and-time-value {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    inline-size: 100%;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    text-align: left;
+  }
+
+  input[type="date"]::-webkit-datetime-edit,
+  input[type="time"]::-webkit-datetime-edit,
+  input[type="datetime-local"]::-webkit-datetime-edit {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    inline-size: 100%;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    text-align: left;
+  }
+
+  .native-date-time-wrapper {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    inline-size: 100%;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    overflow: hidden;
+    box-sizing: border-box;
   }
 }

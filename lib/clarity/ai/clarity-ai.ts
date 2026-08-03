@@ -5,8 +5,6 @@ export type ClarityAIInput = {
   userId: string;
   localDate: string;
   timezone: string;
-  wokeAt: string;
-  aimingToSleepAt: string;
   contextForToday: string | null;
   currentLocalTime: string;
   carriedActions: Array<{

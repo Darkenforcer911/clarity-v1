@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z, ZodError } from "zod";
 
+import { addedActionDestination } from "@/lib/clarity/add-action-destination";
 import type { DailyLoopActionState } from "@/lib/clarity/action-state";
 import {
   ActionWorkspaceServiceError,
@@ -164,18 +165,22 @@ export async function addActionAction(
       };
     }
 
-    destination =
-      result.planStatus === "proposed" ? "/today/plan" : "/today";
+    destination = addedActionDestination(result.planStatus);
     revalidatePath("/today");
+    revalidatePath("/today/active");
     revalidatePath("/today/plan");
 
-    if (result.ongoingContextSuggestion && result.actionId) {
+    if (
+      result.planStatus === "proposed" &&
+      result.ongoingContextSuggestion &&
+      result.actionId
+    ) {
       return {
         error: null,
         addActionContextPrompt: {
           actionId: result.actionId,
           suggestion: result.ongoingContextSuggestion,
-          destination: `${destination}?notice=action-added`,
+          destination,
         },
       };
     }
@@ -186,7 +191,7 @@ export async function addActionAction(
     };
   }
 
-  redirect(`${destination}?notice=action-added`);
+  redirect(destination);
 }
 
 export async function decideActionContextAction(formData: FormData) {
@@ -216,7 +221,11 @@ export async function updateActionAction(
     await actionWorkspaceService.updateProposedAction(actionId, input);
     revalidatePath("/today/plan");
     revalidatePath(`/today/actions/${actionId}`);
-    return { error: null, success: "Action updated." };
+    return {
+      error: null,
+      success: "Action updated",
+      updateSucceededAt: Date.now(),
+    };
   } catch (error) {
     return actionError(error);
   }
@@ -280,6 +289,29 @@ export async function removeProposedActionAction(formData: FormData) {
   revalidatePath("/today/plan");
 }
 
+export async function restoreRemovedProposedActionsAction(
+  formData: FormData,
+) {
+  const planId = z.string().uuid().parse(formData.get("planId"));
+  await actionWorkspaceService.restoreRemovedProposedActions(planId);
+  revalidatePath("/today/plan");
+}
+
+export async function completeProposedActionAction(
+  _previousState: DailyLoopActionState,
+  formData: FormData,
+): Promise<DailyLoopActionState> {
+  try {
+    const actionId = z.string().uuid().parse(formData.get("actionId"));
+    await actionWorkspaceService.completeProposedAction(actionId);
+    revalidatePath("/today");
+    revalidatePath("/today/plan");
+    return { error: null, success: "Action completed." };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
 export async function makeProposedActionEasierAction(formData: FormData) {
   const actionId = z.string().uuid().parse(formData.get("actionId"));
   await actionWorkspaceService.makeProposedActionEasier(actionId);
@@ -337,12 +369,79 @@ export async function deleteActionUpdateAction(
   }
 }
 
-export async function removeActionFromTodayAction(formData: FormData) {
-  const actionId = z.string().uuid().parse(formData.get("actionId"));
-  await actionWorkspaceService.removeFromToday(actionId);
+type ActiveActionMutationResult = {
+  success: boolean;
+  error: string | null;
+  actionId: string | null;
+};
+
+export async function removeActionFromTodayAction(
+  _previousState: ActiveActionMutationResult,
+  formData: FormData,
+): Promise<ActiveActionMutationResult> {
+  let actionId: string;
+
+  try {
+    actionId = z.string().uuid().parse(formData.get("actionId"));
+    await actionWorkspaceService.removeFromToday(actionId);
+    revalidateActiveActionPaths(actionId);
+  } catch {
+    return {
+      success: false,
+      error: "Couldn’t remove the action from today. Try again.",
+      actionId: null,
+    };
+  }
+
+  redirect(`/today/active?notice=removed&actionId=${actionId}`);
+}
+
+export async function removeActionFromTodayInlineAction(
+  actionId: string,
+): Promise<ActiveActionMutationResult> {
+  try {
+    const parsedActionId = z.string().uuid().parse(actionId);
+    await actionWorkspaceService.removeFromToday(parsedActionId);
+    revalidateActiveActionPaths(parsedActionId);
+    return {
+      success: true,
+      error: null,
+      actionId: parsedActionId,
+    };
+  } catch {
+    return {
+      success: false,
+      error: "Couldn’t remove the action from today. Try again.",
+      actionId: null,
+    };
+  }
+}
+
+export async function restoreActionToTodayAction(
+  actionId: string,
+): Promise<ActiveActionMutationResult> {
+  try {
+    const parsedActionId = z.string().uuid().parse(actionId);
+    await actionWorkspaceService.restoreToToday(parsedActionId);
+    revalidateActiveActionPaths(parsedActionId);
+    return {
+      success: true,
+      error: null,
+      actionId: parsedActionId,
+    };
+  } catch {
+    return {
+      success: false,
+      error: "Couldn’t restore the action. Try again.",
+      actionId: null,
+    };
+  }
+}
+
+function revalidateActiveActionPaths(actionId: string) {
   revalidatePath("/today");
+  revalidatePath("/today/active");
   revalidatePath(`/today/actions/${actionId}`);
-  redirect("/today?notice=removed");
 }
 
 export async function askClarityAction(

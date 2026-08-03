@@ -26,8 +26,12 @@ async function ProposedPlanContent() {
   return (
     <ProposedPlan
       plan={data.plan}
-      actions={data.actions.filter((action) => action.status === "proposed")}
+      actions={data.actions.filter((action) =>
+        ["proposed", "completed"].includes(action.status),
+      )}
+      removedActionCount={data.removedProposedActions.length}
       profile={data.profile}
+      initialNow={new Date().toISOString()}
     />
   );
 }

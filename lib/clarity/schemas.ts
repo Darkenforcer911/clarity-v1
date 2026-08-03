@@ -2,45 +2,15 @@ import { z } from "zod";
 
 import { progressExplanationError } from "./recap-validation";
 
+export {
+  shapeTodaySchema,
+  type ShapeTodayInput,
+} from "./shape-today-schema";
+
 const localDatePattern = /^\d{4}-\d{2}-\d{2}$/;
 const localTimePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
 const timestampPattern =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
-
-export const shapeTodaySchema = z
-  .object({
-    wokeAt: z.string().regex(localTimePattern, "Enter a valid wake time."),
-    aimingToSleepAt: z
-      .string()
-      .regex(localTimePattern, "Enter a valid sleep time."),
-    contextForToday: z.string().trim().max(2000, "Keep this under 2,000 characters."),
-    nothingElseToday: z.boolean(),
-  })
-  .superRefine((value, context) => {
-    if (!value.nothingElseToday && value.contextForToday.length === 0) {
-      context.addIssue({
-        code: "custom",
-        message: "Add some context or choose Nothing else today.",
-        path: ["contextForToday"],
-      });
-    }
-
-    if (value.nothingElseToday && value.contextForToday.length > 0) {
-      context.addIssue({
-        code: "custom",
-        message: "Clear the context or turn off Nothing else today.",
-        path: ["contextForToday"],
-      });
-    }
-
-    if (value.wokeAt === value.aimingToSleepAt) {
-      context.addIssue({
-        code: "custom",
-        message: "Sleep time needs to be after wake time.",
-        path: ["aimingToSleepAt"],
-      });
-    }
-  });
 
 const actionTimingSchema = z.enum(["fixed", "flexible"]);
 
@@ -157,9 +127,7 @@ export const actionContextDecisionSchema = z.object({
   decision: z.enum(["remembered", "once", "dismissed"]),
   destination: z
     .string()
-    .regex(
-      /^\/today(?:\/(?:plan|actions\/[0-9a-f-]+))?(?:\?notice=action-added)?$/,
-    ),
+    .regex(/^\/today(?:\/(?:plan|actions\/[0-9a-f-]+))?$/),
 });
 
 const actionFieldsSchema = coreActionFieldsSchema
@@ -612,7 +580,6 @@ export const previousDayUnplannedWorkSchema = z.object({
   remainingWork: z.string().trim().max(500).optional(),
 });
 
-export type ShapeTodayInput = z.infer<typeof shapeTodaySchema>;
 export type AddActionInput = z.infer<typeof addActionSchema>;
 export type ChangeActionTimeInput = z.infer<typeof changeActionTimeSchema>;
 export type CompletionTimeCorrectionInput = z.infer<

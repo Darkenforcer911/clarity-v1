@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { ChevronUp } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,81 +8,62 @@ import { Textarea } from "@/components/ui/textarea";
 export function RecapDayContextField({
   day,
   value,
+  open,
+  onOpenChange,
   onChange,
 }: {
   day: string;
   value: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onChange: (value: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState(value);
+  if (open) {
+    return (
+      <section className="space-y-3 rounded-2xl border border-border bg-card p-4">
+        <header className="flex items-start justify-between gap-3">
+          <div className="min-w-0 space-y-1">
+            <h2 className="font-semibold">Note about {day}</h2>
+            <p className="text-sm leading-6 text-muted-foreground">
+              Anything meaningful that was not an action.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => onOpenChange(false)}
+            aria-label={`Collapse note about ${day}`}
+            className="size-11 shrink-0 rounded-xl"
+          >
+            <ChevronUp />
+          </Button>
+        </header>
+        <Textarea
+          aria-label={`Note about ${day}`}
+          value={value}
+          maxLength={1000}
+          onChange={(event) => onChange(event.currentTarget.value)}
+          placeholder="Had a difficult day, spent time with family, something important changed..."
+          className="min-h-24 rounded-xl"
+        />
+      </section>
+    );
+  }
 
   return (
-    <section className="border-t border-border/70 pt-3">
-      {open ? (
-        <div className="space-y-3 px-1 pt-2">
-          <header className="space-y-1">
-            <h2 className="font-semibold">
-              Anything Clarity should know?
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Add anything important that affected the day or happened
-              outside the plan.
-            </p>
-          </header>
-          <Textarea
-            aria-label={`Additional context from ${day}`}
-            value={draft}
-            maxLength={1000}
-            onChange={(event) =>
-              setDraft(event.currentTarget.value)
-            }
-            placeholder="Spent the day in hospital, closed a client, made £500, received a new deadline..."
-            className="min-h-24 rounded-xl"
-          />
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setDraft(value);
-                setOpen(false);
-              }}
-              className="h-11 rounded-xl"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              disabled={!draft.trim()}
-              onClick={() => {
-                onChange(draft.trim());
-                setDraft(draft.trim());
-                setOpen(false);
-              }}
-              className="h-11 rounded-xl"
-            >
-              Save context
-            </Button>
-          </div>
-        </div>
-      ) : value ? (
-        <div className="space-y-2 px-2 pt-2">
-          <p className="text-sm font-medium text-muted-foreground">
-            Context from {day}
-          </p>
-          <p className="whitespace-pre-wrap text-sm leading-6">
+    <section className="space-y-2">
+      {value ? (
+        <div className="rounded-xl bg-card px-4 py-3">
+          <p className="line-clamp-3 whitespace-pre-wrap text-sm leading-6">
             {value}
           </p>
-          <div className="flex gap-1">
+          <div className="mt-1 flex gap-1">
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              onClick={() => {
-                setDraft(value);
-                setOpen(true);
-              }}
+              onClick={() => onOpenChange(true)}
               className="h-9 px-2 text-xs text-muted-foreground"
             >
               Edit
@@ -91,10 +72,7 @@ export function RecapDayContextField({
               type="button"
               variant="ghost"
               size="sm"
-              onClick={() => {
-                onChange("");
-                setDraft("");
-              }}
+              onClick={() => onChange("")}
               className="h-9 px-2 text-xs text-muted-foreground"
             >
               Remove
@@ -104,13 +82,10 @@ export function RecapDayContextField({
       ) : (
         <button
           type="button"
-          onClick={() => {
-            setDraft("");
-            setOpen(true);
-          }}
+          onClick={() => onOpenChange(true)}
           className="min-h-11 w-full rounded-xl px-2 text-left text-sm font-medium text-muted-foreground hover:bg-secondary/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          What else happened {day}?
+          + Add a note about {day}
         </button>
       )}
     </section>

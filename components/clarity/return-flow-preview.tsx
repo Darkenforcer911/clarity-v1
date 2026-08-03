@@ -4,9 +4,9 @@ import { useState } from "react";
 
 import { MockReturnRecapInterpreter } from "@/lib/clarity/ai/mock-return-recap-interpreter";
 import type { ReturnRecapInterpretation } from "@/lib/clarity/ai/return-recap-interpreter";
-import type { HistoricalActivity } from "./historical-activity-form";
 import { NaturalRecapScreen } from "./natural-recap-screen";
 import type { RecapActionDraft } from "./recap-action-panel";
+import type { RecapCompletedItem } from "./recap-completed-item-form";
 import {
   RecapContextReview,
   type RecapDayContext,
@@ -62,7 +62,7 @@ export function ReturnFlowPreview() {
     useState<ReturnRecapInterpretation | null>(null);
   const [drafts, setDrafts] = useState(initialDrafts);
   const [activities, setActivities] = useState<
-    HistoricalActivity[]
+    RecapCompletedItem[]
   >([]);
   const [contexts, setContexts] = useState<RecapDayContext[]>([]);
   const [confirmed, setConfirmed] = useState(false);
@@ -111,7 +111,18 @@ export function ReturnFlowPreview() {
       setDrafts((current) =>
         applyRecapInterpretation(current, result),
       );
-      setActivities(activitiesFromRecapInterpretation(result));
+      setActivities(
+        activitiesFromRecapInterpretation(result)
+          .filter((activity) => activity.outcome === "finished")
+          .map((activity) => ({
+            id: activity.id,
+            title: activity.title,
+            completionTime:
+              activity.timeUnknown || !activity.completionTime
+                ? ""
+                : activity.completionTime,
+          })),
+      );
       setContexts(contextsFromRecapInterpretation(result));
       setStep("proposal");
     } finally {

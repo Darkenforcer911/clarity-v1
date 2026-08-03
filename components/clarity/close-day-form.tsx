@@ -2,15 +2,16 @@
 
 import { useActionState, useState } from "react";
 import { CalendarDays, CheckCircle2, CircleOff, MoveRight } from "lucide-react";
-import Link from "next/link";
 
-import { finishDayAction } from "@/app/(app)/today/actions";
+import {
+  cancelCloseDayAction,
+  finishDayAction,
+} from "@/app/(app)/today/actions";
 import type { DailyAction } from "@/lib/clarity/daily-loop-queries";
 import { initialDailyLoopActionState } from "@/lib/clarity/action-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
 import { PendingButton } from "./pending-button";
 
 type Outcome = "" | "tomorrow" | "choose_date" | "drop";
@@ -22,12 +23,14 @@ type Selection = {
 };
 
 type CloseDayFormProps = {
+  planId: string;
   completedActions: DailyAction[];
   unfinishedActions: DailyAction[];
   tomorrow: string;
 };
 
 export function CloseDayForm({
+  planId,
   completedActions,
   unfinishedActions,
   tomorrow,
@@ -63,13 +66,17 @@ export function CloseDayForm({
   };
 
   return (
-    <form action={formAction} className="space-y-7">
+    <form
+      action={formAction}
+      className="w-full min-w-0 max-w-full space-y-7 pb-2"
+    >
+      <input type="hidden" name="planId" value={planId} />
       {completedActions.length > 0 && (
-        <section className="space-y-3">
+        <section className="min-w-0 space-y-3">
           <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-muted-foreground">
             Completed
           </h2>
-          <div className="rounded-2xl border border-border bg-card p-5">
+          <div className="w-full min-w-0 max-w-full rounded-2xl border border-border bg-card p-5">
             <ul className="space-y-3">
               {completedActions.map((action) => (
                 <li key={action.id} className="flex items-center gap-3">
@@ -88,7 +95,7 @@ export function CloseDayForm({
           to be resolved.
         </div>
       ) : (
-        <section className="space-y-4">
+        <section className="min-w-0 space-y-4">
           <div>
             <h2 className="text-xl font-semibold tracking-[-0.025em]">
               Resolve unfinished actions
@@ -97,14 +104,14 @@ export function CloseDayForm({
               Choose exactly one outcome for each action before finishing.
             </p>
           </div>
-          <div className="space-y-4">
+          <div className="w-full min-w-0 max-w-full space-y-4">
             {unfinishedActions.map((action) => {
               const selection = selections[action.id];
 
               return (
                 <article
                   key={action.id}
-                  className="rounded-2xl border border-border bg-card p-5 shadow-sm"
+                  className="w-full min-w-0 max-w-full rounded-2xl border border-border bg-card p-5 shadow-sm"
                 >
                   <input type="hidden" name="actionId" value={action.id} />
                   <input
@@ -124,7 +131,7 @@ export function CloseDayForm({
                     {action.estimated_minutes} minutes
                   </p>
 
-                  <div className="mt-5 grid grid-cols-3 gap-2">
+                  <div className="mt-5 grid min-w-0 grid-cols-3 gap-2">
                     <OutcomeButton
                       active={selection.outcome === "tomorrow"}
                       onClick={() =>
@@ -161,24 +168,26 @@ export function CloseDayForm({
                   </div>
 
                   {selection.outcome === "choose_date" && (
-                    <div className="mt-4 space-y-2">
+                    <div className="mt-4 w-full min-w-0 max-w-full space-y-2">
                       <Label htmlFor={`date-${action.id}`}>Move to</Label>
-                      <Input
-                        id={`date-${action.id}`}
-                        type="date"
-                        min={tomorrow}
-                        value={selection.selectedDate}
-                        onChange={(event) =>
-                          updateSelection(action.id, {
-                            selectedDate: event.target.value,
-                          })
-                        }
-                        className="h-11 rounded-xl"
-                      />
+                      <div className="native-date-time-wrapper">
+                        <Input
+                          id={`date-${action.id}`}
+                          type="date"
+                          min={tomorrow}
+                          value={selection.selectedDate}
+                          onChange={(event) =>
+                            updateSelection(action.id, {
+                              selectedDate: event.target.value,
+                            })
+                          }
+                          className="h-11 w-full min-w-0 max-w-full rounded-xl"
+                        />
+                      </div>
                     </div>
                   )}
 
-                  <div className="mt-4 space-y-2">
+                  <div className="mt-4 w-full min-w-0 max-w-full space-y-2">
                     <Label htmlFor={`note-${action.id}`}>
                       Resolution note <span className="font-normal">(optional)</span>
                     </Label>
@@ -202,7 +211,7 @@ export function CloseDayForm({
         </section>
       )}
 
-      <section className="space-y-3">
+      <section className="min-w-0 space-y-3">
         <Label htmlFor="notes">Anything else Clarity should remember?</Label>
         <Textarea
           id="notes"
@@ -223,14 +232,16 @@ export function CloseDayForm({
       )}
 
       <div className="grid gap-3">
-        <Button
-          asChild
+        <PendingButton
+          type="submit"
+          formAction={cancelCloseDayAction}
           variant="outline"
           size="lg"
+          pendingLabel="Returning to Today…"
           className="h-12 w-full rounded-xl text-base"
         >
-          <Link href="/today">Back to Today</Link>
-        </Button>
+          Back to Today
+        </PendingButton>
         <PendingButton
           type="submit"
           size="lg"

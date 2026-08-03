@@ -4,7 +4,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 
 const notices: Record<string, string> = {
-  "action-added": "Action added.",
   "changes-saved": "Changes saved.",
   removed: "Removed from today.",
   "action-replaced": "Action replaced.",

@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { DaySummary } from "@/components/clarity/day-summary";
 import { PageLoading } from "@/components/clarity/page-loading";
 import { dailyLoopService } from "@/lib/clarity/daily-loop-service";
+import { canOfferDaySummaryUndo } from "@/lib/clarity/day-summary-undo";
 import {
   loadTodayForRoute,
   redirectFromSummary,
@@ -25,6 +26,12 @@ async function DaySummaryContent() {
       summary={dailyLoopService.parseDaySummary(data)}
       notes={data.dayRecord?.notes ?? null}
       timezone={data.profile.timezone}
+      canUndoClose={canOfferDaySummaryUndo({
+        planStatus: data.plan?.status ?? "",
+        planDate: data.plan?.local_date ?? "",
+        currentLocalDate: data.localDate,
+        snapshot: data.dayRecord?.progress_recorded,
+      })}
     />
   );
 }
