@@ -1,5 +1,6 @@
 "use client";
 
+import { Check } from "lucide-react";
 import { useActionState, useState } from "react";
 
 import { recordReturnGapAction } from "@/app/(app)/today/day-transition-actions";
@@ -7,9 +8,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { initialDayTransitionActionState } from "@/lib/clarity/day-transition-state";
 import {
   addLocalDays,
+  formatFullLocalDate,
+  formatScheduledTime,
   formatWeekday,
 } from "@/lib/clarity/date-time";
 import type { PendingReturnGap } from "@/lib/clarity/daily-loop-queries";
+import type { ReturnGapEvidence } from "@/lib/clarity/return-gap-evidence";
 import { PendingButton } from "./pending-button";
 import { useCurrentLocalDate } from "./use-current-local-date";
 
@@ -17,10 +21,12 @@ export function ReturnGapContext({
   gap,
   timezone,
   currentLocalDate,
+  evidence,
 }: {
   gap: PendingReturnGap;
   timezone: string;
   currentLocalDate: string;
+  evidence: ReturnGapEvidence[];
 }) {
   const [state, formAction] = useActionState(
     recordReturnGapAction,
@@ -68,6 +74,7 @@ export function ReturnGapContext({
     : longAbsence
       ? metadata
       : weekdayRange;
+  const hasEvidence = evidence.length > 0;
 
   return (
     <section className="space-y-6">
@@ -76,12 +83,60 @@ export function ReturnGapContext({
           {metadata}
         </p>
         <h1 className="text-3xl font-semibold tracking-[-0.045em]">
-          {heading}
+          {hasEvidence
+            ? oneDay
+              ? `${startDay} wasn't fully planned.`
+              : "This period wasn't fully planned."
+            : heading}
         </h1>
         <p className="leading-6 text-muted-foreground">
-          {supportingCopy}
+          {hasEvidence
+            ? "Clarity kept what you already recorded."
+            : supportingCopy}
         </p>
       </header>
+
+      {hasEvidence && (
+        <section className="space-y-3" aria-labelledby="already-recorded-heading">
+          <h2
+            id="already-recorded-heading"
+            className="text-sm font-semibold uppercase tracking-[0.12em] text-muted-foreground"
+          >
+            Already recorded
+          </h2>
+          <div className="space-y-2">
+            {evidence.map((item) => (
+              <div
+                key={item.actionId}
+                className="flex min-w-0 items-start gap-3 rounded-2xl border border-border bg-card p-4"
+              >
+                <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-secondary text-[var(--clarity-completed)]">
+                  <Check className="size-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium text-foreground">
+                    {item.title}
+                  </span>
+                  <span className="mt-1 block text-sm text-muted-foreground">
+                    {formatEvidenceOutcome(item, timezone, !oneDay)}
+                  </span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {hasEvidence && (
+        <div className="space-y-2">
+          <h2 className="text-2xl font-semibold tracking-[-0.035em]">
+            {heading}
+          </h2>
+          <p className="leading-6 text-muted-foreground">
+            {supportingCopy}
+          </p>
+        </div>
+      )}
 
       <form action={formAction} className="space-y-4">
         <label className="block">
@@ -126,12 +181,38 @@ export function ReturnGapContext({
             pendingLabel="Continuing…"
             className="h-11 w-full rounded-xl"
           >
-            Nothing important happened
+            {hasEvidence
+              ? "Nothing else important happened"
+              : "Nothing important happened"}
           </PendingButton>
         </div>
       </form>
     </section>
   );
+}
+
+function formatEvidenceOutcome(
+  evidence: ReturnGapEvidence,
+  timezone: string,
+  includeDay: boolean,
+) {
+  const day = includeDay ? formatWeekday(evidence.localDate) : null;
+  let outcome: string;
+
+  if (evidence.outcome === "completed") {
+    const time = evidence.completionTimeUnknown
+      ? null
+      : formatScheduledTime(evidence.completedAt, timezone);
+    outcome = time ? `Completed ${time}` : "Completed";
+  } else if (evidence.outcome === "rescheduled") {
+    outcome = evidence.rescheduledFor
+      ? `Moved to ${formatFullLocalDate(evidence.rescheduledFor)}`
+      : "Rescheduled";
+  } else {
+    outcome = "Dropped";
+  }
+
+  return [day, outcome].filter(Boolean).join(" · ");
 }
 
 function countInclusiveDays(startDate: string, endDate: string) {

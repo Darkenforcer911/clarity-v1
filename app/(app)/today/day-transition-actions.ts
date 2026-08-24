@@ -10,6 +10,7 @@ import {
   formatWeekday,
   localDateTimeToIso,
 } from "@/lib/clarity/date-time";
+import { submittedHistoricalCompletionTime } from "@/lib/clarity/historical-completion-time";
 import {
   recapContextSummarySchema,
   previousDayExplanationSchema,
@@ -95,11 +96,16 @@ export async function confirmPreviousDayAction(
         const completedLocalTime = String(
           formData.get(`completedTime:${id}`) ?? "",
         );
+        const submittedCompletionTime =
+          submittedHistoricalCompletionTime({
+            completed: outcome === "finished",
+            selectedCompletionTime: completedLocalTime,
+          });
         const completedAt =
-          outcome === "finished" && completedLocalTime
+          submittedCompletionTime
             ? localDateTimeToIso(
                 transition.localDate,
-                completedLocalTime,
+                submittedCompletionTime,
                 data.profile.timezone,
               )
             : undefined;
@@ -220,7 +226,19 @@ export async function recordReturnGapAction(
     revalidatePath("/today");
     revalidatePath("/today/shape");
   } catch (error) {
-    return transitionError(error, contextSummary);
+    if (process.env.NODE_ENV === "development") {
+      console.error("[Catch-Up] Failed to record return gap", error);
+    } else {
+      console.error(
+        "[Catch-Up] Failed to record return gap",
+        error instanceof Error ? error.name : "UnknownError",
+      );
+    }
+
+    return {
+      error: "Couldn’t save Catch-Up. Try again.",
+      explanation: contextSummary,
+    };
   }
 
   redirect("/today");

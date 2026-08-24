@@ -127,7 +127,9 @@ export const actionContextDecisionSchema = z.object({
   decision: z.enum(["remembered", "once", "dismissed"]),
   destination: z
     .string()
-    .regex(/^\/today(?:\/(?:plan|actions\/[0-9a-f-]+))?$/),
+    .regex(
+      /^\/today(?:\/(?:plan|actions\/[0-9a-f-]+))?(?:\?notice=action-added(?:&time=(?:[01]\d|2[0-3])%3A[0-5]\d)?)?$/,
+    ),
 });
 
 const actionFieldsSchema = coreActionFieldsSchema

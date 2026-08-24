@@ -168,13 +168,6 @@ export function ActionWorkspace({
                 View updates ({visibleUpdates.length})
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem
-              onSelect={() => openWorkspacePanel("remove")}
-              className="min-h-11 cursor-pointer rounded-lg text-destructive focus:text-destructive"
-            >
-              <Trash2 />
-              Remove from today
-            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -221,11 +214,22 @@ export function ActionWorkspace({
           onDeleted={handleUpdateDeleted}
         />
       )}
-      {openPanel === "remove" && (
+      {openPanel === "remove" && action.status === "active" && (
         <RemoveActionPanel
           actionId={action.id}
           onClose={() => setOpenPanel(null)}
         />
+      )}
+      {action.status === "active" && openPanel !== "remove" && (
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => openWorkspacePanel("remove")}
+          className="h-10 w-auto justify-start rounded-lg px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+        >
+          <Trash2 />
+          Remove from today
+        </Button>
       )}
     </div>
   );

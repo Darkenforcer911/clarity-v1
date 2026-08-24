@@ -426,7 +426,7 @@ export class DailyLoopService {
         new Date(scheduledTime).getTime() <= Date.now()
       ) {
         throw new DailyLoopServiceError(
-          "That time has already passed. Choose a later time or select Anytime today.",
+          "That time has already passed. Choose a later time or remove the time.",
         );
       }
 

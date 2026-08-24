@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
-import { Home } from "lucide-react";
+import { CalendarDays, Home } from "lucide-react";
+import { usePathname } from "next/navigation";
 
 export function BottomNavigation({
   contained = false,
@@ -8,14 +11,13 @@ export function BottomNavigation({
   contained?: boolean;
   allowNavigation?: boolean;
 }) {
+  const pathname = usePathname();
   const itemClassName =
-    "flex min-h-12 min-w-24 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-semibold text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-  const itemContent = (
-    <>
-      <Home className="size-5 text-primary" />
-      Today
-    </>
-  );
+    "flex min-h-12 min-w-24 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-semibold transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  const items = [
+    { href: "/today", label: "Today", icon: Home },
+    { href: "/calendar", label: "Calendar", icon: CalendarDays },
+  ];
 
   return (
     <nav
@@ -24,20 +26,28 @@ export function BottomNavigation({
         contained ? "absolute" : "fixed min-[481px]:border-x"
       }`}
     >
-      <div className="flex justify-center">
-        {allowNavigation ? (
-          <Link
-            href="/today"
-            aria-current="page"
-            className={itemClassName}
-          >
-            {itemContent}
-          </Link>
-        ) : (
-          <span aria-current="page" className={itemClassName}>
-            {itemContent}
-          </span>
-        )}
+      <div className="flex justify-center gap-6">
+        {items.map((item) => {
+          const active = pathname.startsWith(item.href);
+          const content = (
+            <>
+              <item.icon className={`size-5 ${active ? "text-primary" : "text-muted-foreground"}`} />
+              {item.label}
+            </>
+          );
+          return allowNavigation ? (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={active ? "page" : undefined}
+              className={`${itemClassName} ${active ? "bg-primary/15 text-foreground" : "text-muted-foreground"}`}
+            >
+              {content}
+            </Link>
+          ) : (
+            <span key={item.href} className={itemClassName}>{content}</span>
+          );
+        })}
       </div>
     </nav>
   );

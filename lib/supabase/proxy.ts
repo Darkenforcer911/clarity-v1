@@ -2,11 +2,20 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { hasEnvVars } from "../utils";
 import type { Database } from "./database.types";
+import {
+  bypassesUserSessionProxy,
+  requiresUserSession,
+} from "./proxy-routes";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
   });
+
+  const pathname = request.nextUrl.pathname;
+  if (bypassesUserSessionProxy(pathname)) {
+    return supabaseResponse;
+  }
 
   // If the env vars are not set, skip proxy check. You can remove this
   // once you setup the project.
@@ -47,15 +56,8 @@ export async function updateSession(request: NextRequest) {
   // with the Supabase client, your users may be randomly logged out.
   const { data } = await supabase.auth.getClaims();
   const user = data?.claims;
-  const pathname = request.nextUrl.pathname;
-  const isPublicRoute =
-    pathname === "/" ||
-    pathname === "/offline" ||
-    pathname === "/manifest.webmanifest" ||
-    pathname === "/sw.js" ||
-    pathname.startsWith("/auth");
 
-  if (!user && !isPublicRoute) {
+  if (!user && requiresUserSession(pathname)) {
     // no user, potentially respond by redirecting the user to the login page
     const url = request.nextUrl.clone();
     url.pathname = "/auth/login";

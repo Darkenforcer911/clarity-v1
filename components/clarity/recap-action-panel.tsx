@@ -6,7 +6,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { progressExplanationError } from "@/lib/clarity/recap-validation";
-import { CompletionTimeEditor } from "./completion-time-editor";
+import { TimeSelector } from "./time-selector";
 
 export type RecapOutcome =
   | "finished"
@@ -48,7 +48,6 @@ export function RecapActionPanel({
   onResolve: (update: Partial<RecapActionDraft>) => void;
   subdued?: boolean;
 }) {
-  const [showDetails, setShowDetails] = useState(false);
   const [activeOutcome, setActiveOutcome] =
     useState<RecapOutcome | null>(() =>
       visualOutcome(draft.outcome),
@@ -88,7 +87,6 @@ export function RecapActionPanel({
 
   function chooseOutcome(outcome: RecapOutcome) {
     setActiveOutcome(outcome);
-    setShowDetails(false);
     setNotDoneEditorOpen(false);
     setCloseEditorOpen(false);
     setExplanationError(null);
@@ -116,7 +114,6 @@ export function RecapActionPanel({
   }
 
   function cancelOutcomeEdit() {
-    setShowDetails(false);
     setNotDoneNoteDraft(draft.notDoneNote);
     setNotDoneEditorOpen(false);
     setCloseContextDraft(draft.closeContext);
@@ -130,6 +127,7 @@ export function RecapActionPanel({
 
   return (
     <article
+      data-slot="recap-activity-card"
       className={`overflow-hidden rounded-2xl border bg-card transition-colors motion-reduce:transition-none ${
         subdued && !open ? "border-border/70" : "border-border"
       }`}
@@ -181,16 +179,13 @@ export function RecapActionPanel({
                 setActiveOutcome("closed");
                 setCloseContextDraft(draft.closeContext);
                 setCloseEditorOpen(true);
-                setShowDetails(false);
               } else if (compactNotDone) {
                 setActiveOutcome("not_done");
                 setNotDoneNoteDraft(draft.notDoneNote);
                 setNotDoneEditorOpen(true);
-                setShowDetails(false);
                 setCloseEditorOpen(false);
               } else {
                 setActiveOutcome("made_progress");
-                setShowDetails(false);
                 setNotDoneEditorOpen(false);
                 setCloseEditorOpen(false);
               }
@@ -326,36 +321,32 @@ export function RecapActionPanel({
 
             {!closeEditorOpen &&
               !notDoneEditorOpen &&
-              activeOutcome === "finished" &&
-              (!showDetails ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setShowDetails(true)}
-                  className="h-10 rounded-xl px-2 text-sm text-muted-foreground"
-                >
-                  {draft.completionTime && !draft.timeUnknown
-                    ? "Change completion time"
-                    : "Add completion time"}
-                </Button>
-              ) : (
-                <CompletionTimeEditor
-                  embedded
-                  heading="Completion time"
-                  initialCompletionTime={draft.completionTime}
-                  initialTimeUnknown={draft.timeUnknown}
-                  onCancel={() => setShowDetails(false)}
-                  onSave={async (timeDraft) => {
+              activeOutcome === "finished" && (
+                <TimeSelector
+                  name="recapCompletionTime"
+                  label="When"
+                  summary={
+                    draft.completionTime && !draft.timeUnknown
+                      ? formatLocalTimeLabel(draft.completionTime)
+                      : "Anytime"
+                  }
+                  value={draft.timeUnknown ? "" : draft.completionTime}
+                  onChange={(completionTime) => {
                     onDraftChange({
-                      completionTime: timeDraft.completionTime,
-                      timeUnknown: timeDraft.timeUnknown,
+                      completionTime,
+                      timeUnknown: !completionTime,
                       completionCorrected: true,
                     });
-                    setShowDetails(false);
-                    return null;
+                  }}
+                  onRemove={() => {
+                    onDraftChange({
+                      completionTime: "",
+                      timeUnknown: true,
+                      completionCorrected: true,
+                    });
                   }}
                 />
-              ))}
+              )}
 
             {activeOutcome === "not_done" &&
             !closeEditorOpen &&
@@ -496,7 +487,7 @@ function recapResolutionLabel(draft: RecapActionDraft) {
   if (draft.outcome === "finished") {
     return draft.completionTime && !draft.timeUnknown
       ? `Done · ${formatLocalTimeLabel(draft.completionTime)}`
-      : "Done";
+      : "Done · Anytime";
   }
 
   if (draft.outcome === "made_progress") {

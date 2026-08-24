@@ -59,6 +59,7 @@ async function ActiveTodayContent({
         profile={data.profile}
         initialRemovedActionId={initialRemovedActionId}
         initialNow={new Date().toISOString()}
+        commitments={data.commitments}
       />
     </>
   );

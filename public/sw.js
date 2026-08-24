@@ -1,4 +1,6 @@
-const CACHE_NAME = "clarity-shell-v1";
+importScripts("/notification-sw-utils.js");
+
+const CACHE_NAME = "clarity-shell-v2";
 const OFFLINE_URL = "/offline";
 const SHELL_ASSETS = [
   OFFLINE_URL,
@@ -6,6 +8,7 @@ const SHELL_ASSETS = [
   "/icons/icon-192.png",
   "/icons/icon-512.png",
   "/icons/apple-touch-icon.png",
+  "/notification-sw-utils.js",
 ];
 
 self.addEventListener("install", (event) => {
@@ -48,4 +51,40 @@ self.addEventListener("fetch", (event) => {
       caches.match(event.request).then((cached) => cached || fetch(event.request)),
     );
   }
+});
+
+self.addEventListener("push", (event) => {
+  let value;
+  try {
+    value = event.data?.json();
+  } catch {
+    return;
+  }
+  const payload = self.ClarityNotificationUtils.parsePushPayload(value);
+  if (!payload) return;
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      tag: payload.tag,
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      data: { targetUrl: payload.targetUrl },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const targetUrl = self.ClarityNotificationUtils.normalizeTargetUrl(
+    event.notification.data?.targetUrl,
+  );
+  if (!targetUrl) return;
+
+  event.waitUntil(
+    self.ClarityNotificationUtils.openNotificationTarget(
+      self.clients,
+      targetUrl,
+    ),
+  );
 });

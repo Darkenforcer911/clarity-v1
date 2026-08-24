@@ -320,7 +320,7 @@ export class ActionWorkspaceService {
 
       if (new Date(proposedTime).getTime() <= Date.now() && !existingOverdueTime) {
         throw new ActionWorkspaceServiceError(
-          "That time has already passed. Choose a later time or select Anytime today.",
+          "That time has already passed. Choose a later time or remove the time.",
           "scheduledTime",
         );
       }
@@ -404,6 +404,68 @@ export class ActionWorkspaceService {
 
     ensureRpcSucceeded(error);
     return Number(data ?? 0);
+  }
+
+  async restoreSingleRemovedProposedAction(actionId: string) {
+    const { supabase, user } = await getAuthenticatedUserAndProfile();
+    const { data: action, error: actionError } = await supabase
+      .from("daily_actions")
+      .select("id, daily_plan_id, status, approved_at")
+      .eq("id", actionId)
+      .eq("user_id", user.id)
+      .single();
+
+    if (actionError || !action) {
+      throw new ActionWorkspaceServiceError(
+        actionError?.message ?? "Removed action not found.",
+      );
+    }
+
+    if (action.status !== "removed" || action.approved_at !== null) {
+      throw new ActionWorkspaceServiceError(
+        "Only a removed action from the current proposal can be restored.",
+      );
+    }
+
+    const { data: plan, error: planError } = await supabase
+      .from("daily_plans")
+      .select("status")
+      .eq("id", action.daily_plan_id)
+      .eq("user_id", user.id)
+      .single();
+
+    if (planError || !plan || plan.status !== "proposed") {
+      throw new ActionWorkspaceServiceError(
+        planError?.message ?? "Only the current proposal can be restored.",
+      );
+    }
+
+    const { data: removedActions, error: removedActionsError } = await supabase
+      .from("daily_actions")
+      .select("id")
+      .eq("daily_plan_id", action.daily_plan_id)
+      .eq("user_id", user.id)
+      .eq("status", "removed")
+      .is("approved_at", null);
+
+    if (removedActionsError) {
+      throw new ActionWorkspaceServiceError(removedActionsError.message);
+    }
+
+    const { error: restoreError } = await callPendingActionWorkspaceRpc(
+      supabase,
+      "restore_removed_proposed_actions",
+      { p_daily_plan_id: action.daily_plan_id },
+    );
+    ensureRpcSucceeded(restoreError);
+
+    for (const removedAction of removedActions ?? []) {
+      if (removedAction.id === actionId) continue;
+      const { error } = await supabase.rpc("remove_proposed_action", {
+        p_daily_action_id: removedAction.id,
+      });
+      ensureRpcSucceeded(error);
+    }
   }
 
   async completeProposedAction(actionId: string) {
@@ -720,7 +782,7 @@ function resolveNewActionTiming(
       return {
         outcome: "validation_error",
         message:
-          "That time has already passed. Choose a later time or select Anytime today.",
+          "That time has already passed. Choose a later time or remove the time.",
       };
     }
 

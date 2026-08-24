@@ -1,21 +1,25 @@
 "use client";
 
 import {
+  ArrowRight,
   Check,
   ChevronDown,
   Pencil,
   Trash2,
 } from "lucide-react";
+import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
 
-import {
-  completeProposedActionAction,
-  removeProposedActionAction,
-  updateActionAction,
-} from "@/app/(app)/today/action-workspace-actions";
+import { updateActionAction } from "@/app/(app)/today/action-workspace-actions";
+import { completeProposedActionFromPlanAction } from "@/app/(app)/today/reconciliation-actions";
 import { Button } from "@/components/ui/button";
 import type { DailyAction } from "@/lib/clarity/daily-loop-queries";
 import { initialDailyLoopActionState } from "@/lib/clarity/action-state";
+import { initialProposedReconciliationActionState } from "@/lib/clarity/proposed-reconciliation-state";
+import {
+  getProposedDateBoundary,
+  getProposedDateBoundaryPresentation,
+} from "@/lib/clarity/proposed-date-boundary";
 import { formatDuration } from "@/lib/clarity/proposed-plan-summary";
 import { ActionFields } from "./action-fields";
 import { PendingButton } from "./pending-button";
@@ -28,6 +32,9 @@ export function ProposedActionCard({
   expanded,
   onToggle,
   onCollapse,
+  onRemove,
+  planLocalDate,
+  currentLocalDate,
 }: {
   action: DailyAction;
   scheduledTime: string | null;
@@ -36,8 +43,13 @@ export function ProposedActionCard({
   expanded: boolean;
   onToggle: (actionId: string) => void;
   onCollapse: (actionId: string) => void;
+  onRemove: (actionId: string) => void;
+  planLocalDate: string;
+  currentLocalDate: string;
 }) {
   const [editing, setEditing] = useState(false);
+  const [completing, setCompleting] = useState(false);
+  const [showCompletionTime, setShowCompletionTime] = useState(false);
   const [showUpdateConfirmation, setShowUpdateConfirmation] = useState(false);
   const cardRef = useRef<HTMLElement>(null);
   const [state, formAction] = useActionState(
@@ -45,10 +57,17 @@ export function ProposedActionCard({
     initialDailyLoopActionState,
   );
   const [completionState, completionAction] = useActionState(
-    completeProposedActionAction,
-    initialDailyLoopActionState,
+    completeProposedActionFromPlanAction,
+    initialProposedReconciliationActionState,
   );
   const userEnteredDetails = getUserEnteredDetails(action.why_it_exists);
+  const dateBoundary =
+    getProposedDateBoundary(planLocalDate, currentLocalDate) ??
+    completionState.dateBoundary ??
+    null;
+  const dateBoundaryPresentation = dateBoundary
+    ? getProposedDateBoundaryPresentation(dateBoundary)
+    : null;
 
   useEffect(() => {
     if (!state.updateSucceededAt) {
@@ -151,7 +170,23 @@ export function ProposedActionCard({
       >
         <div className="min-h-0 overflow-hidden">
           <div className="border-t border-border px-5 pb-5 pt-4">
-            {editing ? (
+            {dateBoundaryPresentation ? (
+              <div className="space-y-4 rounded-xl border border-border bg-card p-4">
+                <div className="space-y-2">
+                  <p className="font-semibold">
+                    {dateBoundaryPresentation.heading}
+                  </p>
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    {dateBoundaryPresentation.message}
+                  </p>
+                </div>
+                <Button asChild className="h-11 w-full rounded-xl">
+                  <Link href={dateBoundaryPresentation.actionHref}>
+                    {dateBoundaryPresentation.actionLabel} <ArrowRight />
+                  </Link>
+                </Button>
+              </div>
+            ) : editing ? (
               <form action={formAction} className="space-y-5">
                 <input type="hidden" name="actionId" value={action.id} />
                 <ActionFields
@@ -207,33 +242,80 @@ export function ProposedActionCard({
                         variant="outline"
                         onClick={() => {
                           setShowUpdateConfirmation(false);
+                          setCompleting(false);
                           setEditing(true);
                         }}
                         className="h-11 rounded-xl"
                       >
                         Change time
                       </Button>
-                      <form action={completionAction}>
-                        <input
-                          type="hidden"
-                          name="actionId"
-                          value={action.id}
-                        />
-                        <PendingButton
-                          type="submit"
-                          pendingLabel="Completing…"
-                          className="h-11 w-full rounded-xl"
-                        >
-                          Already done
-                        </PendingButton>
-                      </form>
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          setEditing(false);
+                          setCompleting(true);
+                        }}
+                        className="h-11 w-full rounded-xl"
+                      >
+                        Already done
+                      </Button>
                     </div>
+                  </div>
+                )}
+                {completing && (
+                  <form
+                    action={completionAction}
+                    data-reconciliation-form
+                    className="mb-5 space-y-4 rounded-xl border border-border bg-card p-4"
+                  >
+                    <input type="hidden" name="actionId" value={action.id} />
+                    <p className="font-medium">Mark as already done?</p>
+                    {!showCompletionTime ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => setShowCompletionTime(true)}
+                        className="h-10 w-auto px-2 text-muted-foreground"
+                      >
+                        + Add time
+                      </Button>
+                    ) : (
+                      <label className="block min-w-0 space-y-2 text-sm font-medium">
+                        <span>Completion time</span>
+                        <input
+                          type="time"
+                          name="completedTime"
+                          defaultValue={timePassed ? scheduledTimeInput : ""}
+                          className="flex h-11 min-w-0 w-full max-w-full rounded-xl border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none [box-sizing:border-box] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                        />
+                      </label>
+                    )}
                     {completionState.error && (
                       <p role="alert" className="text-sm text-foreground">
                         {completionState.error}
                       </p>
                     )}
-                  </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setCompleting(false);
+                          setShowCompletionTime(false);
+                        }}
+                        className="h-11 rounded-xl"
+                      >
+                        Cancel
+                      </Button>
+                      <PendingButton
+                        type="submit"
+                        pendingLabel="Completing…"
+                        className="h-11 rounded-xl"
+                      >
+                        Confirm
+                      </PendingButton>
+                    </div>
+                  </form>
                 )}
                 {userEnteredDetails && (
                   <dl className="text-sm">
@@ -253,6 +335,7 @@ export function ProposedActionCard({
                     variant="outline"
                     onClick={() => {
                       setShowUpdateConfirmation(false);
+                      setCompleting(false);
                       setEditing(true);
                     }}
                     className="h-11 w-full rounded-xl"
@@ -260,21 +343,29 @@ export function ProposedActionCard({
                     <Pencil />
                     Edit action
                   </Button>
-                  <form
-                    action={removeProposedActionAction}
-                    onSubmit={() => onCollapse(action.id)}
-                  >
-                    <input type="hidden" name="actionId" value={action.id} />
-                    <PendingButton
-                      type="submit"
+                  {!timePassed && !completing && (
+                    <Button
+                      type="button"
                       variant="ghost"
-                      pendingLabel="Removing…"
+                      onClick={() => {
+                        setEditing(false);
+                        setCompleting(true);
+                      }}
+                      className="h-10 w-auto justify-start rounded-lg px-2 text-muted-foreground"
+                    >
+                      <Check /> Already done
+                    </Button>
+                  )}
+                  {!completing && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => onRemove(action.id)}
                       className="h-10 w-auto justify-start rounded-lg px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
                     >
-                      <Trash2 />
-                      Remove from plan
-                    </PendingButton>
-                  </form>
+                      <Trash2 /> Remove from plan
+                    </Button>
+                  )}
                 </div>
               </>
             )}

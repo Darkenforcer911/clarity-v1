@@ -32,6 +32,7 @@ async function ProposedPlanContent() {
       removedActionCount={data.removedProposedActions.length}
       profile={data.profile}
       initialNow={new Date().toISOString()}
+      commitments={data.commitments}
     />
   );
 }

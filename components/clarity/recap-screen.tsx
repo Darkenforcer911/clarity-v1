@@ -1,6 +1,6 @@
 "use client";
 
-import type { ComponentProps, ReactNode } from "react";
+import { useState, type ComponentProps, type ReactNode } from "react";
 
 import { AppShell } from "./app-shell";
 import { RecapExperience } from "./recap-experience";
@@ -20,7 +20,13 @@ export function RecapScreen({
   contained?: boolean;
   developmentPreview?: boolean;
 }) {
-  const recap = <RecapExperience {...experience} />;
+  const [editorActive, setEditorActive] = useState(false);
+  const recap = (
+    <RecapExperience
+      {...experience}
+      onEditorActiveChange={setEditorActive}
+    />
+  );
 
   return (
     <AppShell
@@ -29,6 +35,7 @@ export function RecapScreen({
       enableTransientNotices={!developmentPreview}
       allowAccountSignOut={!developmentPreview}
       allowProductNavigation={!developmentPreview}
+      hideBottomNavigation={editorActive}
     >
       {formAction ? (
         <form action={formAction}>

@@ -12,6 +12,16 @@ import {
 import { addLocalDays, getLocalDate } from "./date-time";
 import { startServerTimer } from "./server-performance";
 import { resolvePreviousDayRouting } from "./previous-day-routing";
+import { isReturnGapBlockingAction } from "./return-gap-boundary";
+import {
+  parseCalendarCommitments,
+  type CalendarCommitment,
+} from "./calendar-commitments";
+import { filterActiveCalendarCommitments } from "./calendar-commitment-visibility";
+import {
+  collectReturnGapEvidence,
+  type ReturnGapEvidence,
+} from "./return-gap-evidence";
 
 export type DailyPlan = Tables<"daily_plans"> & {
   record_kind: "planned" | "recorded_without_plan" | "skipped";
@@ -19,6 +29,7 @@ export type DailyPlan = Tables<"daily_plans"> & {
 export type DailyAction = Tables<"daily_actions"> & {
   completion_recorded_at: string | null;
   completion_time_unknown: boolean;
+  completion_evidence_only: boolean;
   reschedule_count: number;
 };
 export type DayRecord = Tables<"day_records">;
@@ -68,6 +79,8 @@ export type DailyLoopData = {
   previousDayTransition: PreviousDayTransition | null;
   pendingReturnGap: PendingReturnGap | null;
   latestReturnGapRecord: ReturnGapRecord | null;
+  commitments: CalendarCommitment[];
+  catchUpEvidence: ReturnGapEvidence[];
 };
 
 export class AuthenticationRequiredError extends Error {
@@ -134,6 +147,7 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
     previousPlanResult,
     latestClosedPlanResult,
     latestReturnGapResult,
+    commitmentsResult,
   ] = await timer.measure("primary_parallel_queries", () =>
     Promise.all([
       supabase
@@ -167,6 +181,9 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
         .limit(1)
         .maybeSingle(),
       callUntypedRpc(supabase, "get_latest_return_gap_record", {}),
+      callUntypedRpc(supabase, "get_calendar_commitments_for_date", {
+        p_local_date: localDate,
+      }),
     ]),
   );
 
@@ -227,6 +244,10 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
     throw new Error(latestReturnGapResult.error.message);
   }
 
+  if (commitmentsResult.error) {
+    throw new Error(commitmentsResult.error.message);
+  }
+
   const planRow = planResult.data as PlanWithDailyData | null;
   const previousPlanRow =
     previousPlanResult.data as PlanWithDailyData | null;
@@ -242,9 +263,14 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
           localDate: previousPlan.local_date,
           status: previousPlan.status,
           approvedAt: previousPlan.approved_at,
-          hasApprovedActions: (
+          hasBlockingActions: (
             previousPlanRow?.daily_actions ?? []
-          ).some((action) => action.approved_at !== null),
+          ).some((action) =>
+            isReturnGapBlockingAction({
+              status: action.status,
+              approvedAt: action.approved_at,
+            }),
+          ),
         }
       : null,
     latestClosedPlanDate:
@@ -299,6 +325,38 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
           gapEndDate: previousDayRouting.gapEndDate,
         }
       : null;
+  const catchUpEvidence = pendingReturnGap
+    ? await timer.measure("return_gap_evidence", async () => {
+        const { data, error } = await supabase
+          .from("daily_plans")
+          .select("local_date, approved_at, status, daily_actions(*)")
+          .eq("user_id", user.id)
+          .gte("local_date", pendingReturnGap.gapStartDate)
+          .lte("local_date", pendingReturnGap.gapEndDate)
+          .order("local_date");
+
+        if (error) throw new Error(error.message);
+
+        return collectReturnGapEvidence(
+          data.map((gapPlan) => ({
+            localDate: gapPlan.local_date,
+            approvedAt: gapPlan.approved_at,
+            status: gapPlan.status,
+            actions: (gapPlan.daily_actions ?? []).map((action) => ({
+              id: action.id,
+              title: action.title,
+              status: action.status,
+              approvedAt: action.approved_at,
+              completionEvidenceOnly: action.completion_evidence_only,
+              completedAt: action.completed_at,
+              completionTimeUnknown: action.completion_time_unknown,
+              rescheduledFor: action.rescheduled_for,
+              sortOrder: action.sort_order,
+            })),
+          })),
+        );
+      })
+    : [];
   const adoptedTitles = new Set(
     currentActions
       .filter((action) =>
@@ -325,6 +383,10 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
     previousDayTransition,
     pendingReturnGap,
     latestReturnGapRecord,
+    commitments: filterActiveCalendarCommitments(
+      parseCalendarCommitments(commitmentsResult.data),
+    ),
+    catchUpEvidence,
   };
 
   timer.finish();

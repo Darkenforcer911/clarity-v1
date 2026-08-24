@@ -1,26 +1,51 @@
-import Link from "next/link";
+import { redirect } from "next/navigation";
+import { Suspense } from "react";
 
-export default function CalendarPlaceholderPage() {
+import { CalendarAgenda } from "@/components/clarity/calendar-agenda";
+import { PageLoading } from "@/components/clarity/page-loading";
+import {
+  AuthenticationRequiredError,
+} from "@/lib/clarity/daily-loop-queries";
+import { getCalendarPageData } from "@/lib/clarity/calendar-service";
+
+export default function CalendarPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   return (
-    <section className="space-y-6 pt-6">
-      <div className="space-y-2">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          Calendar
-        </p>
-        <h1 className="text-3xl font-semibold tracking-[-0.045em]">
-          Plan ahead
-        </h1>
-        <p className="text-sm leading-6 text-muted-foreground">
-          Calendar planning is coming soon. Today has not been started.
-        </p>
-      </div>
+    <Suspense fallback={<PageLoading />}>
+      <CalendarContent searchParams={searchParams} />
+    </Suspense>
+  );
+}
 
-      <Link
-        href="/today"
-        className="inline-flex min-h-11 items-center rounded-lg text-sm font-medium text-[var(--clarity-completed)] transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        Back to Today
-      </Link>
-    </section>
+async function CalendarContent({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const query = await searchParams;
+  let data;
+
+  try {
+    data = await getCalendarPageData(
+      typeof query.date === "string" ? query.date : undefined,
+    );
+  } catch (error) {
+    if (error instanceof AuthenticationRequiredError) redirect("/auth/login");
+    throw error;
+  }
+
+  return (
+    <CalendarAgenda
+      key={data.selectedDate}
+      {...data}
+      timezone={data.profile.timezone}
+      initialNow={new Date().toISOString()}
+      initialCommitmentId={
+        typeof query.commitment === "string" ? query.commitment : undefined
+      }
+    />
   );
 }

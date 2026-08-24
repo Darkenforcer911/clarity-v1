@@ -1,7 +1,7 @@
 "use client";
 
-import { Check, ChevronDown } from "lucide-react";
-import { useRef, useState } from "react";
+import { Check, ChevronDown, CirclePlus, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,6 +17,7 @@ import {
   type RecapActionDraft,
 } from "./recap-action-panel";
 import { RecapDayContextField } from "./recap-day-context-field";
+import { SecondarySettingDisclosure } from "./secondary-setting-disclosure";
 
 export type RecapPlanAction = {
   id: string;
@@ -43,7 +44,7 @@ export function RecapExperience({
   onDayContextChange,
   continueLabel,
   continueDisabled = false,
-  reviewSectionHeading,
+  onEditorActiveChange,
 }: {
   recapDate: string;
   currentDate: string;
@@ -67,7 +68,7 @@ export function RecapExperience({
   onDayContextChange?: (value: string) => void;
   continueLabel?: string;
   continueDisabled?: boolean;
-  reviewSectionHeading?: string;
+  onEditorActiveChange?: (active: boolean) => void;
 }) {
   const [openActionId, setOpenActionId] = useState<string | null>(
     () =>
@@ -75,13 +76,13 @@ export function RecapExperience({
         (action) => !isRecapDraftResolved(drafts[action.id]),
       )?.id ?? null,
   );
-  const [reviewDetailsOpen, setReviewDetailsOpen] = useState(true);
   const [auxiliaryPanel, setAuxiliaryPanel] = useState<string | null>(
     null,
   );
   const [plansChangedOpen, setPlansChangedOpen] = useState(false);
   const [plansChangedDraft, setPlansChangedDraft] = useState("");
   const [internalDayContext, setInternalDayContext] = useState("");
+  const [editorFieldFocused, setEditorFieldFocused] = useState(false);
   const actionElements = useRef(
     new Map<string, HTMLDivElement>(),
   );
@@ -91,11 +92,25 @@ export function RecapExperience({
   );
   const unresolvedCount = unresolved.length;
   const allResolved = unresolvedCount === 0;
-  const detailsVisible = !allResolved || reviewDetailsOpen;
   const actionWord = unresolvedCount === 1 ? "action" : "actions";
   const verb = unresolvedCount === 1 ? "needs" : "need";
-  const outcomeCounts = countOutcomes(actions, drafts);
   const contextValue = dayContext ?? internalDayContext;
+  const auxiliaryEditorOpen =
+    auxiliaryPanel === "note" ||
+    auxiliaryPanel?.startsWith("completed:") === true;
+  const recapEditorActive =
+    editorFieldFocused || plansChangedOpen || auxiliaryEditorOpen;
+
+  useEffect(() => {
+    onEditorActiveChange?.(recapEditorActive);
+  }, [onEditorActiveChange, recapEditorActive]);
+
+  useEffect(
+    () => () => {
+      onEditorActiveChange?.(false);
+    },
+    [onEditorActiveChange],
+  );
 
   function updateDayContext(value: string) {
     setInternalDayContext(value);
@@ -180,8 +195,100 @@ export function RecapExperience({
     );
   }
 
+  function renderCompletedActivity(activity: RecapCompletedItem) {
+    const panelId = `completed:${activity.id}`;
+    const open = auxiliaryPanel === panelId;
+
+    return (
+      <article
+        key={activity.id}
+        data-slot="recap-activity-card"
+        className="overflow-hidden rounded-2xl border border-border bg-card transition-colors motion-reduce:transition-none"
+      >
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => {
+            setOpenActionId(null);
+            setPlansChangedOpen(false);
+            setAuxiliaryPanel(open ? null : panelId);
+          }}
+          className="flex min-h-14 w-full items-center justify-between gap-3 px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block font-semibold">
+              {activity.title}
+            </span>
+            <span className="mt-0.5 flex items-center gap-1 text-sm text-[var(--clarity-completed)]">
+              <Check aria-hidden="true" className="size-3.5 shrink-0" />
+              {`Done · ${
+                activity.completionTime
+                  ? formatLocalTimeLabel(activity.completionTime)
+                  : "Anytime"
+              }`}
+            </span>
+          </span>
+          <ChevronDown
+            aria-hidden="true"
+            className={`size-5 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none ${
+              open ? "rotate-180" : ""
+            }`}
+          />
+        </button>
+
+        <div
+          aria-hidden={!open}
+          inert={!open ? true : undefined}
+          className={`grid transition-[grid-template-rows] duration-200 motion-reduce:transition-none ${
+            open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+          }`}
+        >
+          <div className="overflow-hidden">
+            <div className="space-y-3 border-t border-border px-3 py-3">
+              {onUpdateActivity && (
+                <RecapCompletedItemForm
+                  embedded
+                  initialItem={activity}
+                  onSave={(updated) => {
+                    onUpdateActivity(updated);
+                    setAuxiliaryPanel(null);
+                  }}
+                  onCancel={() => setAuxiliaryPanel(null)}
+                />
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  onDeleteActivity(activity.id);
+                  setAuxiliaryPanel(null);
+                }}
+                className="h-10 w-auto justify-start rounded-lg px-2 text-xs text-destructive hover:text-destructive"
+              >
+                <Trash2 />
+                Remove completed item
+              </Button>
+            </div>
+          </div>
+        </div>
+      </article>
+    );
+  }
+
   return (
-    <section className="space-y-5">
+    <section
+      className="space-y-5"
+      onFocusCapture={(event) => {
+        if (isEditorField(event.target)) {
+          setEditorFieldFocused(true);
+        }
+      }}
+      onBlurCapture={(event) => {
+        if (!isEditorField(event.relatedTarget)) {
+          setEditorFieldFocused(false);
+        }
+      }}
+    >
       <header className="space-y-2">
         <p className="text-sm text-muted-foreground">
           {formatFullLocalDate(recapDate)}
@@ -198,62 +305,28 @@ export function RecapExperience({
       </header>
 
       <section className="space-y-2.5">
-        {allResolved ? (
-          <div className="rounded-2xl border border-border bg-card px-4 py-3">
-            <h2 className="font-semibold">Ready to save {day}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {outcomeSummary(outcomeCounts)}
-            </p>
-            <Button
-              type="button"
-              variant="ghost"
-              aria-expanded={reviewDetailsOpen}
-              aria-controls="recap-action-details"
-              onClick={() => {
-                if (reviewDetailsOpen) {
-                  setOpenActionId(null);
-                }
-                setReviewDetailsOpen((current) => !current);
-                setAuxiliaryPanel(null);
-              }}
-              className="mt-1 h-10 rounded-xl px-0 text-muted-foreground"
-            >
-              {reviewDetailsOpen ? "Hide details" : "Review details"}
-              <ChevronDown
-                className={`size-4 transition-transform motion-reduce:transition-none ${
-                  reviewDetailsOpen ? "rotate-180" : ""
-                }`}
-              />
-            </Button>
-          </div>
-        ) : (
+        {unresolvedCount >= 2 && (
           <div className="space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold text-muted-foreground">
-                {reviewSectionHeading ??
-                  `Needs review · ${unresolvedCount}`}
-              </h2>
-              {unresolvedCount >= 2 && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => {
-                    if (plansChangedOpen) {
-                      setPlansChangedOpen(false);
-                      return;
-                    }
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  if (plansChangedOpen) {
+                    setPlansChangedOpen(false);
+                    return;
+                  }
 
-                    setAuxiliaryPanel(null);
-                    setPlansChangedDraft(contextValue);
-                    setPlansChangedOpen(true);
-                  }}
-                  className="h-10 shrink-0 rounded-xl px-2 text-sm text-muted-foreground"
-                >
-                  Rest of the day changed?
-                </Button>
-              )}
+                  setAuxiliaryPanel(null);
+                  setPlansChangedDraft(contextValue);
+                  setPlansChangedOpen(true);
+                }}
+                className="h-10 shrink-0 rounded-xl px-2 text-sm text-muted-foreground"
+              >
+                Rest of the day changed?
+              </Button>
             </div>
-            {plansChangedOpen && unresolvedCount >= 2 && (
+            {plansChangedOpen && (
               <div className="space-y-3 rounded-2xl border border-border bg-card p-4">
                 <h3 className="font-semibold">What happened?</h3>
                 <Textarea
@@ -308,115 +381,44 @@ export function RecapExperience({
             )}
           </div>
         )}
-        <div
-          id="recap-action-details"
-          aria-hidden={!detailsVisible}
-          inert={detailsVisible ? undefined : true}
-          className={`grid transition-[grid-template-rows,opacity] duration-150 ease-out motion-reduce:transition-none ${
-            detailsVisible
-              ? "grid-rows-[1fr] opacity-100"
-              : "grid-rows-[0fr] opacity-0"
-          }`}
-        >
-          <div className="overflow-hidden">
-            <div className="space-y-2">
-              {actions.map((action) =>
-                renderAction(
-                  action,
-                  isRecapDraftResolved(drafts[action.id]),
-                ),
-              )}
-            </div>
-          </div>
+        <div className="space-y-2">
+          {actions.map((action) =>
+            renderAction(
+              action,
+              isRecapDraftResolved(drafts[action.id]),
+            ),
+          )}
+          {activities.map(renderCompletedActivity)}
         </div>
       </section>
 
-      <section className="space-y-2 border-t border-border/70 pt-4">
-        {activities.map((activity) =>
-          auxiliaryPanel === `completed:${activity.id}` &&
-          onUpdateActivity ? (
+      <section className="space-y-2">
+        {onAddActivity && (
+          <SecondarySettingDisclosure
+            icon={CirclePlus}
+            label="Add something completed"
+            summary="Something you did that wasn't planned"
+            expanded={auxiliaryPanel === "completed:new"}
+            onExpandedChange={(open) => {
+              if (open) {
+                setOpenActionId(null);
+                setPlansChangedOpen(false);
+                setAuxiliaryPanel("completed:new");
+              } else {
+                setAuxiliaryPanel(null);
+              }
+            }}
+            showDone={false}
+          >
             <RecapCompletedItemForm
-              key={activity.id}
-              initialItem={activity}
-              onSave={(updated) => {
-                onUpdateActivity(updated);
+              embedded
+              onSave={(activity) => {
+                onAddActivity(activity);
                 setAuxiliaryPanel(null);
               }}
               onCancel={() => setAuxiliaryPanel(null)}
             />
-          ) : (
-            <article
-              key={activity.id}
-              className="flex min-h-11 items-center gap-3 rounded-xl px-2 py-1.5"
-            >
-              <Check
-                aria-hidden="true"
-                className="size-4 shrink-0 text-[var(--clarity-completed)]"
-              />
-              <p className="min-w-0 flex-1 text-sm font-medium">
-                {activity.title}
-                {activity.completionTime && (
-                  <span className="font-normal text-muted-foreground">
-                    {` · ${formatLocalTimeLabel(activity.completionTime)}`}
-                  </span>
-                )}
-              </p>
-              {onUpdateActivity && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setOpenActionId(null);
-                    setPlansChangedOpen(false);
-                    setAuxiliaryPanel(`completed:${activity.id}`);
-                  }}
-                  className="h-9 px-2 text-xs text-muted-foreground"
-                >
-                  Edit
-                </Button>
-              )}
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  onDeleteActivity(activity.id);
-                  if (auxiliaryPanel === `completed:${activity.id}`) {
-                    setAuxiliaryPanel(null);
-                  }
-                }}
-                className="h-9 px-2 text-xs text-destructive hover:text-destructive"
-              >
-                Remove
-              </Button>
-            </article>
-          ),
-        )}
-
-        {auxiliaryPanel === "completed:new" && onAddActivity ? (
-          <RecapCompletedItemForm
-            onSave={(activity) => {
-              onAddActivity(activity);
-              setAuxiliaryPanel(null);
-            }}
-            onCancel={() => setAuxiliaryPanel(null)}
-          />
-        ) : (
-          onAddActivity && (
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => {
-                setOpenActionId(null);
-                setPlansChangedOpen(false);
-                setAuxiliaryPanel("completed:new");
-              }}
-              className="h-11 w-full justify-start rounded-xl px-2 text-muted-foreground"
-            >
-              + Add something completed
-            </Button>
-          )
+          </SecondarySettingDisclosure>
         )}
 
         <RecapDayContextField
@@ -465,6 +467,13 @@ export function RecapExperience({
   );
 }
 
+function isEditorField(target: EventTarget | null) {
+  return (
+    target instanceof HTMLElement &&
+    target.matches('input:not([type="hidden"]), textarea, select')
+  );
+}
+
 function formatLocalTimeLabel(value: string) {
   const [hour, minute] = value.split(":").map(Number);
   const meridiem = hour >= 12 ? "pm" : "am";
@@ -497,59 +506,6 @@ export function isRecapDraftResolved(
   }
 
   return true;
-}
-
-function countOutcomes(
-  actions: RecapPlanAction[],
-  drafts: Record<string, RecapActionDraft>,
-) {
-  return actions.reduce(
-    (counts, action) => {
-      const outcome = drafts[action.id]?.outcome;
-
-      if (outcome === "finished") counts.finished += 1;
-      if (outcome === "made_progress") counts.progressed += 1;
-      if (outcome === "closed") counts.closed += 1;
-      if (
-        outcome === "not_done" ||
-        outcome === "resolved_elsewhere"
-      ) {
-        counts.notDone += 1;
-      }
-
-      return counts;
-    },
-    {
-      finished: 0,
-      progressed: 0,
-      notDone: 0,
-      closed: 0,
-    },
-  );
-}
-
-function outcomeSummary(counts: ReturnType<typeof countOutcomes>) {
-  const parts: string[] = [];
-
-  if (counts.finished > 0) {
-    parts.push(`${counts.finished} done`);
-  }
-
-  if (counts.progressed > 0) {
-    parts.push(`${counts.progressed} progressed`);
-  }
-
-  if (counts.notDone > 0) {
-    parts.push(`${counts.notDone} didn’t happen`);
-  }
-
-  if (counts.closed > 0) {
-    parts.push(`${counts.closed} removed`);
-  }
-
-  return parts.length > 0
-    ? parts.join(" · ")
-    : "No planned outcomes recorded";
 }
 
 function scrollIntoViewIfNeeded(element: HTMLElement | undefined) {

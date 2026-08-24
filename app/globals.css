@@ -65,6 +65,12 @@
 }
 
 @layer components {
+  @media (hover: hover) and (pointer: fine) {
+    .calendar-date-chip:not([aria-current="date"]):hover {
+      @apply bg-secondary;
+    }
+  }
+
   .duration-number-input {
     appearance: textfield;
     -moz-appearance: textfield;
@@ -99,7 +105,6 @@
   }
 
   input[type="date"],
-  input[type="time"],
   input[type="datetime-local"] {
     display: block;
     width: 100%;
@@ -109,12 +114,15 @@
     min-inline-size: 0;
     max-inline-size: 100%;
     box-sizing: border-box;
+  }
+
+  input[type="date"],
+  input[type="datetime-local"] {
     -webkit-appearance: none;
     appearance: none;
   }
 
   input[type="date"]::-webkit-date-and-time-value,
-  input[type="time"]::-webkit-date-and-time-value,
   input[type="datetime-local"]::-webkit-date-and-time-value {
     display: block;
     width: 100%;
@@ -130,7 +138,6 @@
   }
 
   input[type="date"]::-webkit-datetime-edit,
-  input[type="time"]::-webkit-datetime-edit,
   input[type="datetime-local"]::-webkit-datetime-edit {
     display: block;
     width: 100%;
@@ -155,5 +162,12 @@
     max-inline-size: 100%;
     overflow: hidden;
     box-sizing: border-box;
+  }
+
+  @media (max-width: 480px) and (hover: none) {
+    body:has([data-reconciliation-form]:focus-within)
+      nav[aria-label="Primary"] {
+      display: none;
+    }
   }
 }

@@ -3,6 +3,8 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 
+import { formatAddedActionNotice } from "@/lib/clarity/add-action-destination";
+
 const notices: Record<string, string> = {
   "changes-saved": "Changes saved.",
   removed: "Removed from today.",
@@ -24,8 +26,11 @@ export function TransientNotice() {
   const searchParams = useSearchParams();
   const notice = searchParams.get("notice");
   const recapDay = searchParams.get("day");
+  const addedActionTime = searchParams.get("time");
   const message =
-    notice === "recap-captured"
+    notice === "action-added"
+      ? formatAddedActionNotice(addedActionTime)
+      : notice === "recap-captured"
       ? recapDay && weekdays.has(recapDay)
         ? `${recapDay} captured`
         : "Previous day captured"
@@ -46,10 +51,15 @@ export function TransientNotice() {
 
   return (
     <div
-      role="status"
-      className="fixed left-1/2 top-[calc(env(safe-area-inset-top)+4.25rem)] z-50 w-[min(calc(100%-2rem),28rem)] -translate-x-1/2 rounded-xl bg-secondary px-4 py-3 text-center text-sm font-semibold text-[var(--clarity-completed)] shadow-lg"
+      className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center px-4 pt-[calc(env(safe-area-inset-top)+4.25rem)]"
     >
-      {message}
+      <div
+        role="status"
+        aria-live="polite"
+        className="w-fit max-w-full rounded-xl bg-secondary px-4 py-3 text-center text-sm font-semibold text-[var(--clarity-completed)] shadow-lg"
+      >
+        {message}
+      </div>
     </div>
   );
 }

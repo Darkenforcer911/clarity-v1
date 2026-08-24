@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z, ZodError } from "zod";
 
-import { addedActionDestination } from "@/lib/clarity/add-action-destination";
+import {
+  addedActionNoticeDestination,
+} from "@/lib/clarity/add-action-destination";
 import type { DailyLoopActionState } from "@/lib/clarity/action-state";
 import {
   ActionWorkspaceServiceError,
@@ -165,7 +167,10 @@ export async function addActionAction(
       };
     }
 
-    destination = addedActionDestination(result.planStatus);
+    destination = addedActionNoticeDestination(
+      result.planStatus,
+      input.actionType === "fixed" ? input.scheduledTime ?? "" : "",
+    );
     revalidatePath("/today");
     revalidatePath("/today/active");
     revalidatePath("/today/plan");
@@ -287,6 +292,36 @@ export async function removeProposedActionAction(formData: FormData) {
   const actionId = z.string().uuid().parse(formData.get("actionId"));
   await actionWorkspaceService.removeProposedAction(actionId);
   revalidatePath("/today/plan");
+}
+
+export async function removeProposedActionInlineAction(actionId: string) {
+  try {
+    const parsedActionId = z.string().uuid().parse(actionId);
+    await actionWorkspaceService.removeProposedAction(parsedActionId);
+    return { success: true as const, error: null };
+  } catch (error) {
+    return {
+      success: false as const,
+      error: actionError(error).error,
+    };
+  }
+}
+
+export async function restoreProposedActionInlineAction(actionId: string) {
+  try {
+    const parsedActionId = z.string().uuid().parse(actionId);
+    await actionWorkspaceService.restoreSingleRemovedProposedAction(
+      parsedActionId,
+    );
+    revalidatePath("/today");
+    revalidatePath("/today/plan");
+    return { success: true as const, error: null };
+  } catch (error) {
+    return {
+      success: false as const,
+      error: actionError(error).error,
+    };
+  }
 }
 
 export async function restoreRemovedProposedActionsAction(

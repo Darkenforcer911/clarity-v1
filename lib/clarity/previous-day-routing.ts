@@ -2,7 +2,7 @@ type PreviousPlanBoundary = {
   localDate: string;
   status: string;
   approvedAt: string | null;
-  hasApprovedActions: boolean;
+  hasBlockingActions: boolean;
 };
 
 type PreviousDayRoutingInput = {
@@ -43,7 +43,7 @@ export function resolvePreviousDayRouting({
     previousPlan &&
     previousPlan.approvedAt === null &&
     (["active", "closing"].includes(previousPlan.status) ||
-      previousPlan.hasApprovedActions)
+      previousPlan.hasBlockingActions)
   ) {
     return {
       kind: "inconsistent_unapproved_plan",

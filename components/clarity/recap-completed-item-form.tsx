@@ -4,6 +4,10 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { initialHistoricalCompletionTime } from "@/lib/clarity/historical-completion-time";
+
+import { ClarityFormHeader } from "./clarity-form-header";
+import { TimeSelector } from "./time-selector";
 
 export type RecapCompletedItem = {
   id: string;
@@ -15,14 +19,21 @@ export function RecapCompletedItemForm({
   initialItem,
   onSave,
   onCancel,
+  embedded = false,
+  submitting = false,
 }: {
   initialItem?: RecapCompletedItem;
   onSave: (item: RecapCompletedItem) => void;
   onCancel: () => void;
+  embedded?: boolean;
+  submitting?: boolean;
 }) {
   const [title, setTitle] = useState(initialItem?.title ?? "");
-  const [completionTime, setCompletionTime] = useState(
-    initialItem?.completionTime ?? "",
+  const [completionTime, setCompletionTime] = useState(() =>
+    initialHistoricalCompletionTime({
+      completed: true,
+      existingCompletionTime: initialItem?.completionTime,
+    }),
   );
   const [error, setError] = useState<string | null>(null);
 
@@ -30,7 +41,7 @@ export function RecapCompletedItemForm({
     const normalizedTitle = title.trim();
 
     if (!normalizedTitle) {
-      setError("Enter what you completed.");
+      setError("Enter what you did.");
       return;
     }
 
@@ -50,9 +61,24 @@ export function RecapCompletedItemForm({
   }
 
   return (
-    <section className="space-y-4 rounded-xl border border-border/70 bg-transparent p-3">
+    <section
+      className={
+        embedded
+          ? "w-full min-w-0 max-w-full space-y-5 text-foreground"
+          : "w-full min-w-0 max-w-full space-y-5 rounded-2xl border border-border bg-card p-5 text-foreground"
+      }
+    >
+      {!embedded && (
+        <ClarityFormHeader
+          title={initialItem ? "Edit completed item" : "Add something completed"}
+          subtitle="Something you did that wasn't planned"
+          closeLabel="Close completed item form"
+          onClose={onCancel}
+        />
+      )}
+
       <label className="block min-w-0 space-y-2">
-        <span className="text-sm font-semibold">What did you complete?</span>
+        <span className="text-sm font-semibold">What did you do?</span>
         <Input
           value={title}
           maxLength={200}
@@ -67,45 +93,54 @@ export function RecapCompletedItemForm({
             setTitle(event.currentTarget.value);
             setError(null);
           }}
-          className="h-11 rounded-xl"
+          className="h-12 rounded-xl"
         />
       </label>
-      <label className="block min-w-0 space-y-2">
-        <span className="text-sm font-semibold">
-          When? <span className="font-normal text-muted-foreground">(optional)</span>
-        </span>
-        <Input
-          type="time"
-          value={completionTime}
-          onChange={(event) => {
-            setCompletionTime(event.currentTarget.value);
-            setError(null);
-          }}
-          className="h-11 rounded-xl"
-        />
-      </label>
+
+      <TimeSelector
+        name="completionTime"
+        label="When"
+        summary={formatCompletionTimeSummary(completionTime)}
+        value={completionTime}
+        onChange={(value) => {
+          setCompletionTime(value);
+          setError(null);
+        }}
+        onRemove={() => {
+          setCompletionTime("");
+          setError(null);
+        }}
+      />
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
-      <div className="grid grid-cols-2 gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onCancel}
-          className="h-11 rounded-xl"
-        >
-          Cancel
-        </Button>
-        <Button
-          type="button"
-          onClick={save}
-          className="h-11 rounded-xl"
-        >
-          {initialItem ? "Save changes" : "Add completed item"}
-        </Button>
-      </div>
+      <Button
+        type="button"
+        onClick={save}
+        disabled={submitting}
+        className="h-12 w-full rounded-xl text-base"
+      >
+        {submitting
+          ? "Saving…"
+          : initialItem
+            ? "Save changes"
+            : "Add completed item"}
+      </Button>
     </section>
   );
+}
+
+function formatCompletionTimeSummary(value: string) {
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) {
+    return "Anytime";
+  }
+
+  const [hourText, minute] = value.split(":");
+  const hour = Number(hourText);
+  const meridiem = hour < 12 ? "am" : "pm";
+  const displayHour = hour % 12 || 12;
+
+  return `${displayHour}:${minute} ${meridiem}`;
 }

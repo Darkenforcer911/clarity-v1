@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Lightbulb, Plus, X } from "lucide-react";
+import { ArrowLeft, Lightbulb, Plus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { addActionAction } from "@/app/(app)/today/action-workspace-actions";
@@ -11,6 +11,7 @@ import {
   type DailyLoopActionState,
 } from "@/lib/clarity/action-state";
 import { ActionFields } from "./action-fields";
+import { ClarityFormHeader } from "./clarity-form-header";
 import { OngoingContextPrompt } from "./ongoing-context-prompt";
 import { PendingButton } from "./pending-button";
 
@@ -165,28 +166,14 @@ function AddActionPanel({
   return (
     <section
       ref={panelRef}
-      className="w-full min-w-0 max-w-full rounded-2xl border border-[var(--clarity-completed)] bg-secondary p-5"
+      className="w-full min-w-0 max-w-full space-y-5 rounded-2xl border border-border bg-card p-5 text-foreground"
     >
-      <div className="mb-5 flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold text-[var(--clarity-completed)]">
-            {label}
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Keep it specific and doable.
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={onClose}
-          aria-label="Close add action form"
-          className="size-11 min-h-11 min-w-11 rounded-xl"
-        >
-          <X />
-        </Button>
-      </div>
+      <ClarityFormHeader
+        title={label}
+        subtitle="Keep it specific and doable."
+        closeLabel="Close add action form"
+        onClose={onClose}
+      />
 
       {contextPrompt ? (
         <OngoingContextPrompt
@@ -227,7 +214,7 @@ function AddActionPanel({
                 className="h-12 rounded-xl"
               />
               {state.fieldErrors?.clarificationAnswer?.[0] && (
-                <span className="block text-sm text-[var(--clarity-completed)]">
+                <span className="block text-sm text-destructive">
                   {state.fieldErrors.clarificationAnswer[0]}
                 </span>
               )}
@@ -271,7 +258,7 @@ function AddActionPanel({
           {feedback?.classification === "invalid" && (
             <p
               role="alert"
-              className="rounded-xl border border-border bg-card px-4 py-3 text-sm leading-6"
+              className="rounded-xl border border-border bg-card px-4 py-3 text-sm leading-6 text-destructive"
             >
               {feedback.message}
             </p>
@@ -280,13 +267,13 @@ function AddActionPanel({
           {state.error && (
             <p
               role="alert"
-              className="rounded-xl border border-border bg-card px-4 py-3 text-sm"
+              className="rounded-xl border border-border bg-card px-4 py-3 text-sm text-destructive"
             >
               {state.error}
             </p>
           )}
           {state.success && (
-            <p className="text-sm text-[var(--clarity-completed)]">
+            <p className="text-sm text-ring">
               {state.success} Close this panel when you&apos;re done.
             </p>
           )}

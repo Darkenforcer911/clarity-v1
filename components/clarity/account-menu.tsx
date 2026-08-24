@@ -14,6 +14,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { createClient } from "@/lib/supabase/client";
+import { deactivateCurrentDevicePushSubscription } from "@/lib/clarity/push-subscription-client";
+import { NotificationControl } from "./notification-control";
 
 export function AccountMenu({
   allowSignOut = true,
@@ -25,6 +27,11 @@ export function AccountMenu({
 
   const signOut = async () => {
     setSigningOut(true);
+    try {
+      await deactivateCurrentDevicePushSubscription();
+    } catch {
+      // Sign-out must still proceed if this browser cannot unsubscribe cleanly.
+    }
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/auth/login");
@@ -68,6 +75,8 @@ export function AccountMenu({
             </span>
           </p>
         </div>
+        <DropdownMenuSeparator className="bg-border" />
+        <NotificationControl />
         <DropdownMenuSeparator className="bg-border" />
         <DropdownMenuItem
           disabled={signingOut || !allowSignOut}

@@ -1,15 +1,30 @@
 "use client";
 
-import { ChevronDown, Clock3 } from "lucide-react";
+import { Timer } from "lucide-react";
 import { useState } from "react";
 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { DailyLoopActionState } from "@/lib/clarity/action-state";
+import { resolveActionTimingFromOptionalTime } from "@/lib/clarity/action-time-field";
+import {
+  formatActionRecurrenceSummary,
+  getActionRecurrencePrimaryChoice,
+  resolveActionRecurrencePrimaryChoice,
+} from "@/lib/clarity/action-recurrence";
 import {
   resolveEstimatedDuration,
   splitEstimatedDuration,
 } from "@/lib/clarity/duration";
+import { resolveSecondarySettingExpansion } from "@/lib/clarity/secondary-setting-accordion";
+import { formatDuration } from "@/lib/clarity/proposed-plan-summary";
+import { DetailsControl } from "./details-control";
+import { RecurrenceControl } from "./recurrence-control";
+import {
+  SecondarySettingDisclosure,
+  SecondarySettingStack,
+} from "./secondary-setting-disclosure";
+import { OptionalTimeSelector } from "./time-selector";
 
 export type ActionFieldValues = {
   title?: string;
@@ -39,12 +54,33 @@ export function ActionFields({
   hideGeneratedDetails?: boolean;
   onTitleChange?: (value: string) => void;
 }) {
-  const [timing, setTiming] = useState(
-    initialValues.actionType === "fixed" ? "fixed" : "flexible",
+  const [context, setContext] = useState(initialValues.context ?? "");
+  const timeError = state.fieldErrors?.scheduledTime?.[0];
+  const durationError = state.fieldErrors?.estimatedMinutes?.[0];
+  const contextError = state.fieldErrors?.context?.[0];
+  const recurrenceError = state.fieldErrors?.recurrenceDays?.[0];
+  const [openSection, setOpenSection] = useState<
+    "time" | "duration" | "details" | "repeats" | null
+  >(() =>
+    timeError
+      ? "time"
+      : durationError
+        ? "duration"
+        : contextError
+          ? "details"
+          : recurrenceError
+            ? "repeats"
+            : null,
   );
-  const [scheduledTime, setScheduledTime] = useState(
-    initialValues.scheduledTime ?? "",
-  );
+  const setSectionExpanded = (
+    section: "time" | "duration" | "details" | "repeats",
+    expanded: boolean,
+  ) => {
+    setOpenSection((current) =>
+      resolveSecondarySettingExpansion(current, section, expanded),
+    );
+  };
+
   return (
     <div className="w-full min-w-0 max-w-full space-y-5">
       <Field label="What needs to be done?" error={state.fieldErrors?.title?.[0]}>
@@ -58,89 +94,57 @@ export function ActionFields({
         />
       </Field>
 
-      <fieldset className="w-full min-w-0 max-w-full space-y-2">
-        <legend className="text-sm font-medium">When?</legend>
-        <div className="grid min-w-0 grid-cols-2 gap-2">
-          <TimingChoice
-            checked={timing === "flexible"}
-            label="Anytime today"
-            value="flexible"
-            onChange={setTiming}
-          />
-          <TimingChoice
-            checked={timing === "fixed"}
-            label="At a specific time"
-            value="fixed"
-            onChange={setTiming}
-          />
-        </div>
-      </fieldset>
-
-      {timing === "fixed" && (
-        <div className="w-full min-w-0 max-w-full space-y-2">
-          <label className="flex min-h-12 w-full min-w-0 max-w-full items-center gap-3 rounded-xl border border-border bg-card px-3">
-            <span className="shrink-0 text-sm font-medium">Time</span>
-            <span className="relative ml-auto flex min-h-11 min-w-0 max-w-[9rem] flex-1 cursor-pointer items-center justify-end gap-2 overflow-hidden rounded-lg px-2 text-sm font-semibold text-foreground focus-within:ring-2 focus-within:ring-ring">
-              <Clock3
-                className="size-4 shrink-0 text-[var(--clarity-completed)]"
-                aria-hidden="true"
-              />
-              <span className="truncate text-right">
-                {formatTimeDisplay(scheduledTime)}
-              </span>
-              <Input
-                name="scheduledTime"
-                type="time"
-                value={scheduledTime}
-                onChange={(event) =>
-                  setScheduledTime(event.currentTarget.value)
-                }
-                required
-                aria-label="Time"
-                className="absolute inset-0 h-full w-full cursor-pointer border-0 p-0 opacity-0"
-              />
-            </span>
-          </label>
-          {state.fieldErrors?.scheduledTime?.[0] && (
-            <p className="text-sm text-[var(--clarity-completed)]">
-              {state.fieldErrors.scheduledTime[0]}
-            </p>
-          )}
-        </div>
-      )}
-      {timing === "flexible" && (
-        <input type="hidden" name="scheduledTime" value="" />
-      )}
-
-      <DurationFields
-        initialMinutes={initialValues.estimatedMinutes ?? 30}
-        error={state.fieldErrors?.estimatedMinutes?.[0]}
+      <OptionalActionTimeField
+        initialScheduledTime={initialValues.scheduledTime}
+        error={timeError}
+        expanded={openSection === "time"}
+        onExpandedChange={(expanded) =>
+          setSectionExpanded("time", expanded)
+        }
       />
 
-      {simple && (
-        <>
-          <Field
-            label="Details — optional"
-            error={state.fieldErrors?.context?.[0]}
-          >
-            <Textarea
-              name="context"
-              maxLength={990}
-              defaultValue={initialValues.context}
-              placeholder="A deadline, constraint, or useful detail."
-              className="min-h-20"
-            />
-          </Field>
+      {simple ? (
+        <SecondarySettingStack>
+          <DurationFields
+            initialMinutes={initialValues.estimatedMinutes ?? 30}
+            error={durationError}
+            expanded={openSection === "duration"}
+            onExpandedChange={(expanded) =>
+              setSectionExpanded("duration", expanded)
+            }
+          />
+          <DetailsControl
+            name="context"
+            value={context}
+            onChange={setContext}
+            maxLength={990}
+            placeholder="A deadline, constraint, or useful detail."
+            error={contextError}
+            expanded={openSection === "details"}
+            onExpandedChange={(expanded) =>
+              setSectionExpanded("details", expanded)
+            }
+          />
           <RecurrenceFields
             initialPattern={initialValues.recurrencePattern}
             initialDays={initialValues.recurrenceDays}
-            error={state.fieldErrors?.recurrenceDays?.[0]}
+            error={recurrenceError}
+            expanded={openSection === "repeats"}
+            onExpandedChange={(expanded) =>
+              setSectionExpanded("repeats", expanded)
+            }
           />
-        </>
-      )}
-
-      {!simple && (
+        </SecondarySettingStack>
+      ) : (
         <>
+          <DurationFields
+            initialMinutes={initialValues.estimatedMinutes ?? 30}
+            error={durationError}
+            expanded={openSection === "duration"}
+            onExpandedChange={(expanded) =>
+              setSectionExpanded("duration", expanded)
+            }
+          />
           {hideGeneratedDetails ? (
             <>
               <input
@@ -207,24 +211,45 @@ export function ActionFields({
   );
 }
 
-function formatTimeDisplay(value: string) {
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) {
-    return "Choose time";
-  }
+export function OptionalActionTimeField({
+  initialScheduledTime = "",
+  error,
+  expanded,
+  onExpandedChange,
+}: {
+  initialScheduledTime?: string;
+  error?: string;
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
+}) {
+  const [scheduledTime, setScheduledTime] = useState(initialScheduledTime);
+  const timing = resolveActionTimingFromOptionalTime(scheduledTime);
 
-  const [hours, minutes] = value.split(":").map(Number);
-  const period = hours < 12 ? "am" : "pm";
-  const displayHours = hours % 12 || 12;
-
-  return `${displayHours}:${String(minutes).padStart(2, "0")} ${period}`;
+  return (
+    <div className="w-full min-w-0 max-w-full">
+      <input type="hidden" name="actionType" value={timing.actionType} />
+      <OptionalTimeSelector
+        name="scheduledTime"
+        value={scheduledTime}
+        onChange={setScheduledTime}
+        expanded={expanded}
+        onExpandedChange={onExpandedChange}
+        error={error}
+      />
+    </div>
+  );
 }
 
 export function DurationFields({
   initialMinutes = 30,
   error,
+  expanded,
+  onExpandedChange,
 }: {
   initialMinutes?: string | number;
   error?: string;
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
 }) {
   const initialDuration = splitEstimatedDuration(initialMinutes);
   const [hours, setHours] = useState(initialDuration.hours);
@@ -232,15 +257,10 @@ export function DurationFields({
   const duration = resolveEstimatedDuration(hours, minutes);
   const minutesMax = hours === "24" ? 0 : 59;
   const displayedError = duration.error ?? error;
+  const summary = formatDuration(duration.totalMinutes ?? 0);
 
-  return (
-    <fieldset className="w-full min-w-0 max-w-full space-y-2">
-      <legend className="text-sm font-medium">Estimated duration</legend>
-      <input
-        type="hidden"
-        name="estimatedMinutes"
-        value={duration.totalMinutes ?? ""}
-      />
+  const editor = (
+    <>
       <div className="grid min-w-0 grid-cols-2 gap-3">
         <label className="block min-w-0 space-y-2">
           <span className="block text-xs font-medium text-muted-foreground">
@@ -253,7 +273,6 @@ export function DurationFields({
               min={0}
               max={24}
               step={1}
-              required
               value={hours}
               aria-invalid={Boolean(displayedError)}
               onChange={(event) => {
@@ -280,7 +299,6 @@ export function DurationFields({
               min={hours === "0" ? 1 : 0}
               max={minutesMax}
               step={1}
-              required
               value={minutes}
               aria-invalid={Boolean(displayedError)}
               onChange={(event) => {
@@ -298,10 +316,44 @@ export function DurationFields({
         </label>
       </div>
       {displayedError && (
-        <p className="text-sm text-[var(--clarity-completed)]">
+        <p className="text-sm text-destructive">
           {displayedError}
         </p>
       )}
+    </>
+  );
+
+  if (expanded !== undefined && onExpandedChange) {
+    return (
+      <fieldset className="m-0 w-full min-w-0 max-w-full border-0 p-0">
+        <legend className="sr-only">Estimated duration</legend>
+        <input
+          type="hidden"
+          name="estimatedMinutes"
+          value={duration.totalMinutes ?? ""}
+        />
+        <SecondarySettingDisclosure
+          icon={Timer}
+          label="Estimated duration"
+          summary={summary}
+          expanded={expanded}
+          onExpandedChange={onExpandedChange}
+        >
+          {editor}
+        </SecondarySettingDisclosure>
+      </fieldset>
+    );
+  }
+
+  return (
+    <fieldset className="w-full min-w-0 max-w-full space-y-2">
+      <legend className="text-sm font-medium">Estimated duration</legend>
+      <input
+        type="hidden"
+        name="estimatedMinutes"
+        value={duration.totalMinutes ?? ""}
+      />
+      {editor}
     </fieldset>
   );
 }
@@ -320,10 +372,14 @@ function RecurrenceFields({
   initialPattern = "none",
   initialDays = [],
   error,
+  expanded,
+  onExpandedChange,
 }: {
   initialPattern?: string;
   initialDays?: number[];
   error?: string;
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
 }) {
   const [pattern, setPattern] = useState(
     ["none", "daily", "weekly", "certain_days"].includes(initialPattern)
@@ -331,6 +387,7 @@ function RecurrenceFields({
       : "none",
   );
   const [selectedDays, setSelectedDays] = useState(initialDays);
+  const summary = formatActionRecurrenceSummary(pattern, selectedDays);
 
   function toggleDay(day: number) {
     setSelectedDays((current) =>
@@ -341,46 +398,18 @@ function RecurrenceFields({
   }
 
   return (
-    <details className="group rounded-xl bg-card">
-      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <span>Does this repeat?</span>
-        <span className="flex items-center gap-2 text-muted-foreground">
-          {recurrenceLabel(pattern)}
-          <ChevronDown className="size-4 transition-transform group-open:rotate-180" />
-        </span>
-      </summary>
-      <fieldset className="space-y-4 px-4 pb-4 pt-2">
-        <legend className="sr-only">Recurrence</legend>
-        <div className="grid grid-cols-2 gap-2">
-          {[
-            ["none", "No"],
-            ["daily", "Daily"],
-            ["weekly", "Weekly"],
-            ["certain_days", "Certain days"],
-          ].map(([value, label]) => (
-            <label
-              key={value}
-              className={`flex min-h-11 cursor-pointer items-center justify-center rounded-xl border px-3 text-center text-sm font-semibold ${
-                pattern === value
-                  ? "border-[var(--clarity-completed)] bg-secondary"
-                  : "border-border text-muted-foreground"
-              }`}
-            >
-              <input
-                type="radio"
-                name="recurrencePattern"
-                value={value}
-                checked={pattern === value}
-                onChange={() => setPattern(value)}
-                className="sr-only"
-              />
-              {label}
-            </label>
-          ))}
-        </div>
-
-        {pattern === "certain_days" && (
-          <div className="space-y-2">
+    <div className="min-w-0">
+      <input type="hidden" name="recurrencePattern" value={pattern} />
+      <RecurrenceControl
+        expanded={expanded}
+        summary={summary}
+        value={getActionRecurrencePrimaryChoice(pattern)}
+        onExpandedChange={onExpandedChange}
+        onChange={(choice) =>
+          setPattern(resolveActionRecurrencePrimaryChoice(choice))
+        }
+      >
+        <div className="space-y-2">
             <p className="text-sm text-muted-foreground">Repeat on</p>
             <div className="grid grid-cols-7 gap-1.5">
               {weekdays.map((day) => {
@@ -391,7 +420,7 @@ function RecurrenceFields({
                     key={day.value}
                     className={`flex aspect-square cursor-pointer items-center justify-center rounded-full border text-xs font-semibold ${
                       selected
-                        ? "border-primary bg-primary text-primary-foreground"
+                        ? "border-ring bg-secondary text-foreground"
                         : "border-border text-muted-foreground"
                     }`}
                     aria-label={weekdayName(day.value)}
@@ -409,23 +438,13 @@ function RecurrenceFields({
                 );
               })}
             </div>
-          </div>
-        )}
-
-        {error && (
-          <p className="text-sm text-[var(--clarity-completed)]">{error}</p>
-        )}
-      </fieldset>
-    </details>
+        </div>
+      </RecurrenceControl>
+      {error && (
+        <p className="mt-2 text-sm text-destructive">{error}</p>
+      )}
+    </div>
   );
-}
-
-function recurrenceLabel(pattern: string) {
-  if (pattern === "certain_days") {
-    return "Certain days";
-  }
-
-  return pattern.charAt(0).toUpperCase() + pattern.slice(1);
 }
 
 function weekdayName(day: number) {
@@ -438,38 +457,6 @@ function weekdayName(day: number) {
     "Friday",
     "Saturday",
   ][day];
-}
-
-function TimingChoice({
-  checked,
-  label,
-  value,
-  onChange,
-}: {
-  checked: boolean;
-  label: string;
-  value: "fixed" | "flexible";
-  onChange: (value: "fixed" | "flexible") => void;
-}) {
-  return (
-    <label
-      className={`flex min-h-14 min-w-0 cursor-pointer items-center justify-center rounded-xl border px-3 text-center text-sm font-semibold transition-colors active:scale-[0.99] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring ${
-        checked
-          ? "border-[var(--clarity-completed)] bg-secondary text-foreground"
-          : "border-border bg-card text-muted-foreground hover:bg-secondary hover:text-foreground"
-      }`}
-    >
-      <input
-        type="radio"
-        name="actionType"
-        value={value}
-        checked={checked}
-        onChange={() => onChange(value)}
-        className="sr-only"
-      />
-      {label}
-    </label>
-  );
 }
 
 function Field({
@@ -486,7 +473,7 @@ function Field({
       <span className="block text-sm font-medium">{label}</span>
       {children}
       {error && (
-        <p className="text-sm text-[var(--clarity-completed)]">{error}</p>
+        <p className="text-sm text-destructive">{error}</p>
       )}
     </label>
   );

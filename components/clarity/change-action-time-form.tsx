@@ -5,10 +5,9 @@ import { useActionState, useEffect, useRef, useState } from "react";
 
 import { changeActionTimeAction } from "@/app/(app)/today/action-workspace-actions";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import type { DailyAction } from "@/lib/clarity/daily-loop-queries";
 import { initialDailyLoopActionState } from "@/lib/clarity/action-state";
-import { DurationFields } from "./action-fields";
+import { DurationFields, OptionalActionTimeField } from "./action-fields";
 import { PendingButton } from "./pending-button";
 
 export function ChangeActionTimeForm({
@@ -22,14 +21,12 @@ export function ChangeActionTimeForm({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [timing, setTiming] = useState(
-    action.action_type === "fixed" ? "fixed" : "flexible",
-  );
   const [state, formAction] = useActionState(
     changeActionTimeAction,
     initialDailyLoopActionState,
   );
   const handledSuccess = useRef(false);
+  const [timeExpanded, setTimeExpanded] = useState(false);
 
   useEffect(() => {
     if (state.success && !handledSuccess.current) {
@@ -56,41 +53,14 @@ export function ChangeActionTimeForm({
 
       <form action={formAction} className="space-y-5">
         <input type="hidden" name="actionId" value={action.id} />
-        <fieldset className="space-y-2">
-          <legend className="text-sm font-medium">When?</legend>
-          <div className="grid grid-cols-2 gap-2">
-            <TimingChoice
-              checked={timing === "flexible"}
-              label="Anytime today"
-              value="flexible"
-              onChange={setTiming}
-            />
-            <TimingChoice
-              checked={timing === "fixed"}
-              label="At a specific time"
-              value="fixed"
-              onChange={setTiming}
-            />
-          </div>
-        </fieldset>
-
-        {timing === "fixed" && (
-          <label className="block space-y-2">
-            <span className="block text-sm font-medium">Specific time</span>
-            <Input
-              name="scheduledTime"
-              type="time"
-              defaultValue={scheduledTimeInput}
-              required
-              className="h-12 rounded-xl"
-            />
-            {state.fieldErrors?.scheduledTime?.[0] && (
-              <span className="block text-sm text-[var(--clarity-completed)]">
-                {state.fieldErrors.scheduledTime[0]}
-              </span>
-            )}
-          </label>
-        )}
+        <OptionalActionTimeField
+          initialScheduledTime={scheduledTimeInput}
+          error={state.fieldErrors?.scheduledTime?.[0]}
+          expanded={
+            timeExpanded || Boolean(state.fieldErrors?.scheduledTime?.[0])
+          }
+          onExpandedChange={setTimeExpanded}
+        />
 
         <DurationFields
           initialMinutes={action.estimated_minutes}
@@ -116,37 +86,5 @@ export function ChangeActionTimeForm({
         </PendingButton>
       </form>
     </section>
-  );
-}
-
-function TimingChoice({
-  checked,
-  label,
-  value,
-  onChange,
-}: {
-  checked: boolean;
-  label: string;
-  value: "fixed" | "flexible";
-  onChange: (value: "fixed" | "flexible") => void;
-}) {
-  return (
-    <label
-      className={`flex min-h-14 cursor-pointer items-center justify-center rounded-xl border px-3 text-center text-sm font-semibold ${
-        checked
-          ? "border-[var(--clarity-completed)] bg-secondary"
-          : "border-border text-muted-foreground"
-      }`}
-    >
-      <input
-        type="radio"
-        name="actionType"
-        value={value}
-        checked={checked}
-        onChange={() => onChange(value)}
-        className="sr-only"
-      />
-      {label}
-    </label>
   );
 }
