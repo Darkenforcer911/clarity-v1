@@ -1560,6 +1560,7 @@ export type Database = {
       }
       return_gap_records: {
         Row: {
+          boundary_kind: string
           context_summary: string | null
           gap_end_date: string
           gap_start_date: string
@@ -1569,6 +1570,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          boundary_kind?: string
           context_summary?: string | null
           gap_end_date: string
           gap_start_date: string
@@ -1578,6 +1580,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          boundary_kind?: string
           context_summary?: string | null
           gap_end_date?: string
           gap_start_date?: string
@@ -1947,6 +1950,7 @@ export type Database = {
       }
       get_latest_return_gap_record: { Args: never; Returns: Json }
       get_life_model: { Args: never; Returns: Json }
+      get_return_backlog_state: { Args: never; Returns: Json }
       is_push_subscription_enabled: {
         Args: { p_endpoint: string }
         Returns: boolean
@@ -2051,6 +2055,14 @@ export type Database = {
       record_notification_delivery_success: {
         Args: { p_delivery_id: string; p_now?: string }
         Returns: boolean
+      }
+      record_return_boundary_v1: {
+        Args: {
+          p_boundary_kind: string
+          p_range_end_date: string
+          p_range_start_date: string
+        }
+        Returns: string
       }
       record_return_gap: {
         Args: {

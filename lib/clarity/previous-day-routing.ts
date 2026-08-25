@@ -1,91 +1,96 @@
-type PreviousPlanBoundary = {
-  localDate: string;
-  status: string;
-  approvedAt: string | null;
-  hasBlockingActions: boolean;
-};
+export type AuthoritativeReturnState =
+  | {
+      kind: "quick_recap";
+      localDate: string;
+      planStatus: "proposed" | "active" | "closing";
+      rangeStartDate: string;
+      rangeEndDate: string;
+      dayCount: 1;
+    }
+  | {
+      kind: "catch_up" | "get_current";
+      rangeStartDate: string;
+      rangeEndDate: string;
+      dayCount: number;
+    }
+  | {
+      kind: "ready_for_today";
+      throughDate: string;
+    };
 
-type PreviousDayRoutingInput = {
-  currentLocalDate: string;
-  previousPlan: PreviousPlanBoundary | null;
-  latestClosedPlanDate: string | null;
-  latestGapEndDate: string | null;
-};
+export function parseAuthoritativeReturnState(
+  value: unknown,
+): AuthoritativeReturnState {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Return backlog state is invalid.");
+  }
 
-export type PreviousDayRouting =
-  | { kind: "quick_recap"; localDate: string }
-  | { kind: "gap"; gapStartDate: string; gapEndDate: string }
-  | { kind: "inconsistent_unapproved_plan"; localDate: string }
-  | { kind: "resolved" };
+  const state = value as Record<string, unknown>;
 
-export function resolvePreviousDayRouting({
-  currentLocalDate,
-  previousPlan,
-  latestClosedPlanDate,
-  latestGapEndDate,
-}: PreviousDayRoutingInput): PreviousDayRouting {
-  const yesterdayDate = addLocalDays(currentLocalDate, -1);
-  const hasUnresolvedApprovedPlan =
-    previousPlan?.approvedAt !== null &&
-    previousPlan?.approvedAt !== undefined &&
-    ["proposed", "active", "closing"].includes(
-      previousPlan.status,
-    );
+  if (state.state === "ready_for_today") {
+    return {
+      kind: "ready_for_today",
+      throughDate: readLocalDate(state.throughDate),
+    };
+  }
 
-  if (previousPlan && hasUnresolvedApprovedPlan) {
+  if (state.state === "quick_recap") {
+    if (
+      state.planStatus !== "proposed" &&
+      state.planStatus !== "active" &&
+      state.planStatus !== "closing"
+    ) {
+      throw new Error("Return backlog state is invalid.");
+    }
+
+    if (state.dayCount !== 1) {
+      throw new Error("Return backlog state is invalid.");
+    }
+
     return {
       kind: "quick_recap",
-      localDate: previousPlan.localDate,
+      localDate: readLocalDate(state.localDate),
+      planStatus: state.planStatus,
+      rangeStartDate: readLocalDate(state.rangeStartDate),
+      rangeEndDate: readLocalDate(state.rangeEndDate),
+      dayCount: 1,
     };
   }
 
+  if (state.state === "catch_up" || state.state === "get_current") {
+    if (
+      typeof state.dayCount !== "number" ||
+      !Number.isInteger(state.dayCount) ||
+      state.dayCount < 1
+    ) {
+      throw new Error("Return backlog state is invalid.");
+    }
+
+    if (
+      (state.state === "catch_up" && state.dayCount > 7) ||
+      (state.state === "get_current" && state.dayCount < 8)
+    ) {
+      throw new Error("Return backlog state is invalid.");
+    }
+
+    return {
+      kind: state.state,
+      rangeStartDate: readLocalDate(state.rangeStartDate),
+      rangeEndDate: readLocalDate(state.rangeEndDate),
+      dayCount: state.dayCount,
+    };
+  }
+
+  throw new Error("Return backlog state is invalid.");
+}
+
+function readLocalDate(value: unknown) {
   if (
-    previousPlan &&
-    previousPlan.approvedAt === null &&
-    (["active", "closing"].includes(previousPlan.status) ||
-      previousPlan.hasBlockingActions)
+    typeof value !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(value)
   ) {
-    return {
-      kind: "inconsistent_unapproved_plan",
-      localDate: previousPlan.localDate,
-    };
+    throw new Error("Return backlog state is invalid.");
   }
 
-  const resolvedAnchor = latestDate(
-    latestClosedPlanDate,
-    latestGapEndDate,
-  );
-  const gapStartDate = resolvedAnchor
-    ? addLocalDays(resolvedAnchor, 1)
-    : previousPlan &&
-        ["unshaped", "proposed"].includes(previousPlan.status)
-      ? previousPlan.localDate
-      : yesterdayDate;
-
-  if (gapStartDate <= yesterdayDate) {
-    return {
-      kind: "gap",
-      gapStartDate,
-      gapEndDate: yesterdayDate,
-    };
-  }
-
-  return { kind: "resolved" };
-}
-
-function latestDate(left: string | null, right: string | null) {
-  if (!left) return right;
-  if (!right) return left;
-  return left > right ? left : right;
-}
-
-function addLocalDays(localDate: string, days: number) {
-  const [year, month, day] = localDate.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day + days));
-
-  return [
-    date.getUTCFullYear(),
-    String(date.getUTCMonth() + 1).padStart(2, "0"),
-    String(date.getUTCDate()).padStart(2, "0"),
-  ].join("-");
+  return value;
 }

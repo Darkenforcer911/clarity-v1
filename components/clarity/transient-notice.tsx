@@ -9,6 +9,7 @@ const notices: Record<string, string> = {
   "changes-saved": "Changes saved.",
   removed: "Removed from today.",
   "action-replaced": "Action replaced.",
+  "caught-up": "Caught up",
 };
 const weekdays = new Set([
   "Monday",

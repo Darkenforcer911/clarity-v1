@@ -209,20 +209,14 @@ export async function recordPreviousDayAction(
 
 export async function recordReturnGapAction(
   _previousState: DayTransitionActionState,
-  formData: FormData,
+  _formData: FormData,
 ): Promise<DayTransitionActionState> {
-  const contextSummary = String(
-    formData.get("contextSummary") ?? "",
-  );
-  const nothingImportant =
-    formData.get("intent") === "nothing-important";
+  void _previousState;
+  void _formData;
 
   try {
     const data = await loadTodayForRoute();
-    await dailyLoopService.recordReturnGap(data, {
-      contextSummary: nothingImportant ? "" : contextSummary,
-      nothingImportant,
-    });
+    await dailyLoopService.recordReturnBoundary(data);
     revalidatePath("/today");
     revalidatePath("/today/shape");
   } catch (error) {
@@ -237,11 +231,10 @@ export async function recordReturnGapAction(
 
     return {
       error: "Couldn’t save Catch-Up. Try again.",
-      explanation: contextSummary,
     };
   }
 
-  redirect("/today");
+  redirect("/today?notice=caught-up");
 }
 
 export async function decideBriefingContextAction(formData: FormData) {

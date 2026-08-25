@@ -35,9 +35,6 @@ async function ReturnGapContent() {
     <AppShell>
       <ReturnGapContext
         gap={data.pendingReturnGap}
-        timezone={data.profile.timezone}
-        currentLocalDate={data.localDate}
-        evidence={data.catchUpEvidence}
       />
     </AppShell>
   );

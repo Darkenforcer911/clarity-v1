@@ -16,13 +16,11 @@ import {
   previousDayExplanationSchema,
   previousDayResolutionSchema,
   previousDayUnplannedWorkSchema,
-  returnGapInputSchema,
   shapeTodaySchema,
   type CloseDayResolution,
   type DaySummary,
   type PreviousDayResolution,
   type PreviousDayUnplannedWork,
-  type ReturnGapInput,
   type ShapeTodayInput,
 } from "./schemas";
 import {
@@ -50,14 +48,21 @@ const startCurrentDayResultSchema = z.discriminatedUnion("outcome", [
     localDate: z.string(),
   }),
   z.object({
-    outcome: z.literal("previous_plan_unresolved"),
+    outcome: z.literal("quick_recap_required"),
     previousLocalDate: z.string(),
     previousPlanStatus: z.enum(["proposed", "active", "closing"]),
   }),
   z.object({
-    outcome: z.literal("return_gap_required"),
-    gapStartDate: z.string(),
-    gapEndDate: z.string(),
+    outcome: z.literal("catch_up_required"),
+    rangeStartDate: z.string(),
+    rangeEndDate: z.string(),
+    dayCount: z.number().int().min(1).max(7),
+  }),
+  z.object({
+    outcome: z.literal("get_current_required"),
+    rangeStartDate: z.string(),
+    rangeEndDate: z.string(),
+    dayCount: z.number().int().min(8),
   }),
   z.object({
     outcome: z.literal("current_day_already_started"),
@@ -102,7 +107,7 @@ export class DailyLoopService {
 
     if (currentData.previousDayTransition?.kind === "wrap_up") {
       return {
-        outcome: "previous_plan_unresolved",
+        outcome: "quick_recap_required",
         previousLocalDate: currentData.previousDayTransition.localDate,
         previousPlanStatus: currentData.previousDayTransition.plan.status as
           | "proposed"
@@ -113,9 +118,13 @@ export class DailyLoopService {
 
     if (currentData.pendingReturnGap) {
       return {
-        outcome: "return_gap_required",
-        gapStartDate: currentData.pendingReturnGap.gapStartDate,
-        gapEndDate: currentData.pendingReturnGap.gapEndDate,
+        outcome:
+          currentData.pendingReturnGap.kind === "catch_up"
+            ? "catch_up_required"
+            : "get_current_required",
+        rangeStartDate: currentData.pendingReturnGap.gapStartDate,
+        rangeEndDate: currentData.pendingReturnGap.gapEndDate,
+        dayCount: currentData.pendingReturnGap.dayCount,
       };
     }
 
@@ -243,28 +252,23 @@ export class DailyLoopService {
     ensureRpcSucceeded(error);
   }
 
-  async recordReturnGap(
-    data: DailyLoopData,
-    rawInput: ReturnGapInput,
-  ) {
+  async recordReturnBoundary(data: DailyLoopData) {
     const gap = data.pendingReturnGap;
 
     if (!gap || data.previousDayTransition) {
       throw new DailyLoopServiceError(
-        "There are no missed dates waiting for context.",
+        "There is no return boundary waiting to be recorded.",
       );
     }
 
-    const input = returnGapInputSchema.parse(rawInput);
     const { supabase } = await getAuthenticatedUserAndProfile();
     const { error } = await callUntypedRpc(
       supabase,
-      "record_return_gap_v3",
+      "record_return_boundary_v1",
       {
-        p_gap_start_date: gap.gapStartDate,
-        p_gap_end_date: gap.gapEndDate,
-        p_context_summary: input.contextSummary || null,
-        p_nothing_important: input.nothingImportant,
+        p_boundary_kind: gap.kind,
+        p_range_start_date: gap.gapStartDate,
+        p_range_end_date: gap.gapEndDate,
       },
     );
 

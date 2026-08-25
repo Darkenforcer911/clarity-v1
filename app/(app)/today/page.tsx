@@ -24,7 +24,7 @@ async function TodayContent() {
   const primaryAction = resolveTodayGatewayPrimaryAction({
     currentDay,
     unresolvedApprovedDay,
-    hasPendingReturnGap: data.pendingReturnGap !== null,
+    pendingReturnDayCount: data.pendingReturnGap?.dayCount ?? null,
     planStatus: data.plan?.status ?? null,
   });
 

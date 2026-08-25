@@ -41,9 +41,10 @@ export async function startMyDayAction() {
       await dailyLoopService.ensureInitialPlanProposal();
       redirect("/today/plan");
     }
-    case "previous_plan_unresolved":
+    case "quick_recap_required":
       redirect("/today/catch-up");
-    case "return_gap_required":
+    case "catch_up_required":
+    case "get_current_required":
       redirect("/today/catch-up/gap");
     case "current_day_already_started": {
       if (result.planStatus === "unshaped") {

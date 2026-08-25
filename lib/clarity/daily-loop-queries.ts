@@ -11,17 +11,15 @@ import {
 } from "./catch-up-eligibility";
 import { addLocalDays, getLocalDate } from "./date-time";
 import { startServerTimer } from "./server-performance";
-import { resolvePreviousDayRouting } from "./previous-day-routing";
-import { isReturnGapBlockingAction } from "./return-gap-boundary";
+import {
+  parseAuthoritativeReturnState,
+  type AuthoritativeReturnState,
+} from "./previous-day-routing";
 import {
   parseCalendarCommitments,
   type CalendarCommitment,
 } from "./calendar-commitments";
 import { filterActiveCalendarCommitments } from "./calendar-commitment-visibility";
-import {
-  collectReturnGapEvidence,
-  type ReturnGapEvidence,
-} from "./return-gap-evidence";
 
 export type DailyPlan = Tables<"daily_plans"> & {
   record_kind: "planned" | "recorded_without_plan" | "skipped";
@@ -45,11 +43,14 @@ export type ReturnGapRecord = {
   gapEndDate: string;
   contextSummary: string | null;
   nothingImportant: boolean;
+  boundaryKind: "gap" | "catch_up" | "get_current";
   recordedAt: string;
 };
 export type PendingReturnGap = {
+  kind: "catch_up" | "get_current";
   gapStartDate: string;
   gapEndDate: string;
+  dayCount: number;
 };
 
 export type PreviousDayTransition =
@@ -76,11 +77,11 @@ export type DailyLoopData = {
   carriedActions: CarriedAction[];
   yesterdayRecord: DayRecord | null;
   previousPlan: DailyPlan | null;
+  returnState: AuthoritativeReturnState;
   previousDayTransition: PreviousDayTransition | null;
   pendingReturnGap: PendingReturnGap | null;
   latestReturnGapRecord: ReturnGapRecord | null;
   commitments: CalendarCommitment[];
-  catchUpEvidence: ReturnGapEvidence[];
 };
 
 export class AuthenticationRequiredError extends Error {
@@ -145,7 +146,7 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
     planResult,
     rescheduledResult,
     previousPlanResult,
-    latestClosedPlanResult,
+    returnStateResult,
     latestReturnGapResult,
     commitmentsResult,
   ] = await timer.measure("primary_parallel_queries", () =>
@@ -171,15 +172,7 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
         .order("local_date", { ascending: false })
         .limit(1)
         .maybeSingle(),
-      supabase
-        .from("daily_plans")
-        .select("local_date")
-        .eq("user_id", user.id)
-        .eq("status", "closed")
-        .lt("local_date", localDate)
-        .order("local_date", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
+      callUntypedRpc(supabase, "get_return_backlog_state", {}),
       callUntypedRpc(supabase, "get_latest_return_gap_record", {}),
       callUntypedRpc(supabase, "get_calendar_commitments_for_date", {
         p_local_date: localDate,
@@ -236,8 +229,8 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
     throw new Error(previousPlanResult.error.message);
   }
 
-  if (latestClosedPlanResult.error) {
-    throw new Error(latestClosedPlanResult.error.message);
+  if (returnStateResult.error) {
+    throw new Error(returnStateResult.error.message);
   }
 
   if (latestReturnGapResult.error) {
@@ -256,34 +249,9 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
   const latestReturnGapRecord = parseReturnGapRecord(
     latestReturnGapResult.data,
   );
-  const previousDayRouting = resolvePreviousDayRouting({
-    currentLocalDate: localDate,
-    previousPlan: previousPlan
-      ? {
-          localDate: previousPlan.local_date,
-          status: previousPlan.status,
-          approvedAt: previousPlan.approved_at,
-          hasBlockingActions: (
-            previousPlanRow?.daily_actions ?? []
-          ).some((action) =>
-            isReturnGapBlockingAction({
-              status: action.status,
-              approvedAt: action.approved_at,
-            }),
-          ),
-        }
-      : null,
-    latestClosedPlanDate:
-      latestClosedPlanResult.data?.local_date ?? null,
-    latestGapEndDate:
-      latestReturnGapRecord?.gapEndDate ?? null,
-  });
-
-  if (previousDayRouting.kind === "inconsistent_unapproved_plan") {
-    throw new Error(
-      "A previous daily plan has an invalid approval state.",
-    );
-  }
+  const returnState = parseAuthoritativeReturnState(
+    returnStateResult.data,
+  );
   const currentActions = (planRow?.daily_actions ?? [])
     .filter((action) => action.status !== "removed")
     .sort((left, right) => left.sort_order - right.sort_order);
@@ -310,7 +278,8 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
     .sort((left, right) => left.sort_order - right.sort_order);
 
   const previousDayTransition: PreviousDayTransition | null =
-    previousDayRouting.kind === "quick_recap" && previousPlan
+    returnState.kind === "quick_recap" &&
+    previousPlan?.local_date === returnState.localDate
       ? {
           kind: "wrap_up",
           localDate: previousPlan.local_date,
@@ -318,45 +287,19 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
           actions: previousActions.filter(isCatchUpEligibleAction),
         }
       : null;
+  if (returnState.kind === "quick_recap" && !previousDayTransition) {
+    throw new Error("The previous plan for Quick Recap was not found.");
+  }
   const pendingReturnGap =
-    previousDayRouting.kind === "gap"
+    returnState.kind === "catch_up" ||
+    returnState.kind === "get_current"
       ? {
-          gapStartDate: previousDayRouting.gapStartDate,
-          gapEndDate: previousDayRouting.gapEndDate,
+          kind: returnState.kind,
+          gapStartDate: returnState.rangeStartDate,
+          gapEndDate: returnState.rangeEndDate,
+          dayCount: returnState.dayCount,
         }
       : null;
-  const catchUpEvidence = pendingReturnGap
-    ? await timer.measure("return_gap_evidence", async () => {
-        const { data, error } = await supabase
-          .from("daily_plans")
-          .select("local_date, approved_at, status, daily_actions(*)")
-          .eq("user_id", user.id)
-          .gte("local_date", pendingReturnGap.gapStartDate)
-          .lte("local_date", pendingReturnGap.gapEndDate)
-          .order("local_date");
-
-        if (error) throw new Error(error.message);
-
-        return collectReturnGapEvidence(
-          data.map((gapPlan) => ({
-            localDate: gapPlan.local_date,
-            approvedAt: gapPlan.approved_at,
-            status: gapPlan.status,
-            actions: (gapPlan.daily_actions ?? []).map((action) => ({
-              id: action.id,
-              title: action.title,
-              status: action.status,
-              approvedAt: action.approved_at,
-              completionEvidenceOnly: action.completion_evidence_only,
-              completedAt: action.completed_at,
-              completionTimeUnknown: action.completion_time_unknown,
-              rescheduledFor: action.rescheduled_for,
-              sortOrder: action.sort_order,
-            })),
-          })),
-        );
-      })
-    : [];
   const adoptedTitles = new Set(
     currentActions
       .filter((action) =>
@@ -380,13 +323,13 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
     carriedActions,
     yesterdayRecord,
     previousPlan,
+    returnState,
     previousDayTransition,
     pendingReturnGap,
     latestReturnGapRecord,
     commitments: filterActiveCalendarCommitments(
       parseCalendarCommitments(commitmentsResult.data),
     ),
-    catchUpEvidence,
   };
 
   timer.finish();
@@ -437,6 +380,9 @@ function parseReturnGapRecord(value: unknown): ReturnGapRecord | null {
     (record.contextSummary !== null &&
       typeof record.contextSummary !== "string") ||
     typeof record.nothingImportant !== "boolean" ||
+    (record.boundaryKind !== "gap" &&
+      record.boundaryKind !== "catch_up" &&
+      record.boundaryKind !== "get_current") ||
     typeof record.recordedAt !== "string"
   ) {
     throw new Error("Return gap record is invalid.");
@@ -448,6 +394,7 @@ function parseReturnGapRecord(value: unknown): ReturnGapRecord | null {
     gapEndDate: record.gapEndDate,
     contextSummary: record.contextSummary,
     nothingImportant: record.nothingImportant,
+    boundaryKind: record.boundaryKind,
     recordedAt: record.recordedAt,
   };
 }

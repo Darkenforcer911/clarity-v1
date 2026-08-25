@@ -24,12 +24,12 @@ export type TodayGatewayPrimaryAction =
 export function resolveTodayGatewayPrimaryAction({
   currentDay,
   unresolvedApprovedDay,
-  hasPendingReturnGap,
+  pendingReturnDayCount,
   planStatus,
 }: {
   currentDay: string;
   unresolvedApprovedDay: string | null;
-  hasPendingReturnGap: boolean;
+  pendingReturnDayCount: number | null;
   planStatus: TodayGatewayPlanStatus;
 }): TodayGatewayPrimaryAction {
   if (unresolvedApprovedDay) {
@@ -42,13 +42,13 @@ export function resolveTodayGatewayPrimaryAction({
     };
   }
 
-  if (hasPendingReturnGap) {
+  if (pendingReturnDayCount !== null) {
     return {
       kind: "link",
-      label: "Catch up",
+      label: "Catch me up",
       href: "/today/catch-up/gap",
-      heading: "Let's catch up.",
-      supportingText: "Add anything important from the days you missed.",
+      heading: "Let's catch up",
+      supportingText: `It's been ${pendingReturnDayCount} ${pendingReturnDayCount === 1 ? "day" : "days"}. Take a minute to catch up before continuing with today.`,
     };
   }
 
