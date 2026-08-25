@@ -1732,6 +1732,14 @@ export type Database = {
         Args: { p_allow_empty?: boolean; p_daily_plan_id: string }
         Returns: undefined
       }
+      archive_life_area: {
+        Args: { p_life_area_id: string }
+        Returns: undefined
+      }
+      archive_life_evidence: {
+        Args: { p_life_evidence_id: string }
+        Returns: undefined
+      }
       begin_day_closing: {
         Args: { p_daily_plan_id: string }
         Returns: undefined
@@ -1789,6 +1797,15 @@ export type Database = {
           p_new_status?: Database["public"]["Enums"]["daily_action_status"]
         }
         Returns: string
+      }
+      correct_life_evidence: {
+        Args: {
+          p_life_evidence_id: string
+          p_occurred_on: string
+          p_signal: Database["public"]["Enums"]["life_evidence_signal"]
+          p_summary: string
+        }
+        Returns: undefined
       }
       create_calendar_commitment: {
         Args: {
@@ -1929,6 +1946,10 @@ export type Database = {
       }
       disable_push_subscription: {
         Args: { p_endpoint: string }
+        Returns: undefined
+      }
+      end_current_context: {
+        Args: { p_current_context_id: string; p_ended_on?: string }
         Returns: undefined
       }
       finish_day: {
@@ -2110,6 +2131,14 @@ export type Database = {
         Args: { p_daily_action_id: string }
         Returns: undefined
       }
+      rename_life_area: {
+        Args: { p_life_area_id: string; p_name: string }
+        Returns: undefined
+      }
+      reorder_life_areas: {
+        Args: { p_ordered_life_area_ids: string[] }
+        Returns: undefined
+      }
       replace_active_action: {
         Args: {
           p_action_type: string
@@ -2235,6 +2264,34 @@ export type Database = {
       }
       start_current_day: { Args: never; Returns: string }
       start_current_day_v2: { Args: never; Returns: Json }
+      transition_goal_status: {
+        Args: {
+          p_consequence_summary?: string
+          p_created_via?: Database["public"]["Enums"]["life_model_provenance"]
+          p_decided_at?: string
+          p_evidence_summary?: string
+          p_goal_id: string
+          p_new_status: Database["public"]["Enums"]["goal_status"]
+          p_rationale?: string
+          p_replacement_goal_id?: string
+          p_source_proposal_id?: string
+        }
+        Returns: string
+      }
+      transition_project_status: {
+        Args: {
+          p_new_status: Database["public"]["Enums"]["project_status"]
+          p_project_id: string
+        }
+        Returns: undefined
+      }
+      transition_routine_status: {
+        Args: {
+          p_new_status: Database["public"]["Enums"]["routine_status"]
+          p_routine_id: string
+        }
+        Returns: undefined
+      }
       undo_calendar_event_completion: {
         Args: { p_calendar_commitment_id: string; p_occurrence_date: string }
         Returns: string
@@ -2266,6 +2323,17 @@ export type Database = {
         }
         Returns: undefined
       }
+      update_current_context: {
+        Args: {
+          p_current_context_id: string
+          p_expected_end_end?: string
+          p_expected_end_start?: string
+          p_planning_impact: string
+          p_started_on: string
+          p_title: string
+        }
+        Returns: undefined
+      }
       update_daily_action: {
         Args: {
           p_action_type: string
@@ -2287,6 +2355,45 @@ export type Database = {
           p_duration_minutes?: number
           p_occurred_time?: string
           p_title?: string
+        }
+        Returns: undefined
+      }
+      update_goal: {
+        Args: {
+          p_desired_outcome: string
+          p_goal_id: string
+          p_target_confidence?: Database["public"]["Enums"]["life_target_confidence"]
+          p_target_end_date?: string
+          p_target_start_date?: string
+          p_title: string
+        }
+        Returns: undefined
+      }
+      update_project: {
+        Args: {
+          p_desired_outcome: string
+          p_goal_id?: string
+          p_parent_project_id?: string
+          p_project_id: string
+          p_target_confidence?: Database["public"]["Enums"]["life_target_confidence"]
+          p_target_end_date?: string
+          p_target_start_date?: string
+          p_title: string
+        }
+        Returns: undefined
+      }
+      update_routine: {
+        Args: {
+          p_cadence: Database["public"]["Enums"]["routine_cadence"]
+          p_cadence_count?: number
+          p_estimated_minutes: number
+          p_goal_id?: string
+          p_preferred_time?: string
+          p_project_id?: string
+          p_routine_id: string
+          p_skip_policy?: Database["public"]["Enums"]["routine_skip_policy"]
+          p_title: string
+          p_weekdays?: number[]
         }
         Returns: undefined
       }
