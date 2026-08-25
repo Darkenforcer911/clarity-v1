@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, ChevronDown, CircleOff, CirclePlus, History, Pencil, Trash2 } from "lucide-react";
+import { CheckCircle2, ChevronDown, CircleOff, CirclePlus, History, Pencil } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useActionState, useCallback, useEffect, useState, useTransition } from "react";
 
@@ -23,12 +23,12 @@ import { applyHistoricalActionOutcomeRevisions } from "@/lib/clarity/historical-
 import { useAppShellEditorState } from "./app-shell-editor-context";
 import { DayCorrectionForm } from "./day-correction-form";
 import { HistoricalOutcomeCorrectionEditor } from "./historical-outcome-correction-editor";
-import { PendingButton } from "./pending-button";
 import {
   RecapCompletedItemForm,
   type RecapCompletedItem,
 } from "./recap-completed-item-form";
 import { SecondarySettingDisclosure } from "./secondary-setting-disclosure";
+import { SwipeToRemove } from "./swipe-to-remove";
 
 export function HistoricalDayActivity({
   record,
@@ -284,9 +284,11 @@ export function CalendarCorrections({
   const router = useRouter();
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [swipedCorrectionId, setSwipedCorrectionId] = useState<string | null>(null);
   const close = useCallback(() => {
     setFormOpen(false);
     setEditingId(null);
+    setSwipedCorrectionId(null);
   }, []);
   const saved = useCallback(() => {
     close();
@@ -328,9 +330,14 @@ export function CalendarCorrections({
                   timezone={timezone}
                   onEdit={() => {
                     setFormOpen(false);
+                    setSwipedCorrectionId(null);
                     setEditingId(correction.id);
                   }}
                   onSaved={saved}
+                  swipeOpen={swipedCorrectionId === correction.id}
+                  onSwipeOpenChange={(open) =>
+                    setSwipedCorrectionId(open ? correction.id : null)
+                  }
                 />
               ),
             )}
@@ -345,6 +352,7 @@ export function CalendarCorrections({
         expanded={formOpen}
         onExpandedChange={(open) => {
           setEditingId(null);
+          setSwipedCorrectionId(null);
           setFormOpen(open);
         }}
         showDone={false}
@@ -427,21 +435,19 @@ function CorrectionRow({
   timezone,
   onEdit,
   onSaved,
+  swipeOpen,
+  onSwipeOpenChange,
 }: {
   correction: DayCorrection;
   timezone: string;
   onEdit: () => void;
   onSaved: () => void;
+  swipeOpen: boolean;
+  onSwipeOpenChange: (open: boolean) => void;
 }) {
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const [state, action] = useActionState(
-    deleteDayCorrectionAction,
-    initialCalendarActionState,
-  );
-  useEffect(() => {
-    if (state.saved) onSaved();
-  }, [state.saved, state.version, onSaved]);
+  const [deletionPending, setDeletionPending] = useState(false);
+  const [deletionError, setDeletionError] = useState<string | null>(null);
   const display = correction.title ?? correction.details ?? "Day note";
   const time = formatCommitmentTime(correction.occurred_time);
   const duration = correction.duration_minutes
@@ -456,23 +462,114 @@ function CorrectionRow({
     minute: "2-digit",
   }).format(new Date(correction.created_at));
 
+  async function removeCorrection() {
+    if (deletionPending) return;
+
+    setDeletionPending(true);
+    setDeletionError(null);
+    const formData = new FormData();
+    formData.set("correctionId", correction.id);
+    const result = await deleteDayCorrectionAction(
+      initialCalendarActionState,
+      formData,
+    );
+
+    if (result.saved) {
+      onSwipeOpenChange(false);
+      onSaved();
+      return;
+    }
+
+    setDeletionPending(false);
+    setDeletionError(result.error ?? "Couldn't remove this added activity.");
+  }
+
+  function toggleExpanded() {
+    onSwipeOpenChange(false);
+    setExpanded((current) => !current);
+  }
+
   if (correction.correction_type === "completed_item") {
     return (
-      <article
-        data-slot="historical-completed-activity-card"
-        className="overflow-hidden rounded-2xl border border-border bg-card"
+      <SwipeToRemove
+        itemId={correction.id}
+        itemTitle={display}
+        open={swipeOpen}
+        onOpenChange={onSwipeOpenChange}
+        onRemove={removeCorrection}
+        removalPending={deletionPending}
+        removing={false}
+        enabled
+        accessibilityContext="from historical activity"
       >
+        <article
+          data-slot="historical-completed-activity-card"
+          className="overflow-hidden rounded-2xl border border-border bg-card"
+        >
+          <button
+            type="button"
+            aria-expanded={expanded}
+            onClick={toggleExpanded}
+            className="flex min-h-14 w-full items-center justify-between gap-3 px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-semibold">{display}</span>
+              <span className="mt-0.5 flex items-center gap-1 text-sm text-[var(--clarity-completed)]">
+                <CheckCircle2 aria-hidden="true" className="size-3.5 shrink-0" />
+                {`Done · ${time ?? "Anytime"}`}
+              </span>
+            </span>
+            <ChevronDown
+              aria-hidden="true"
+              className={`size-5 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none ${
+                expanded ? "rotate-180" : ""
+              }`}
+            />
+          </button>
+          {expanded && (
+            <div className="space-y-3 border-t border-border px-3 py-3">
+              <p className="text-xs text-muted-foreground">Added {addedAt}</p>
+              <Button type="button" variant="ghost" size="sm" onClick={onEdit}>
+                <Pencil /> Edit
+              </Button>
+            </div>
+          )}
+          {deletionError && (
+            <p role="alert" className="px-3 pb-3 text-xs text-destructive">
+              {deletionError}
+            </p>
+          )}
+        </article>
+      </SwipeToRemove>
+    );
+  }
+
+  return (
+    <SwipeToRemove
+      itemId={correction.id}
+      itemTitle={display}
+      open={swipeOpen}
+      onOpenChange={onSwipeOpenChange}
+      onRemove={removeCorrection}
+      removalPending={deletionPending}
+      removing={false}
+      enabled
+      accessibilityContext="from historical activity"
+    >
+      <article className="overflow-hidden rounded-2xl border border-border bg-card">
         <button
           type="button"
           aria-expanded={expanded}
-          onClick={() => setExpanded((current) => !current)}
+          onClick={toggleExpanded}
           className="flex min-h-14 w-full items-center justify-between gap-3 px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         >
           <span className="min-w-0 flex-1">
-            <span className="block truncate font-semibold">{display}</span>
-            <span className="mt-0.5 flex items-center gap-1 text-sm text-[var(--clarity-completed)]">
-              <CheckCircle2 aria-hidden="true" className="size-3.5 shrink-0" />
-              {`Done · ${time ?? "Anytime"}`}
+            <span className="block whitespace-pre-wrap font-medium">{display}</span>
+            <span className="mt-1 block text-sm text-muted-foreground">
+              {[time, duration].filter(Boolean).join(" · ")}
+            </span>
+            <span className="mt-1 block text-xs text-[var(--clarity-completed)]">
+              {dayCorrectionLabel(correction.correction_type)} · Added later
             </span>
           </span>
           <ChevronDown
@@ -485,78 +582,23 @@ function CorrectionRow({
         {expanded && (
           <div className="space-y-3 border-t border-border px-3 py-3">
             <p className="text-xs text-muted-foreground">Added {addedAt}</p>
-            {!confirmingDelete ? (
-              <div className="flex gap-2">
-                <Button type="button" variant="ghost" size="sm" onClick={onEdit}>
-                  <Pencil /> Edit
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setConfirmingDelete(true)}
-                  className="text-destructive"
-                >
-                  <Trash2 /> Remove
-                </Button>
-              </div>
-            ) : (
-              <form action={action} className="space-y-2 rounded-xl bg-secondary p-3">
-                <input type="hidden" name="correctionId" value={correction.id} />
-                <p className="text-sm">Remove this added item?</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button type="button" variant="ghost" onClick={() => setConfirmingDelete(false)}>
-                    Cancel
-                  </Button>
-                  <PendingButton type="submit" variant="destructive" pendingLabel="Removing…">
-                    Remove
-                  </PendingButton>
-                </div>
-                {state.error && <p role="alert" className="text-xs text-destructive">{state.error}</p>}
-              </form>
+            {correction.title && correction.details && (
+              <p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                {correction.details}
+              </p>
             )}
+            <Button type="button" variant="ghost" size="sm" onClick={onEdit}>
+              <Pencil /> Edit
+            </Button>
           </div>
         )}
+        {deletionError && (
+          <p role="alert" className="px-3 pb-3 text-xs text-destructive">
+            {deletionError}
+          </p>
+        )}
       </article>
-    );
-  }
-
-  return (
-    <article className="rounded-2xl border border-border bg-card p-4">
-      <p className="whitespace-pre-wrap font-medium">{display}</p>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {[time, duration].filter(Boolean).join(" · ")}
-      </p>
-      <p className="mt-1 text-xs text-[var(--clarity-completed)]">
-        {dayCorrectionLabel(correction.correction_type)} · Added later
-      </p>
-      <p className="mt-1 text-xs text-muted-foreground">Added {addedAt}</p>
-      {correction.title && correction.details && (
-        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-          {correction.details}
-        </p>
-      )}
-      {!confirmingDelete ? (
-        <div className="mt-3 flex gap-2">
-          <Button type="button" variant="ghost" size="sm" onClick={onEdit}>
-            <Pencil /> Edit
-          </Button>
-          <Button type="button" variant="ghost" size="sm" onClick={() => setConfirmingDelete(true)} className="text-destructive">
-            <Trash2 /> Remove
-          </Button>
-        </div>
-      ) : (
-        <form action={action} className="mt-3 space-y-2 rounded-xl bg-secondary p-3">
-          <input type="hidden" name="correctionId" value={correction.id} />
-          <p className="text-sm">Remove this added item?</p>
-          <div className="grid grid-cols-2 gap-2">
-            <Button type="button" variant="ghost" onClick={() => setConfirmingDelete(false)}>Cancel</Button>
-            <PendingButton type="submit" variant="destructive" pendingLabel="Removing…">Remove</PendingButton>
-          </div>
-          {state.error && <p role="alert" className="text-xs text-destructive">{state.error}</p>}
-        </form>
-      )}
-    </article>
+    </SwipeToRemove>
   );
 }
 
