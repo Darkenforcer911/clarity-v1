@@ -1,11 +1,14 @@
 export function isActiveCalendarCommitment(
-  commitment: { status: string },
+  commitment: { status: string; reconciliation_outcome?: string | null },
 ) {
-  return commitment.status !== "cancelled";
+  return (
+    commitment.status !== "cancelled" ||
+    commitment.reconciliation_outcome === "cancelled"
+  );
 }
 
 export function filterActiveCalendarCommitments<
-  Commitment extends { status: string },
+  Commitment extends { status: string; reconciliation_outcome?: string | null },
 >(commitments: readonly Commitment[]) {
   return commitments.filter(isActiveCalendarCommitment);
 }

@@ -4,6 +4,7 @@ import { CalendarClock } from "lucide-react";
 import Link from "next/link";
 
 import {
+  formatCalendarOutcomeStatus,
   formatCommitmentRecurrence,
   getCommitmentMeta,
   getCommitmentTimingState,
@@ -34,13 +35,15 @@ export function DailyCommitments({
           const timing = getCommitmentTimingState(commitment, timezone, now);
           const recurrence = formatCommitmentRecurrence(commitment);
           const status =
-            timing === "time_passed"
-              ? "Time passed"
-              : timing === "overdue"
-                ? "Overdue"
-                : timing !== "scheduled"
-                  ? timing[0].toUpperCase() + timing.slice(1)
-                  : null;
+            commitment.reconciliation_outcome
+              ? formatCalendarOutcomeStatus(commitment, timezone)
+              : timing === "time_passed"
+                ? "Time passed"
+                : timing === "overdue"
+                  ? "Overdue"
+                  : timing !== "scheduled"
+                    ? timing[0].toUpperCase() + timing.slice(1)
+                    : null;
 
           return (
             <Link

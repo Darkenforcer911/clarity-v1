@@ -552,13 +552,19 @@ function CommitmentRow({
                 />
               </div>
             )}
-            {readOnly && commitment.commitment_type === "event" && (
+            {commitment.commitment_type === "event" &&
+              (readOnly ||
+                (commitment.occurrence_date === today &&
+                  isRecordedCalendarOutcome(
+                    commitment.reconciliation_outcome,
+                  ))) && (
                 <CorrectCalendarOutcomeControl
                   commitment={commitment}
                   timezone={timezone}
                   onSaved={onSaved}
+                  currentDay={!readOnly}
                 />
-            )}
+              )}
           </div>
         )}
       </article>
@@ -570,12 +576,14 @@ function CorrectCalendarOutcomeControl({
   commitment,
   timezone,
   onSaved,
+  currentDay,
 }: {
   commitment: CalendarCommitment;
   timezone: string;
   onSaved: () => void;
+  currentDay: boolean;
 }) {
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(currentDay);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const initialOutcome:
@@ -613,13 +621,16 @@ function CorrectCalendarOutcomeControl({
         onClick={() => setEditing(true)}
         className="h-11 w-full text-muted-foreground"
       >
-        Correct outcome
+        {currentDay ? "Update status" : "Correct outcome"}
       </Button>
     );
   }
 
   return (
     <HistoricalOutcomeCorrectionEditor
+      title={currentDay ? "Update status" : "Correct outcome"}
+      submitLabel={currentDay ? "Save" : "Confirm correction"}
+      submittingLabel={currentDay ? "Saving…" : "Correcting…"}
       hiddenFields={
         <>
           <input type="hidden" name="commitmentId" value={commitment.id} />
@@ -645,12 +656,26 @@ function CorrectCalendarOutcomeControl({
       initialNote={commitment.outcome_note ?? ""}
       noteMaxLength={1000}
       noteAvailable={(value) => value !== "not_recorded"}
-      supportingCopy="This corrects only this occurrence. The recurring commitment stays unchanged."
+      supportingCopy={
+        currentDay
+          ? "This updates only today’s occurrence. The recurring commitment stays unchanged."
+          : "This corrects only this occurrence. The recurring commitment stays unchanged."
+      }
       submitting={submitting}
       error={error}
       onCancel={() => setEditing(false)}
       onSubmit={submitCorrection}
     />
+  );
+}
+
+function isRecordedCalendarOutcome(
+  outcome: CalendarCommitment["reconciliation_outcome"],
+) {
+  return (
+    outcome === "attended" ||
+    outcome === "missed" ||
+    outcome === "cancelled"
   );
 }
 

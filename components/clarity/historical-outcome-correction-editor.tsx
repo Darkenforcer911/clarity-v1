@@ -14,6 +14,9 @@ import { TimeSelector } from "./time-selector";
 export type HistoricalOutcomeOption<T extends string> = readonly [T, string];
 
 export function HistoricalOutcomeCorrectionEditor<T extends string>({
+  title = "Correct outcome",
+  submitLabel = "Confirm correction",
+  submittingLabel = "Correcting…",
   hiddenFields,
   options,
   initialOutcome,
@@ -28,6 +31,9 @@ export function HistoricalOutcomeCorrectionEditor<T extends string>({
   onCancel,
   onSubmit,
 }: {
+  title?: string;
+  submitLabel?: string;
+  submittingLabel?: string;
   hiddenFields: React.ReactNode;
   options: readonly HistoricalOutcomeOption<T>[];
   initialOutcome: T;
@@ -59,7 +65,7 @@ export function HistoricalOutcomeCorrectionEditor<T extends string>({
     <form
       data-slot="historical-outcome-correction-editor"
       onSubmit={onSubmit}
-      className="space-y-5 border-t border-border pt-4"
+      className="space-y-5"
     >
       {hiddenFields}
       <input type="hidden" name="outcome" value={outcome} />
@@ -71,7 +77,7 @@ export function HistoricalOutcomeCorrectionEditor<T extends string>({
       <input type="hidden" name="note" value={showNote ? note : ""} />
 
       <ClarityFormHeader
-        title="Correct outcome"
+        title={title}
         closeLabel="Close outcome correction"
         onClose={onCancel}
       />
@@ -137,7 +143,7 @@ export function HistoricalOutcomeCorrectionEditor<T extends string>({
         disabled={submitting || !outcomeSelected}
         className="h-12 w-full rounded-xl text-base"
       >
-        {submitting ? "Correcting…" : "Confirm correction"}
+        {submitting ? submittingLabel : submitLabel}
       </Button>
 
       {error && (

@@ -1,9 +1,9 @@
 "use client";
 
-import { ChevronDown, Clock3, Plus, X } from "lucide-react";
-import { useState } from "react";
+import { ChevronDown, Clock3, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { formatCommitmentTime } from "@/lib/clarity/calendar-rules";
 
 export function OptionalTimeSelector({
   name,
@@ -22,56 +22,26 @@ export function OptionalTimeSelector({
   onExpandedChange: (expanded: boolean) => void;
   error?: string;
 }) {
-  const [timeVisible, setTimeVisible] = useState(
-    Boolean(value) || Boolean(error),
-  );
-
   return (
     <div className="w-full min-w-0 max-w-full">
-      {!timeVisible ? (
-        <div className="space-y-2">
-          <p className="text-sm font-medium">{label}</p>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => {
-              setTimeVisible(true);
-              onExpandedChange(true);
-            }}
-            className="h-11 w-auto justify-start rounded-lg px-2 text-muted-foreground"
-          >
-            <Plus />
-            Add time
-          </Button>
-        </div>
-      ) : (
-        <div className="min-w-0 space-y-2">
-          <TimeSelector
-            name={name}
-            label={label}
-            value={value}
-            onChange={onChange}
-            expanded={expanded}
-            onExpandedChange={onExpandedChange}
-            error={error}
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => {
-              onChange("");
-              setTimeVisible(false);
-              onExpandedChange(false);
-            }}
-            className="h-10 w-auto justify-start rounded-lg px-2 text-xs text-muted-foreground"
-          >
-            <X />
-            Remove time
-          </Button>
-        </div>
-      )}
-
-      {!timeVisible && <input type="hidden" name={name} value="" />}
+      <TimeSelector
+        name={name}
+        label={label}
+        value={value}
+        onChange={onChange}
+        expanded={expanded}
+        onExpandedChange={onExpandedChange}
+        summary={formatCommitmentTime(value) ?? "Anytime"}
+        onRemove={
+          value
+            ? () => {
+                onChange("");
+                onExpandedChange(false);
+              }
+            : undefined
+        }
+        error={error}
+      />
     </div>
   );
 }
