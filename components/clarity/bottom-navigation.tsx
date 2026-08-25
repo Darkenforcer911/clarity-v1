@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarDays, Home } from "lucide-react";
+import { BookHeart, CalendarDays, Home } from "lucide-react";
 import { usePathname } from "next/navigation";
 
 export function BottomNavigation({
@@ -17,6 +17,7 @@ export function BottomNavigation({
   const items = [
     { href: "/today", label: "Today", icon: Home },
     { href: "/calendar", label: "Calendar", icon: CalendarDays },
+    { href: "/life-model", label: "Life", icon: BookHeart },
   ];
 
   return (

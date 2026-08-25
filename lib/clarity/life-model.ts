@@ -21,6 +21,32 @@ const currentStateSchema = z.object({
   updated_at: timestampSchema,
 });
 
+const desiredStateSchema = z.object({
+  summary: z.string(),
+  target_start_date: dateSchema.nullable(),
+  target_end_date: dateSchema.nullable(),
+  target_confidence: z.enum(["estimated", "aspirational"]).nullable(),
+  created_via: lifeModelProvenanceSchema,
+  source_proposal_id: nullableUuidSchema,
+  confirmed_at: timestampSchema,
+  created_at: timestampSchema,
+  updated_at: timestampSchema,
+});
+
+const openQuestionSchema = z.object({
+  id: uuidSchema,
+  life_area_id: nullableUuidSchema,
+  question: z.string(),
+  context: z.string().nullable(),
+  status: z.literal("open"),
+  resolution_summary: z.null(),
+  created_via: lifeModelProvenanceSchema,
+  source_proposal_id: nullableUuidSchema,
+  resolved_at: z.null(),
+  created_at: timestampSchema,
+  updated_at: timestampSchema,
+});
+
 const goalDecisionSchema = z.object({
   id: uuidSchema,
   goal_id: uuidSchema,
@@ -139,15 +165,41 @@ const lifeAreaSchema = z.object({
   status: z.literal("active"),
   sort_order: z.number().int().nonnegative(),
   created_via: lifeModelProvenanceSchema,
+  source_proposal_id: nullableUuidSchema.optional().default(null),
   created_at: timestampSchema,
   updated_at: timestampSchema,
   archived_at: timestampSchema.nullable(),
   currentState: currentStateSchema.nullable(),
+  desiredState: desiredStateSchema.nullable().optional().default(null),
   goals: z.array(goalSchema),
   projects: z.array(projectSchema),
   routines: z.array(routineSchema),
   currentContexts: z.array(currentContextSchema),
+  openQuestions: z.array(openQuestionSchema).optional().default([]),
   evidence: z.array(lifeEvidenceSchema),
+});
+
+const currentDirectionSchema = z.object({
+  id: uuidSchema,
+  summary: z.string(),
+  rationale: z.string(),
+  started_on: dateSchema,
+  review_on: dateSchema.nullable(),
+  created_via: lifeModelProvenanceSchema,
+  source_proposal_id: nullableUuidSchema,
+  confirmed_at: timestampSchema,
+  superseded_at: z.null(),
+  created_at: timestampSchema,
+  updated_at: timestampSchema,
+  goals: z.array(
+    z.object({
+      goalId: uuidSchema,
+      sortOrder: z.number().int().nonnegative(),
+      lifeAreaId: uuidSchema,
+      title: z.string(),
+      status: z.enum(["exploring", "active", "achieved", "abandoned"]),
+    }),
+  ),
 });
 
 const dailyActionRelationshipSchema = z.object({
@@ -172,6 +224,8 @@ const calendarCommitmentRelationshipSchema = z.object({
 
 export const lifeModelSchema = z.object({
   areas: z.array(lifeAreaSchema),
+  openQuestions: z.array(openQuestionSchema).optional().default([]),
+  currentDirection: currentDirectionSchema.nullable().optional().default(null),
   relationships: z.object({
     dailyActions: z.array(dailyActionRelationshipSchema),
     calendarCommitments: z.array(calendarCommitmentRelationshipSchema),

@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.17"
   }
   graphql_public: {
     Tables: {
@@ -442,7 +442,113 @@ export type Database = {
             referencedColumns: ["id", "user_id"]
           },
           {
+            foreignKeyName: "current_contexts_proposal_owner_fkey"
+            columns: ["source_proposal_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "life_model_change_proposals"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
             foreignKeyName: "current_contexts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      current_direction_goals: {
+        Row: {
+          created_at: string
+          current_direction_id: string
+          goal_id: string
+          sort_order: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_direction_id: string
+          goal_id: string
+          sort_order: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          current_direction_id?: string
+          goal_id?: string
+          sort_order?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "current_direction_goals_direction_owner_fkey"
+            columns: ["current_direction_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "current_directions"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "current_direction_goals_goal_owner_fkey"
+            columns: ["goal_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
+      }
+      current_directions: {
+        Row: {
+          confirmed_at: string
+          created_at: string
+          created_via: Database["public"]["Enums"]["life_model_provenance"]
+          id: string
+          rationale: string
+          review_on: string | null
+          source_proposal_id: string | null
+          started_on: string
+          summary: string
+          superseded_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          confirmed_at?: string
+          created_at?: string
+          created_via?: Database["public"]["Enums"]["life_model_provenance"]
+          id?: string
+          rationale: string
+          review_on?: string | null
+          source_proposal_id?: string | null
+          started_on: string
+          summary: string
+          superseded_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          confirmed_at?: string
+          created_at?: string
+          created_via?: Database["public"]["Enums"]["life_model_provenance"]
+          id?: string
+          rationale?: string
+          review_on?: string | null
+          source_proposal_id?: string | null
+          started_on?: string
+          summary?: string
+          superseded_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "current_directions_proposal_owner_fkey"
+            columns: ["source_proposal_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "life_model_change_proposals"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "current_directions_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -917,6 +1023,13 @@ export type Database = {
             referencedColumns: ["id", "user_id"]
           },
           {
+            foreignKeyName: "goal_decisions_proposal_owner_fkey"
+            columns: ["source_proposal_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "life_model_change_proposals"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
             foreignKeyName: "goal_decisions_replacement_owner_fkey"
             columns: ["replacement_goal_id", "user_id"]
             isOneToOne: false
@@ -999,6 +1112,13 @@ export type Database = {
             referencedColumns: ["id", "user_id"]
           },
           {
+            foreignKeyName: "goals_proposal_owner_fkey"
+            columns: ["source_proposal_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "life_model_change_proposals"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
             foreignKeyName: "goals_replacement_owner_fkey"
             columns: ["replaced_by_goal_id", "user_id"]
             isOneToOne: false
@@ -1056,6 +1176,76 @@ export type Database = {
             referencedRelation: "life_areas"
             referencedColumns: ["id", "user_id"]
           },
+          {
+            foreignKeyName: "life_area_current_states_proposal_owner_fkey"
+            columns: ["source_proposal_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "life_model_change_proposals"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
+      }
+      life_area_desired_states: {
+        Row: {
+          confirmed_at: string
+          created_at: string
+          created_via: Database["public"]["Enums"]["life_model_provenance"]
+          life_area_id: string
+          source_proposal_id: string | null
+          summary: string
+          target_confidence:
+            | Database["public"]["Enums"]["life_target_confidence"]
+            | null
+          target_end_date: string | null
+          target_start_date: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          confirmed_at?: string
+          created_at?: string
+          created_via?: Database["public"]["Enums"]["life_model_provenance"]
+          life_area_id: string
+          source_proposal_id?: string | null
+          summary: string
+          target_confidence?:
+            | Database["public"]["Enums"]["life_target_confidence"]
+            | null
+          target_end_date?: string | null
+          target_start_date?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          confirmed_at?: string
+          created_at?: string
+          created_via?: Database["public"]["Enums"]["life_model_provenance"]
+          life_area_id?: string
+          source_proposal_id?: string | null
+          summary?: string
+          target_confidence?:
+            | Database["public"]["Enums"]["life_target_confidence"]
+            | null
+          target_end_date?: string | null
+          target_start_date?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "life_area_desired_states_owner_fkey"
+            columns: ["life_area_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "life_areas"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "life_area_desired_states_proposal_owner_fkey"
+            columns: ["source_proposal_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "life_model_change_proposals"
+            referencedColumns: ["id", "user_id"]
+          },
         ]
       }
       life_areas: {
@@ -1066,6 +1256,7 @@ export type Database = {
           id: string
           name: string
           sort_order: number
+          source_proposal_id: string | null
           status: Database["public"]["Enums"]["life_area_status"]
           updated_at: string
           user_id: string
@@ -1077,6 +1268,7 @@ export type Database = {
           id?: string
           name: string
           sort_order?: number
+          source_proposal_id?: string | null
           status?: Database["public"]["Enums"]["life_area_status"]
           updated_at?: string
           user_id: string
@@ -1088,11 +1280,19 @@ export type Database = {
           id?: string
           name?: string
           sort_order?: number
+          source_proposal_id?: string | null
           status?: Database["public"]["Enums"]["life_area_status"]
           updated_at?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "life_areas_proposal_owner_fkey"
+            columns: ["source_proposal_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "life_model_change_proposals"
+            referencedColumns: ["id", "user_id"]
+          },
           {
             foreignKeyName: "life_areas_user_id_fkey"
             columns: ["user_id"]
@@ -1201,7 +1401,141 @@ export type Database = {
             referencedColumns: ["id", "user_id"]
           },
           {
+            foreignKeyName: "life_evidence_proposal_owner_fkey"
+            columns: ["source_proposal_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "life_model_change_proposals"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
             foreignKeyName: "life_evidence_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      life_model_change_proposals: {
+        Row: {
+          confirmation_result: Json | null
+          confirmed_at: string | null
+          created_at: string
+          id: string
+          onboarding_session_id: string | null
+          proposal_source: Database["public"]["Enums"]["life_model_change_proposal_source"]
+          proposed_changes: Json
+          resolved_at: string | null
+          status: Database["public"]["Enums"]["life_model_change_proposal_status"]
+          updated_at: string
+          user_facing_summary: string
+          user_id: string
+        }
+        Insert: {
+          confirmation_result?: Json | null
+          confirmed_at?: string | null
+          created_at?: string
+          id?: string
+          onboarding_session_id?: string | null
+          proposal_source: Database["public"]["Enums"]["life_model_change_proposal_source"]
+          proposed_changes: Json
+          resolved_at?: string | null
+          status?: Database["public"]["Enums"]["life_model_change_proposal_status"]
+          updated_at?: string
+          user_facing_summary: string
+          user_id: string
+        }
+        Update: {
+          confirmation_result?: Json | null
+          confirmed_at?: string | null
+          created_at?: string
+          id?: string
+          onboarding_session_id?: string | null
+          proposal_source?: Database["public"]["Enums"]["life_model_change_proposal_source"]
+          proposed_changes?: Json
+          resolved_at?: string | null
+          status?: Database["public"]["Enums"]["life_model_change_proposal_status"]
+          updated_at?: string
+          user_facing_summary?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "life_model_change_proposals_onboarding_owner_fkey"
+            columns: ["onboarding_session_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_sessions"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "life_model_change_proposals_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      life_open_questions: {
+        Row: {
+          context: string | null
+          created_at: string
+          created_via: Database["public"]["Enums"]["life_model_provenance"]
+          id: string
+          life_area_id: string | null
+          question: string
+          resolution_summary: string | null
+          resolved_at: string | null
+          source_proposal_id: string | null
+          status: Database["public"]["Enums"]["life_open_question_status"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          context?: string | null
+          created_at?: string
+          created_via?: Database["public"]["Enums"]["life_model_provenance"]
+          id?: string
+          life_area_id?: string | null
+          question: string
+          resolution_summary?: string | null
+          resolved_at?: string | null
+          source_proposal_id?: string | null
+          status?: Database["public"]["Enums"]["life_open_question_status"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          context?: string | null
+          created_at?: string
+          created_via?: Database["public"]["Enums"]["life_model_provenance"]
+          id?: string
+          life_area_id?: string | null
+          question?: string
+          resolution_summary?: string | null
+          resolved_at?: string | null
+          source_proposal_id?: string | null
+          status?: Database["public"]["Enums"]["life_open_question_status"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "life_open_questions_area_owner_fkey"
+            columns: ["life_area_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "life_areas"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "life_open_questions_proposal_owner_fkey"
+            columns: ["source_proposal_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "life_model_change_proposals"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "life_open_questions_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -1278,6 +1612,56 @@ export type Database = {
           },
           {
             foreignKeyName: "notification_deliveries_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_sessions: {
+        Row: {
+          abandoned_at: string | null
+          completed_at: string | null
+          created_at: string
+          current_step: string
+          id: string
+          onboarding_version: number
+          started_at: string
+          status: Database["public"]["Enums"]["onboarding_session_status"]
+          updated_at: string
+          user_draft: Json
+          user_id: string
+        }
+        Insert: {
+          abandoned_at?: string | null
+          completed_at?: string | null
+          created_at?: string
+          current_step: string
+          id?: string
+          onboarding_version: number
+          started_at?: string
+          status?: Database["public"]["Enums"]["onboarding_session_status"]
+          updated_at?: string
+          user_draft?: Json
+          user_id: string
+        }
+        Update: {
+          abandoned_at?: string | null
+          completed_at?: string | null
+          created_at?: string
+          current_step?: string
+          id?: string
+          onboarding_version?: number
+          started_at?: string
+          status?: Database["public"]["Enums"]["onboarding_session_status"]
+          updated_at?: string
+          user_draft?: Json
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_sessions_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -1487,6 +1871,13 @@ export type Database = {
             referencedColumns: ["id", "user_id"]
           },
           {
+            foreignKeyName: "projects_proposal_owner_fkey"
+            columns: ["source_proposal_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "life_model_change_proposals"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
             foreignKeyName: "projects_replacement_owner_fkey"
             columns: ["replaced_by_project_id", "user_id"]
             isOneToOne: false
@@ -1675,6 +2066,13 @@ export type Database = {
             referencedColumns: ["id", "user_id"]
           },
           {
+            foreignKeyName: "routines_proposal_owner_fkey"
+            columns: ["source_proposal_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "life_model_change_proposals"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
             foreignKeyName: "routines_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
@@ -1688,6 +2086,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      abandon_onboarding_session: {
+        Args: { p_onboarding_session_id: string }
+        Returns: undefined
+      }
       adapt_daily_action: {
         Args: {
           p_action_type: string
@@ -1770,6 +2172,10 @@ export type Database = {
       complete_proposed_action_v2: {
         Args: { p_completed_time?: string; p_daily_action_id: string }
         Returns: undefined
+      }
+      confirm_life_model_change_proposal: {
+        Args: { p_life_model_change_proposal_id: string }
+        Returns: Json
       }
       correct_action_completion_time: {
         Args: {
@@ -1891,6 +2297,25 @@ export type Database = {
           p_source_day_correction_id?: string
           p_source_proposal_id?: string
           p_summary: string
+        }
+        Returns: string
+      }
+      create_life_model_change_proposal: {
+        Args: {
+          p_onboarding_session_id?: string
+          p_proposal_source: Database["public"]["Enums"]["life_model_change_proposal_source"]
+          p_proposed_changes: Json
+          p_user_facing_summary: string
+        }
+        Returns: string
+      }
+      create_life_open_question: {
+        Args: {
+          p_context?: string
+          p_created_via?: Database["public"]["Enums"]["life_model_provenance"]
+          p_life_area_id?: string
+          p_question: string
+          p_source_proposal_id?: string
         }
         Returns: string
       }
@@ -2123,6 +2548,10 @@ export type Database = {
         }
         Returns: string
       }
+      reject_life_model_change_proposal: {
+        Args: { p_life_model_change_proposal_id: string }
+        Returns: undefined
+      }
       remove_action_from_today: {
         Args: { p_daily_action_id: string }
         Returns: undefined
@@ -2198,6 +2627,14 @@ export type Database = {
         }
         Returns: string
       }
+      save_onboarding_session: {
+        Args: {
+          p_current_step: string
+          p_onboarding_version: number
+          p_user_draft?: Json
+        }
+        Returns: string
+      }
       save_proposed_plan: {
         Args: {
           p_actions: Json
@@ -2239,6 +2676,18 @@ export type Database = {
         }
         Returns: undefined
       }
+      set_current_direction: {
+        Args: {
+          p_created_via?: Database["public"]["Enums"]["life_model_provenance"]
+          p_goal_ids: string[]
+          p_rationale: string
+          p_review_on?: string
+          p_source_proposal_id?: string
+          p_started_on?: string
+          p_summary: string
+        }
+        Returns: string
+      }
       set_daily_action_life_relationships: {
         Args: {
           p_current_context_ids?: string[]
@@ -2262,8 +2711,21 @@ export type Database = {
         }
         Returns: undefined
       }
+      set_life_area_desired_state: {
+        Args: {
+          p_created_via?: Database["public"]["Enums"]["life_model_provenance"]
+          p_life_area_id: string
+          p_source_proposal_id?: string
+          p_summary: string
+          p_target_confidence?: Database["public"]["Enums"]["life_target_confidence"]
+          p_target_end_date?: string
+          p_target_start_date?: string
+        }
+        Returns: undefined
+      }
       start_current_day: { Args: never; Returns: string }
       start_current_day_v2: { Args: never; Returns: Json }
+      supersede_current_direction: { Args: never; Returns: undefined }
       transition_goal_status: {
         Args: {
           p_consequence_summary?: string
@@ -2277,6 +2739,14 @@ export type Database = {
           p_source_proposal_id?: string
         }
         Returns: string
+      }
+      transition_life_open_question: {
+        Args: {
+          p_life_open_question_id: string
+          p_new_status: Database["public"]["Enums"]["life_open_question_status"]
+          p_resolution_summary?: string
+        }
+        Returns: undefined
       }
       transition_project_status: {
         Args: {
@@ -2369,6 +2839,14 @@ export type Database = {
         }
         Returns: undefined
       }
+      update_life_open_question: {
+        Args: {
+          p_context?: string
+          p_life_open_question_id: string
+          p_question: string
+        }
+        Returns: undefined
+      }
       update_project: {
         Args: {
           p_desired_outcome: string
@@ -2445,7 +2923,14 @@ export type Database = {
       goal_status: "exploring" | "active" | "achieved" | "abandoned"
       life_area_status: "active" | "archived"
       life_evidence_signal: "supports" | "challenges" | "neutral"
+      life_model_change_proposal_source: "onboarding" | "mentor"
+      life_model_change_proposal_status:
+        | "pending"
+        | "accepted"
+        | "rejected"
+        | "superseded"
       life_model_provenance: "user_stated" | "ai_confirmed" | "system_derived"
+      life_open_question_status: "open" | "resolved" | "dismissed"
       life_target_confidence: "estimated" | "aspirational"
       notification_delivery_status:
         | "pending"
@@ -2454,6 +2939,7 @@ export type Database = {
         | "sent"
         | "failed"
         | "cancelled"
+      onboarding_session_status: "in_progress" | "completed" | "abandoned"
       project_status:
         | "planned"
         | "active"
@@ -2645,7 +3131,15 @@ export const Constants = {
       goal_status: ["exploring", "active", "achieved", "abandoned"],
       life_area_status: ["active", "archived"],
       life_evidence_signal: ["supports", "challenges", "neutral"],
+      life_model_change_proposal_source: ["onboarding", "mentor"],
+      life_model_change_proposal_status: [
+        "pending",
+        "accepted",
+        "rejected",
+        "superseded",
+      ],
       life_model_provenance: ["user_stated", "ai_confirmed", "system_derived"],
+      life_open_question_status: ["open", "resolved", "dismissed"],
       life_target_confidence: ["estimated", "aspirational"],
       notification_delivery_status: [
         "pending",
@@ -2655,6 +3149,7 @@ export const Constants = {
         "failed",
         "cancelled",
       ],
+      onboarding_session_status: ["in_progress", "completed", "abandoned"],
       project_status: ["planned", "active", "paused", "completed", "cancelled"],
       routine_cadence: ["daily", "weekly", "times_per_week", "certain_days"],
       routine_skip_policy: ["skip", "offer_makeup"],
