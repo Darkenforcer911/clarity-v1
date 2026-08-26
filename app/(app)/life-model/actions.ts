@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import type { LifeModelActionState } from "@/lib/clarity/life-model-action-state";
+import { getLifeModel } from "@/lib/clarity/life-model-service";
 import {
   archiveLifeArea,
   archiveLifeEvidence,
@@ -121,7 +122,6 @@ export async function mutateLifeModelAction(
         }));
         break;
       case "updateGoal": {
-        const target = targetFields(formData);
         const input = z.object({
           id: uuid,
           title: requiredText(200),
@@ -131,7 +131,17 @@ export async function mutateLifeModelAction(
           title: formData.get("title"),
           desiredOutcome: formData.get("desiredOutcome"),
         });
-        await updateGoal({ ...input, ...target });
+        const model = await getLifeModel();
+        const existingGoal = model.areas
+          .flatMap((area) => area.goals)
+          .find((goal) => goal.id === input.id);
+        if (!existingGoal) throw new Error("Goal not found.");
+        await updateGoal({
+          ...input,
+          targetStartDate: existingGoal.target_start_date,
+          targetEndDate: existingGoal.target_end_date,
+          targetConfidence: existingGoal.target_confidence,
+        });
         break;
       }
       case "transitionGoal":

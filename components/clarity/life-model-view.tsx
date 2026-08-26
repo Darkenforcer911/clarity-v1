@@ -2,15 +2,11 @@
 
 import {
   Archive,
-  ArrowDown,
-  ArrowUp,
   ChevronDown,
-  CirclePause,
-  CirclePlay,
-  FileCheck2,
-  Flag,
+  MoreHorizontal,
   Pencil,
 } from "lucide-react";
+import Link from "next/link";
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -19,9 +15,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   initialLifeModelActionState,
 } from "@/lib/clarity/life-model-action-state";
 import type { LifeModel } from "@/lib/clarity/life-model";
+import { mentorLifeChangeHref } from "@/lib/clarity/life-model-navigation";
 import { ClarityFormHeader } from "./clarity-form-header";
 import { PendingButton } from "./pending-button";
 
@@ -42,13 +46,20 @@ export function LifeModelView({ model }: { model: LifeModel }) {
 
   if (model.areas.length === 0) {
     return (
-      <div className="space-y-3">
-        <h1 className="text-3xl font-semibold tracking-[-0.04em]">Your life</h1>
-        <p className="text-sm text-muted-foreground">
-          What Clarity currently knows about you.
-        </p>
-        <div className="rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">
-          Clarity will build this with you as it learns about your life.
+      <div className="space-y-5">
+        <div className="space-y-2">
+          <h1 className="text-3xl font-semibold tracking-[-0.04em]">Your life</h1>
+          <p className="text-sm text-muted-foreground">
+            What Clarity currently knows about you.
+          </p>
+        </div>
+        <div className="space-y-4 rounded-2xl border border-border bg-card p-5">
+          <p className="text-sm leading-6 text-muted-foreground">
+            Your life will take shape here as Clarity learns about you.
+          </p>
+          <Button asChild className="h-12 w-full rounded-xl">
+            <Link href={mentorLifeChangeHref}>Talk to Mentor</Link>
+          </Button>
         </div>
       </div>
     );
@@ -74,7 +85,7 @@ export function LifeModelView({ model }: { model: LifeModel }) {
         >
           Life Areas
         </h2>
-        {model.areas.map((area, areaIndex) => {
+        {model.areas.map((area) => {
           const expanded = expandedAreaId === area.id;
           return (
             <article
@@ -82,74 +93,56 @@ export function LifeModelView({ model }: { model: LifeModel }) {
               data-life-area-id={area.id}
               className="overflow-hidden rounded-2xl border border-border bg-card"
             >
-              <button
-                type="button"
-                aria-expanded={expanded}
-                onClick={() => {
-                  setEditorKey(null);
-                  setExpandedAreaId((current) => current === area.id ? null : area.id);
-                }}
-                className="flex min-h-20 w-full items-center gap-3 px-4 py-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block text-lg font-semibold">{area.name}</span>
-                  {area.currentState && (
-                    <span className="mt-1 block truncate text-sm text-muted-foreground">
-                      {area.currentState.summary}
+              <div className="flex items-center">
+                <button
+                  type="button"
+                  aria-expanded={expanded}
+                  onClick={() => {
+                    setEditorKey(null);
+                    setExpandedAreaId((current) => current === area.id ? null : area.id);
+                  }}
+                  className="flex min-h-20 min-w-0 flex-1 items-center gap-3 px-4 py-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-lg font-semibold">{area.name}</span>
+                    {area.currentState && (
+                      <span className="mt-1 block truncate text-sm text-muted-foreground">
+                        {area.currentState.summary}
+                      </span>
+                    )}
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      {formatAreaCounts(area)}
                     </span>
-                  )}
-                  <span className="mt-1 block text-xs text-muted-foreground">
-                    {formatAreaCounts(area)}
                   </span>
-                </span>
-                <ChevronDown
-                  aria-hidden="true"
-                  className={`size-5 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`}
+                  <ChevronDown
+                    aria-hidden="true"
+                    className={`size-5 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`}
+                  />
+                </button>
+                <AreaAdminMenu
+                  area={area}
+                  onRename={() => {
+                    setExpandedAreaId(area.id);
+                    openEditor(`area:${area.id}`);
+                  }}
+                  onArchive={() => {
+                    setExpandedAreaId(area.id);
+                    openEditor(`archive-area:${area.id}`);
+                  }}
                 />
-              </button>
+              </div>
 
               {expanded && (
                 <div className="space-y-5 border-t border-border px-4 py-4">
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => openEditor(`area:${area.id}`)}
-                    >
-                      <Pencil /> Edit area
-                    </Button>
-                    {!area.currentState && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEditor(`state:${area.id}`)}
-                      >
-                        <FileCheck2 /> Add current state
-                      </Button>
-                    )}
-                    <AreaOrderButton
-                      areaIds={model.areas.map((candidate) => candidate.id)}
-                      areaIndex={areaIndex}
-                      direction="up"
-                    />
-                    <AreaOrderButton
-                      areaIds={model.areas.map((candidate) => candidate.id)}
-                      areaIndex={areaIndex}
-                      direction="down"
-                    />
-                  </div>
-
                   {editorKey === `area:${area.id}` && (
                     <AreaEditor area={area} onClose={() => setEditorKey(null)} />
                   )}
-                  {editorKey === `state:${area.id}` && (
-                    <CurrentStateEditor area={area} onClose={() => setEditorKey(null)} />
+                  {editorKey === `archive-area:${area.id}` && (
+                    <AreaArchiveEditor area={area} onClose={() => setEditorKey(null)} />
                   )}
 
                   {area.currentState && (
-                    <LifeSection title="Current state">
+                    <LifeSection title="Where you are">
                       <LifeFactRow
                         title={area.currentState.summary}
                         detail={`As of ${formatDate(area.currentState.as_of_date)}`}
@@ -158,6 +151,15 @@ export function LifeModelView({ model }: { model: LifeModel }) {
                       {editorKey === `state:${area.id}` && (
                         <CurrentStateEditor area={area} onClose={() => setEditorKey(null)} />
                       )}
+                    </LifeSection>
+                  )}
+
+                  {area.desiredState && (
+                    <LifeSection title="Where you want to be">
+                      <LifeFactRow
+                        title={area.desiredState.summary}
+                        detail={formatTargetWindow(area.desiredState)}
+                      />
                     </LifeSection>
                   )}
 
@@ -221,7 +223,7 @@ export function LifeModelView({ model }: { model: LifeModel }) {
                   )}
 
                   {area.currentContexts.length > 0 && (
-                    <LifeSection title="Current context">
+                    <LifeSection title="Current Context">
                       {area.currentContexts.map((context) => (
                         <div key={context.id} className="space-y-3">
                           <LifeFactRow
@@ -240,30 +242,81 @@ export function LifeModelView({ model }: { model: LifeModel }) {
                     </LifeSection>
                   )}
 
-                  {area.evidence.length > 0 && (
-                    <LifeSection title="Evidence">
-                      {area.evidence.map((evidence) => (
-                        <div key={evidence.id} className="space-y-3">
-                          <LifeFactRow
-                            title={evidence.summary}
-                            detail={`${sentenceCase(evidence.signal)} · ${formatDate(evidence.occurred_on)}`}
-                            onEdit={() => openEditor(`evidence:${evidence.id}`)}
-                          />
-                          {editorKey === `evidence:${evidence.id}` && (
-                            <EvidenceEditor
-                              evidence={evidence}
-                              onClose={() => setEditorKey(null)}
-                            />
-                          )}
-                        </div>
+                  {area.openQuestions.length > 0 && (
+                    <LifeSection title="Still figuring out">
+                      {area.openQuestions.map((question) => (
+                        <LifeFactRow
+                          key={question.id}
+                          title={question.question}
+                          detail={question.context ?? undefined}
+                        />
                       ))}
                     </LifeSection>
+                  )}
+
+                  {area.evidence.length > 0 && (
+                    <details className="group rounded-xl border border-border bg-secondary">
+                      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        <span>{countLabel(area.evidence.length, "supporting detail")}</span>
+                        <ChevronDown className="size-4 transition-transform group-open:rotate-180 motion-reduce:transition-none" />
+                      </summary>
+                      <div className="space-y-3 border-t border-border p-3">
+                        {area.evidence.map((evidence) => (
+                          <div key={evidence.id} className="space-y-3">
+                            <LifeFactRow
+                              title={evidence.summary}
+                              detail={`${sentenceCase(evidence.signal)} · ${formatDate(evidence.occurred_on)}`}
+                              onEdit={() => openEditor(`evidence:${evidence.id}`)}
+                            />
+                            {editorKey === `evidence:${evidence.id}` && (
+                              <EvidenceEditor evidence={evidence} onClose={() => setEditorKey(null)} />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </details>
                   )}
                 </div>
               )}
             </article>
           );
         })}
+      </section>
+
+      {model.currentDirection && (
+        <section className="space-y-2 rounded-2xl border border-border bg-card p-4">
+          <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            What matters now
+          </h2>
+          <p className="text-base font-semibold">{model.currentDirection.summary}</p>
+          <p className="text-sm leading-5 text-muted-foreground">
+            {model.currentDirection.rationale}
+          </p>
+        </section>
+      )}
+
+      {model.openQuestions.length > 0 && (
+        <LifeSection title="Still figuring out">
+          {model.openQuestions.map((question) => (
+            <LifeFactRow
+              key={question.id}
+              title={question.question}
+              detail={question.context ?? undefined}
+            />
+          ))}
+        </LifeSection>
+      )}
+
+      <section className="space-y-3 border-t border-border pt-5">
+        <div className="space-y-1">
+          <h2 className="text-sm font-semibold">Something changed?</h2>
+          <p className="text-sm leading-5 text-muted-foreground">
+            Tell Mentor what’s new, what you’re considering, or what no longer fits.
+          </p>
+        </div>
+        <Button asChild variant="secondary" className="h-11 rounded-xl px-5">
+          <Link href={mentorLifeChangeHref}>Talk to Mentor</Link>
+        </Button>
       </section>
     </div>
   );
@@ -287,7 +340,7 @@ function LifeFactRow({
 }: {
   title: string;
   detail?: string;
-  onEdit: () => void;
+  onEdit?: () => void;
 }) {
   return (
     <div className="flex min-h-14 items-start gap-3 rounded-xl border border-border bg-secondary px-3 py-3">
@@ -299,16 +352,18 @@ function LifeFactRow({
           </span>
         )}
       </span>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        onClick={onEdit}
-        aria-label={`Edit ${title}`}
-        className="size-11 min-h-11 min-w-11 shrink-0 rounded-xl"
-      >
-        <Pencil />
-      </Button>
+      {onEdit && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={onEdit}
+          aria-label={`Correct ${title}`}
+          className="size-11 min-h-11 min-w-11 shrink-0 rounded-xl text-muted-foreground"
+        >
+          <Pencil />
+        </Button>
+      )}
     </div>
   );
 }
@@ -366,15 +421,27 @@ function AreaEditor({ area, onClose }: { area: Area; onClose: () => void }) {
         <PendingButton name="operation" value="renameLifeArea" className="h-12 rounded-xl">
           Save changes
         </PendingButton>
-        <PendingButton
-          name="operation"
-          value="archiveLifeArea"
-          variant="ghost"
-          className="h-11 rounded-xl text-destructive"
-        >
-          <Archive /> Archive Life Area
-        </PendingButton>
       </div>
+    </MutationForm>
+  );
+}
+
+function AreaArchiveEditor({ area, onClose }: { area: Area; onClose: () => void }) {
+  return (
+    <MutationForm
+      title={`Archive ${area.name}?`}
+      subtitle="Active goals, projects, routines, or current context must be resolved first."
+      onClose={onClose}
+    >
+      <input type="hidden" name="lifeAreaId" value={area.id} />
+      <PendingButton
+        name="operation"
+        value="archiveLifeArea"
+        variant="outline"
+        className="h-12 w-full rounded-xl border-destructive/50 text-destructive"
+      >
+        <Archive /> Archive Life Area
+      </PendingButton>
     </MutationForm>
   );
 }
@@ -402,31 +469,12 @@ function GoalEditor({ goal, onClose }: { goal: Goal; onClose: () => void }) {
       <Field label="Goal">
         <Input name="title" defaultValue={goal.title} required maxLength={200} className={fieldClassName} />
       </Field>
-      <Field label="Desired outcome">
+      <Field label="What does success look like?">
         <Textarea name="desiredOutcome" defaultValue={goal.desired_outcome} required maxLength={2000} />
       </Field>
-      <TargetFields item={goal} />
       <PendingButton name="operation" value="updateGoal" className="h-12 w-full rounded-xl">
         Save changes
       </PendingButton>
-      <div className="space-y-3 border-t border-border pt-4">
-        <Field label="Decision note">
-          <Textarea name="rationale" placeholder={goal.status === "exploring" ? "Optional unless abandoning" : "Required when abandoning"} maxLength={5000} />
-        </Field>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {goal.status === "exploring" && (
-            <TransitionButton operation="transitionGoal" status="active">
-              <CirclePlay /> Commit to goal
-            </TransitionButton>
-          )}
-          <TransitionButton operation="transitionGoal" status="achieved">
-            <Flag /> Mark achieved
-          </TransitionButton>
-          <TransitionButton operation="transitionGoal" status="abandoned" destructive>
-            <Archive /> Abandon goal
-          </TransitionButton>
-        </div>
-      </div>
     </MutationForm>
   );
 }
@@ -467,25 +515,6 @@ function ProjectEditor({
       <PendingButton name="operation" value="updateProject" className="h-12 w-full rounded-xl">
         Save changes
       </PendingButton>
-      {project.status !== "planned" && (
-        <div className="grid gap-2 border-t border-border pt-4 sm:grid-cols-2">
-          {project.status === "active" ? (
-            <TransitionButton operation="transitionProject" status="paused">
-              <CirclePause /> Pause
-            </TransitionButton>
-          ) : (
-            <TransitionButton operation="transitionProject" status="active">
-              <CirclePlay /> Resume
-            </TransitionButton>
-          )}
-          <TransitionButton operation="transitionProject" status="completed">
-            <Flag /> Complete
-          </TransitionButton>
-          <TransitionButton operation="transitionProject" status="cancelled" destructive>
-            <Archive /> Cancel project
-          </TransitionButton>
-        </div>
-      )}
     </MutationForm>
   );
 }
@@ -547,20 +576,6 @@ function RoutineEditor({
       <PendingButton name="operation" value="updateRoutine" className="h-12 w-full rounded-xl">
         Save changes
       </PendingButton>
-      <div className="grid gap-2 border-t border-border pt-4 sm:grid-cols-2">
-        {routine.status === "active" ? (
-          <TransitionButton operation="transitionRoutine" status="paused">
-            <CirclePause /> Pause
-          </TransitionButton>
-        ) : (
-          <TransitionButton operation="transitionRoutine" status="active">
-            <CirclePlay /> Resume
-          </TransitionButton>
-        )}
-        <TransitionButton operation="transitionRoutine" status="ended" destructive>
-          <Archive /> End routine
-        </TransitionButton>
-      </div>
     </MutationForm>
   );
 }
@@ -588,9 +603,6 @@ function ContextEditor({ context, onClose }: { context: CurrentContext; onClose:
       </div>
       <PendingButton name="operation" value="updateContext" className="h-12 w-full rounded-xl">
         Save changes
-      </PendingButton>
-      <PendingButton name="operation" value="endContext" variant="ghost" className="h-11 w-full rounded-xl text-destructive">
-        <Archive /> End context
       </PendingButton>
     </MutationForm>
   );
@@ -623,45 +635,48 @@ function EvidenceEditor({ evidence, onClose }: { evidence: Evidence; onClose: ()
   );
 }
 
-function AreaOrderButton({
-  areaIds,
-  areaIndex,
-  direction,
+function AreaAdminMenu({
+  area,
+  onRename,
+  onArchive,
 }: {
-  areaIds: string[];
-  areaIndex: number;
-  direction: "up" | "down";
+  area: Area;
+  onRename: () => void;
+  onArchive: () => void;
 }) {
-  const router = useRouter();
-  const [state, action] = useActionState(mutateLifeModelAction, initialLifeModelActionState);
-  const nextIndex = direction === "up" ? areaIndex - 1 : areaIndex + 1;
-  const disabled = nextIndex < 0 || nextIndex >= areaIds.length;
-  const ordered = [...areaIds];
-  if (!disabled) [ordered[areaIndex], ordered[nextIndex]] = [ordered[nextIndex], ordered[areaIndex]];
-
-  useEffect(() => {
-    if (state.saved) router.refresh();
-  }, [router, state.saved, state.version]);
-
   return (
-    <form action={action}>
-      <input type="hidden" name="operation" value="reorderLifeAreas" />
-      {ordered.map((id) => <input key={id} type="hidden" name="orderedLifeAreaId" value={id} />)}
-      <PendingButton
-        type="submit"
-        variant="ghost"
-        size="sm"
-        disabled={disabled}
-        aria-label={`Move Life Area ${direction}`}
-      >
-        {direction === "up" ? <ArrowUp /> : <ArrowDown />}
-        {direction === "up" ? "Up" : "Down"}
-      </PendingButton>
-    </form>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={`Manage ${area.name}`}
+          className="mr-2 size-11 min-h-11 min-w-11 shrink-0 rounded-xl text-muted-foreground"
+        >
+          <MoreHorizontal />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52 rounded-xl border-border bg-card p-1.5">
+        <DropdownMenuItem
+          onSelect={onRename}
+          className="min-h-11 cursor-pointer rounded-lg px-3"
+        >
+          <Pencil /> Rename
+        </DropdownMenuItem>
+        <DropdownMenuSeparator className="bg-border" />
+        <DropdownMenuItem
+          onSelect={onArchive}
+          className="min-h-11 cursor-pointer rounded-lg px-3 text-destructive focus:text-destructive"
+        >
+          <Archive /> Archive
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
-function TargetFields({ item }: { item: Goal | Project }) {
+function TargetFields({ item }: { item: Project }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       <Field label="Target start">
@@ -714,42 +729,6 @@ function SaveButton() {
   );
 }
 
-function TransitionButton({
-  operation,
-  status,
-  destructive = false,
-  children,
-}: {
-  operation: "transitionGoal" | "transitionProject" | "transitionRoutine";
-  status: string;
-  destructive?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <PendingButton
-      name="operation"
-      value={operation}
-      formAction={undefined}
-      variant="outline"
-      className={`h-11 rounded-xl ${destructive ? "border-destructive/50 text-destructive" : ""}`}
-      onClick={(event) => {
-        const form = event.currentTarget.form;
-        if (!form) return;
-        let statusInput = form.elements.namedItem("newStatus") as HTMLInputElement | null;
-        if (!statusInput) {
-          statusInput = document.createElement("input");
-          statusInput.type = "hidden";
-          statusInput.name = "newStatus";
-          form.append(statusInput);
-        }
-        statusInput.value = status;
-      }}
-    >
-      {children}
-    </PendingButton>
-  );
-}
-
 function formatAreaCounts(area: Area) {
   const parts = [
     countLabel(area.goals.length, "goal"),
@@ -757,6 +736,11 @@ function formatAreaCounts(area: Area) {
     countLabel(area.routines.length, "routine"),
   ].filter(Boolean);
   return parts.join(" · ") || "Confirmed Life Area";
+}
+
+function formatTargetWindow(desiredState: NonNullable<Area["desiredState"]>) {
+  if (!desiredState.target_start_date || !desiredState.target_end_date) return undefined;
+  return `${formatDate(desiredState.target_start_date)} – ${formatDate(desiredState.target_end_date)}`;
 }
 
 function countLabel(count: number, noun: string) {

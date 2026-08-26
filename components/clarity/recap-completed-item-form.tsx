@@ -21,12 +21,14 @@ export function RecapCompletedItemForm({
   onCancel,
   embedded = false,
   submitting = false,
+  submitLabel,
 }: {
   initialItem?: RecapCompletedItem;
   onSave: (item: RecapCompletedItem) => void;
   onCancel: () => void;
   embedded?: boolean;
   submitting?: boolean;
+  submitLabel?: string;
 }) {
   const [title, setTitle] = useState(initialItem?.title ?? "");
   const [completionTime, setCompletionTime] = useState(() =>
@@ -124,9 +126,8 @@ export function RecapCompletedItemForm({
       >
         {submitting
           ? "Saving…"
-          : initialItem
-            ? "Save changes"
-            : "Add completed item"}
+          : submitLabel ??
+            (initialItem ? "Save changes" : "Add completed item")}
       </Button>
     </section>
   );

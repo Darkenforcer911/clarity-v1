@@ -200,3 +200,35 @@ export async function archiveLifeEvidence(id: string) {
     p_life_evidence_id: id,
   });
 }
+
+export async function createMentorLifeModelChangeProposal(input: {
+  userFacingSummary: string;
+  proposedChanges: { operations: Array<Record<string, unknown>> };
+}) {
+  const result = await callLifeModelMutation(
+    "create_life_model_change_proposal",
+    {
+      p_proposal_source: "mentor",
+      p_user_facing_summary: input.userFacingSummary,
+      p_proposed_changes: input.proposedChanges,
+      p_onboarding_session_id: null,
+    },
+  );
+
+  if (typeof result !== "string") {
+    throw new Error("Clarity could not create the Life proposal.");
+  }
+  return result;
+}
+
+export async function confirmLifeModelChangeProposal(id: string) {
+  return callLifeModelMutation("confirm_life_model_change_proposal", {
+    p_life_model_change_proposal_id: id,
+  });
+}
+
+export async function rejectLifeModelChangeProposal(id: string) {
+  await callLifeModelMutation("reject_life_model_change_proposal", {
+    p_life_model_change_proposal_id: id,
+  });
+}

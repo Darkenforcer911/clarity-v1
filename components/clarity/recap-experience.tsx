@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronDown, CirclePlus, Trash2 } from "lucide-react";
+import { Check, ChevronDown, CirclePlus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import {
 } from "./recap-action-panel";
 import { RecapDayContextField } from "./recap-day-context-field";
 import { SecondarySettingDisclosure } from "./secondary-setting-disclosure";
+import { SwipeToRemove } from "./swipe-to-remove";
 
 export type RecapPlanAction = {
   id: string;
@@ -83,6 +84,9 @@ export function RecapExperience({
   const [plansChangedDraft, setPlansChangedDraft] = useState("");
   const [internalDayContext, setInternalDayContext] = useState("");
   const [editorFieldFocused, setEditorFieldFocused] = useState(false);
+  const [swipedActivityId, setSwipedActivityId] = useState<
+    string | null
+  >(null);
   const actionElements = useRef(
     new Map<string, HTMLDivElement>(),
   );
@@ -111,6 +115,33 @@ export function RecapExperience({
     },
     [onEditorActiveChange],
   );
+
+  useEffect(() => {
+    if (!swipedActivityId) {
+      return;
+    }
+
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      const target = event.target;
+
+      if (!(target instanceof Element)) {
+        setSwipedActivityId(null);
+        return;
+      }
+
+      const swipedCard = target.closest<HTMLElement>(
+        "[data-swipe-action-id]",
+      );
+
+      if (swipedCard?.dataset.swipeActionId !== swipedActivityId) {
+        setSwipedActivityId(null);
+      }
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsidePress);
+    return () =>
+      document.removeEventListener("pointerdown", closeOnOutsidePress);
+  }, [swipedActivityId]);
 
   function updateDayContext(value: string) {
     setInternalDayContext(value);
@@ -200,78 +231,88 @@ export function RecapExperience({
     const open = auxiliaryPanel === panelId;
 
     return (
-      <article
+      <SwipeToRemove
         key={activity.id}
-        data-slot="recap-activity-card"
-        className="overflow-hidden rounded-2xl border border-border bg-card transition-colors motion-reduce:transition-none"
+        itemId={activity.id}
+        itemTitle={activity.title}
+        open={swipedActivityId === activity.id}
+        onOpenChange={(swipeOpen) =>
+          setSwipedActivityId(swipeOpen ? activity.id : null)
+        }
+        onRemove={() => {
+          onDeleteActivity(activity.id);
+          setSwipedActivityId(null);
+          setAuxiliaryPanel((current) =>
+            current === panelId ? null : current,
+          );
+        }}
+        removalPending={false}
+        removing={false}
+        enabled
+        accessibilityContext="from this recap"
       >
-        <button
-          type="button"
-          aria-expanded={open}
-          onClick={() => {
-            setOpenActionId(null);
-            setPlansChangedOpen(false);
-            setAuxiliaryPanel(open ? null : panelId);
-          }}
-          className="flex min-h-14 w-full items-center justify-between gap-3 px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        <article
+          data-slot="recap-activity-card"
+          className="overflow-hidden rounded-2xl border border-border bg-card transition-colors motion-reduce:transition-none"
         >
-          <span className="min-w-0 flex-1">
-            <span className="block font-semibold">
-              {activity.title}
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => {
+              setSwipedActivityId(null);
+              setOpenActionId(null);
+              setPlansChangedOpen(false);
+              setAuxiliaryPanel(open ? null : panelId);
+            }}
+            className="flex min-h-14 w-full items-center justify-between gap-3 px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold">
+                {activity.title}
+              </span>
+              <span className="mt-0.5 flex items-center gap-1 text-sm text-[var(--clarity-completed)]">
+                <Check aria-hidden="true" className="size-3.5 shrink-0" />
+                {`Done · ${
+                  activity.completionTime
+                    ? formatLocalTimeLabel(activity.completionTime)
+                    : "Anytime"
+                }`}
+              </span>
             </span>
-            <span className="mt-0.5 flex items-center gap-1 text-sm text-[var(--clarity-completed)]">
-              <Check aria-hidden="true" className="size-3.5 shrink-0" />
-              {`Done · ${
-                activity.completionTime
-                  ? formatLocalTimeLabel(activity.completionTime)
-                  : "Anytime"
+            <ChevronDown
+              aria-hidden="true"
+              className={`size-5 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none ${
+                open ? "rotate-180" : ""
               }`}
-            </span>
-          </span>
-          <ChevronDown
-            aria-hidden="true"
-            className={`size-5 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none ${
-              open ? "rotate-180" : ""
-            }`}
-          />
-        </button>
+            />
+          </button>
 
-        <div
-          aria-hidden={!open}
-          inert={!open ? true : undefined}
-          className={`grid transition-[grid-template-rows] duration-200 motion-reduce:transition-none ${
-            open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
-          }`}
-        >
-          <div className="overflow-hidden">
-            <div className="space-y-3 border-t border-border px-3 py-3">
-              {onUpdateActivity && (
-                <RecapCompletedItemForm
-                  embedded
-                  initialItem={activity}
-                  onSave={(updated) => {
-                    onUpdateActivity(updated);
-                    setAuxiliaryPanel(null);
-                  }}
-                  onCancel={() => setAuxiliaryPanel(null)}
-                />
-              )}
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  onDeleteActivity(activity.id);
-                  setAuxiliaryPanel(null);
-                }}
-                className="h-10 w-auto justify-start rounded-lg px-2 text-xs text-destructive hover:text-destructive"
-              >
-                <Trash2 />
-                Remove completed item
-              </Button>
+          <div
+            aria-hidden={!open}
+            inert={!open ? true : undefined}
+            className={`grid transition-[grid-template-rows] duration-200 motion-reduce:transition-none ${
+              open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+            }`}
+          >
+            <div className="overflow-hidden">
+              <div className="space-y-3 border-t border-border px-3 py-3">
+                {onUpdateActivity && (
+                  <RecapCompletedItemForm
+                    embedded
+                    initialItem={activity}
+                    submitLabel="Save"
+                    onSave={(updated) => {
+                      onUpdateActivity(updated);
+                      setAuxiliaryPanel(null);
+                    }}
+                    onCancel={() => setAuxiliaryPanel(null)}
+                  />
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      </article>
+        </article>
+      </SwipeToRemove>
     );
   }
 
@@ -311,6 +352,8 @@ export function RecapExperience({
               <Button
                 type="button"
                 variant="ghost"
+                aria-expanded={plansChangedOpen}
+                aria-controls="remaining-actions-bulk-outcome"
                 onClick={() => {
                   if (plansChangedOpen) {
                     setPlansChangedOpen(false);
@@ -323,11 +366,14 @@ export function RecapExperience({
                 }}
                 className="h-10 shrink-0 rounded-xl px-2 text-sm text-muted-foreground"
               >
-                Rest of the day changed?
+                Mark remaining as didn&apos;t happen
               </Button>
             </div>
             {plansChangedOpen && (
-              <div className="space-y-3 rounded-2xl border border-border bg-card p-4">
+              <div
+                id="remaining-actions-bulk-outcome"
+                className="space-y-3 rounded-2xl border border-border bg-card p-4"
+              >
                 <h3 className="font-semibold">What happened?</h3>
                 <Textarea
                   aria-label="What happened?"
@@ -412,6 +458,7 @@ export function RecapExperience({
           >
             <RecapCompletedItemForm
               embedded
+              submitLabel="Save"
               onSave={(activity) => {
                 onAddActivity(activity);
                 setAuxiliaryPanel(null);
