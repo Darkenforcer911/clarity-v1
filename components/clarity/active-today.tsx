@@ -48,6 +48,10 @@ import { AddActionForm } from "./add-action-form";
 import { PendingButton } from "./pending-button";
 import { DailyCommitments } from "./daily-commitments";
 import type { CalendarCommitment } from "@/lib/clarity/calendar-commitments";
+import {
+  getLaterCommitmentsHeading,
+  partitionTodayCommitmentsForAttention,
+} from "@/lib/clarity/today-commitment-priority";
 import { SwipeToRemove } from "./swipe-to-remove";
 
 type ActiveTodayProps = {
@@ -155,6 +159,16 @@ export function ActiveToday({
     profile.timezone,
     now,
   );
+  const {
+    approaching: approachingCommitments,
+    later: laterCommitments,
+  } = partitionTodayCommitmentsForAttention({
+    commitments,
+    localDate: plan.local_date,
+    timezone: profile.timezone,
+    now,
+    nextActionDurationMinutes: nextAction?.estimated_minutes ?? null,
+  });
   const laterActions = remaining.filter(
     (action) => action.id !== nextAction?.id,
   );
@@ -406,8 +420,8 @@ export function ActiveToday({
       </div>
 
       <DailyCommitments
-        heading="Today's commitments"
-        commitments={commitments}
+        heading="Coming up"
+        commitments={approachingCommitments}
         timezone={profile.timezone}
         now={now}
       />
@@ -446,6 +460,18 @@ export function ActiveToday({
           </p>
         </div>
       )}
+
+      <DailyCommitments
+        heading={getLaterCommitmentsHeading({
+          commitments: laterCommitments,
+          localDate: plan.local_date,
+          timezone: profile.timezone,
+          now,
+        })}
+        commitments={laterCommitments}
+        timezone={profile.timezone}
+        now={now}
+      />
 
       {laterActions.length > 0 && (
         <div className="space-y-3">

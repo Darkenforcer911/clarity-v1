@@ -1,6 +1,7 @@
 "use client";
 
-import { Download, LogOut, MoreHorizontal, Share, Smartphone } from "lucide-react";
+import { Download, Eye, LogOut, MoreHorizontal, Share, Smartphone } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -19,8 +20,10 @@ import { NotificationControl } from "./notification-control";
 
 export function AccountMenu({
   allowSignOut = true,
+  showOnboardingPreview = false,
 }: {
   allowSignOut?: boolean;
+  showOnboardingPreview?: boolean;
 }) {
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
@@ -77,6 +80,17 @@ export function AccountMenu({
         </div>
         <DropdownMenuSeparator className="bg-border" />
         <NotificationControl />
+        {showOnboardingPreview && (
+          <>
+            <DropdownMenuSeparator className="bg-border" />
+            <DropdownMenuItem asChild className="min-h-11 cursor-pointer rounded-xl px-3 text-foreground focus:bg-secondary focus:text-foreground">
+              <Link href="/dev/onboarding">
+                <Eye />
+                Preview onboarding
+              </Link>
+            </DropdownMenuItem>
+          </>
+        )}
         <DropdownMenuSeparator className="bg-border" />
         <DropdownMenuItem
           disabled={signingOut || !allowSignOut}

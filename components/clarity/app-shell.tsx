@@ -17,6 +17,7 @@ export function AppShell({
   allowAccountSignOut = true,
   allowProductNavigation = true,
   hideBottomNavigation = false,
+  showOnboardingPreview = false,
 }: {
   children: React.ReactNode;
   contained?: boolean;
@@ -25,6 +26,7 @@ export function AppShell({
   allowAccountSignOut?: boolean;
   allowProductNavigation?: boolean;
   hideBottomNavigation?: boolean;
+  showOnboardingPreview?: boolean;
 }) {
   const [activeEditorIds, setActiveEditorIds] = useState<Set<string>>(
     () => new Set(),
@@ -72,13 +74,20 @@ export function AppShell({
           <header className="shrink-0 border-b border-border bg-background pt-[env(safe-area-inset-top)]">
             <div className="flex h-14 w-full items-center justify-between px-4">
               {allowProductNavigation ? (
-                <Link href="/today" className={brandClassName}>
+                <Link
+                  href="/today"
+                  prefetch={false}
+                  className={brandClassName}
+                >
                   {brand}
                 </Link>
               ) : (
                 <span className={brandClassName}>{brand}</span>
               )}
-              <AccountMenu allowSignOut={allowAccountSignOut} />
+              <AccountMenu
+                allowSignOut={allowAccountSignOut}
+                showOnboardingPreview={showOnboardingPreview}
+              />
             </div>
           </header>
           <main

@@ -103,10 +103,10 @@ export function AskClarityPanel({
                           disabled
                           className="h-10 w-full rounded-xl"
                         >
-                          Continue in Mentor
+                          Continue with Clarity
                         </Button>
                         <p className="mt-2 text-center text-xs text-muted-foreground">
-                          Mentor is coming later.
+                          A broader Clarity conversation is coming later.
                         </p>
                       </div>
                     )}

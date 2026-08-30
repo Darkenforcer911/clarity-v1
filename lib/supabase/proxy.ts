@@ -4,6 +4,7 @@ import { hasEnvVars } from "../utils";
 import type { Database } from "./database.types";
 import {
   bypassesUserSessionProxy,
+  isPublicApplicationRoute,
   requiresUserSession,
 } from "./proxy-routes";
 
@@ -13,7 +14,10 @@ export async function updateSession(request: NextRequest) {
   });
 
   const pathname = request.nextUrl.pathname;
-  if (bypassesUserSessionProxy(pathname)) {
+  if (
+    bypassesUserSessionProxy(pathname) ||
+    isPublicApplicationRoute(pathname)
+  ) {
     return supabaseResponse;
   }
 
@@ -33,7 +37,7 @@ export async function updateSession(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet, responseHeaders) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value),
           );
@@ -42,6 +46,9 @@ export async function updateSession(request: NextRequest) {
           });
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options),
+          );
+          Object.entries(responseHeaders).forEach(([name, value]) =>
+            supabaseResponse.headers.set(name, value),
           );
         },
       },
@@ -54,14 +61,32 @@ export async function updateSession(request: NextRequest) {
 
   // IMPORTANT: If you remove getClaims() and you use server-side rendering
   // with the Supabase client, your users may be randomly logged out.
-  const { data } = await supabase.auth.getClaims();
-  const user = data?.claims;
+  let hasVerifiedClaims = false;
 
-  if (!user && requiresUserSession(pathname)) {
+  try {
+    const { data, error } = await supabase.auth.getClaims();
+    hasVerifiedClaims = !error && Boolean(data?.claims);
+  } catch {
+    // A stale or already-rotated refresh token is an unauthenticated request,
+    // not an application-rendering failure.
+    hasVerifiedClaims = false;
+  }
+
+  if (!hasVerifiedClaims && requiresUserSession(pathname)) {
     // no user, potentially respond by redirecting the user to the login page
     const url = request.nextUrl.clone();
     url.pathname = "/auth/login";
-    return NextResponse.redirect(url);
+    const redirectResponse = NextResponse.redirect(url);
+    supabaseResponse.cookies
+      .getAll()
+      .forEach((cookie) => redirectResponse.cookies.set(cookie));
+    redirectResponse.headers.set(
+      "Cache-Control",
+      "private, no-cache, no-store, must-revalidate, max-age=0",
+    );
+    redirectResponse.headers.set("Expires", "0");
+    redirectResponse.headers.set("Pragma", "no-cache");
+    return redirectResponse;
   }
 
   // IMPORTANT: You *must* return the supabaseResponse object as it is.

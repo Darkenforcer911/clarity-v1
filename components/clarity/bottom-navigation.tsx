@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BookHeart, CalendarDays, Home } from "lucide-react";
+import { BookHeart, CalendarDays, Compass, Home } from "lucide-react";
 import { usePathname } from "next/navigation";
 
 export function BottomNavigation({
@@ -13,10 +13,11 @@ export function BottomNavigation({
 }) {
   const pathname = usePathname();
   const itemClassName =
-    "flex min-h-12 min-w-24 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-semibold transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+    "flex min-h-12 min-w-0 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-semibold transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
   const items = [
     { href: "/today", label: "Today", icon: Home },
     { href: "/calendar", label: "Calendar", icon: CalendarDays },
+    { href: "/clarity", label: "Clarity", icon: Compass },
     { href: "/life-model", label: "Life", icon: BookHeart },
   ];
 
@@ -27,7 +28,7 @@ export function BottomNavigation({
         contained ? "absolute" : "fixed min-[481px]:border-x"
       }`}
     >
-      <div className="flex justify-center gap-6">
+      <div className="grid grid-cols-4 gap-1">
         {items.map((item) => {
           const active = pathname.startsWith(item.href);
           const content = (
@@ -40,6 +41,7 @@ export function BottomNavigation({
             <Link
               key={item.href}
               href={item.href}
+              prefetch={false}
               aria-current={active ? "page" : undefined}
               className={`${itemClassName} ${active ? "bg-primary/15 text-foreground" : "text-muted-foreground"}`}
             >

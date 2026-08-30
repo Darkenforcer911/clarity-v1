@@ -58,7 +58,7 @@ export function LifeModelView({ model }: { model: LifeModel }) {
             Your life will take shape here as Clarity learns about you.
           </p>
           <Button asChild className="h-12 w-full rounded-xl">
-            <Link href={mentorLifeChangeHref}>Talk to Mentor</Link>
+            <Link href={mentorLifeChangeHref}>Talk to Clarity</Link>
           </Button>
         </div>
       </div>
@@ -311,11 +311,11 @@ export function LifeModelView({ model }: { model: LifeModel }) {
         <div className="space-y-1">
           <h2 className="text-sm font-semibold">Something changed?</h2>
           <p className="text-sm leading-5 text-muted-foreground">
-            Tell Mentor what’s new, what you’re considering, or what no longer fits.
+            Tell Clarity what’s new, what you’re considering, or what no longer fits.
           </p>
         </div>
         <Button asChild variant="secondary" className="h-11 rounded-xl px-5">
-          <Link href={mentorLifeChangeHref}>Talk to Mentor</Link>
+          <Link href={mentorLifeChangeHref}>Talk to Clarity</Link>
         </Button>
       </section>
     </div>
