@@ -58,7 +58,9 @@ export function SwipeToRemove({
       !enabled ||
       event.button !== 0 ||
       (event.target instanceof Element &&
-        event.target.closest("[data-swipe-remove-control]"))
+        event.target.closest(
+          "[data-swipe-remove-control], [data-reorder-control]",
+        ))
     ) {
       return;
     }
@@ -130,7 +132,9 @@ export function SwipeToRemove({
   function handleClickCapture(event: React.MouseEvent<HTMLDivElement>) {
     if (
       event.target instanceof Element &&
-      event.target.closest("[data-swipe-remove-control]")
+      event.target.closest(
+        "[data-swipe-remove-control], [data-reorder-control]",
+      )
     ) {
       return;
     }

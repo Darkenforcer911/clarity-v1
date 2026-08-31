@@ -58,6 +58,7 @@ async function callPendingActionWorkspaceRpc(
     | "complete_proposed_action"
     | "delete_action_note"
     | "replace_active_action"
+    | "reorder_proposed_daily_actions"
     | "restore_action_to_today"
     | "restore_removed_proposed_actions"
     | "update_daily_action",
@@ -289,6 +290,20 @@ export class ActionWorkspaceService {
     }
 
     await this.updateAction(actionId, rawInput);
+  }
+
+  async reorderProposedActions(planId: string, orderedActionIds: string[]) {
+    const { supabase } = await getAuthenticatedUserAndProfile();
+    const { error } = await callPendingActionWorkspaceRpc(
+      supabase,
+      "reorder_proposed_daily_actions",
+      {
+        p_daily_plan_id: planId,
+        p_ordered_action_ids: orderedActionIds,
+      },
+    );
+
+    ensureRpcSucceeded(error);
   }
 
   async changeActionTime(

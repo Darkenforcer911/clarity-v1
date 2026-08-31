@@ -8,7 +8,13 @@ import {
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
-import { useActionState, useEffect, useRef, useState } from "react";
+import {
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { updateActionAction } from "@/app/(app)/today/action-workspace-actions";
 import { completeProposedActionFromPlanAction } from "@/app/(app)/today/reconciliation-actions";
@@ -33,6 +39,7 @@ export function ProposedActionCard({
   onToggle,
   onCollapse,
   onRemove,
+  reorderControl,
   planLocalDate,
   currentLocalDate,
 }: {
@@ -44,6 +51,7 @@ export function ProposedActionCard({
   onToggle: (actionId: string) => void;
   onCollapse: (actionId: string) => void;
   onRemove: (actionId: string) => void;
+  reorderControl: ReactNode;
   planLocalDate: string;
   currentLocalDate: string;
 }) {
@@ -116,40 +124,43 @@ export function ProposedActionCard({
           : "border-border bg-card"
       }`}
     >
-      <button
-        type="button"
-        onClick={() => onToggle(action.id)}
-        aria-expanded={expanded}
-        data-proposed-action-header
-        className="flex w-full items-start gap-3 p-5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-      >
-        <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-          <Check className="size-4" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block font-semibold leading-6">{action.title}</span>
-          <span className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-            {scheduledTime && (
-              <span className="font-semibold text-[var(--clarity-completed)]">
-                {scheduledTime}
-                {timePassed && (
-                  <span className="text-secondary-foreground">
-                    {" · Time passed"}
-                  </span>
-                )}
-              </span>
-            )}
-            {scheduledTime && <span aria-hidden="true">·</span>}
-            <span>{formatDuration(action.estimated_minutes)}</span>
+      <div className="flex items-start gap-1 pl-2">
+        <div className="pt-3">{reorderControl}</div>
+        <button
+          type="button"
+          onClick={() => onToggle(action.id)}
+          aria-expanded={expanded}
+          data-proposed-action-header
+          className="flex min-w-0 flex-1 items-start gap-3 py-5 pr-5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        >
+          <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <Check className="size-4" />
           </span>
-        </span>
-        <span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-          Kept
-          <ChevronDown
-            className={`size-4 transition-transform duration-200 motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`}
-          />
-        </span>
-      </button>
+          <span className="min-w-0 flex-1">
+            <span className="block font-semibold leading-6">{action.title}</span>
+            <span className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+              {scheduledTime && (
+                <span className="font-semibold text-[var(--clarity-completed)]">
+                  {scheduledTime}
+                  {timePassed && (
+                    <span className="text-secondary-foreground">
+                      {" · Time passed"}
+                    </span>
+                  )}
+                </span>
+              )}
+              {scheduledTime && <span aria-hidden="true">·</span>}
+              <span>{formatDuration(action.estimated_minutes)}</span>
+            </span>
+          </span>
+          <span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+            Kept
+            <ChevronDown
+              className={`size-4 transition-transform duration-200 motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`}
+            />
+          </span>
+        </button>
+      </div>
 
       {showUpdateConfirmation && !expanded && (
         <p

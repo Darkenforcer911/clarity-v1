@@ -307,6 +307,30 @@ export async function removeProposedActionInlineAction(actionId: string) {
   }
 }
 
+export async function reorderProposedActionsInlineAction(
+  planId: string,
+  orderedActionIds: string[],
+) {
+  try {
+    const parsedPlanId = z.string().uuid().parse(planId);
+    const parsedActionIds = z.array(z.string().uuid()).parse(
+      orderedActionIds,
+    );
+    await actionWorkspaceService.reorderProposedActions(
+      parsedPlanId,
+      parsedActionIds,
+    );
+    revalidatePath("/today");
+    revalidatePath("/today/plan");
+    return { success: true as const, error: null };
+  } catch {
+    return {
+      success: false as const,
+      error: "Couldn’t save the new order. Try again.",
+    };
+  }
+}
+
 export async function restoreProposedActionInlineAction(actionId: string) {
   try {
     const parsedActionId = z.string().uuid().parse(actionId);

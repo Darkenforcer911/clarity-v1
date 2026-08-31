@@ -6,6 +6,12 @@ export type TodayGatewayPlanStatus =
   | "closed"
   | null;
 
+export type TodayGatewayDayPeriod =
+  | "late_night"
+  | "morning"
+  | "afternoon"
+  | "evening";
+
 export type TodayGatewayPrimaryAction =
   | {
       kind: "start";
@@ -26,11 +32,13 @@ export function resolveTodayGatewayPrimaryAction({
   unresolvedApprovedDay,
   pendingReturnDayCount,
   planStatus,
+  dayPeriod,
 }: {
   currentDay: string;
   unresolvedApprovedDay: string | null;
   pendingReturnDayCount: number | null;
   planStatus: TodayGatewayPlanStatus;
+  dayPeriod: TodayGatewayDayPeriod;
 }): TodayGatewayPrimaryAction {
   if (unresolvedApprovedDay) {
     return {
@@ -62,6 +70,16 @@ export function resolveTodayGatewayPrimaryAction({
         supportingText: "Start when you're ready to shape the day.",
       };
     case "proposed":
+      if (dayPeriod === "late_night") {
+        return {
+          kind: "link",
+          label: `Review ${currentDay} plan`,
+          href: "/today/plan",
+          heading: `Your plan for the rest of ${currentDay} is ready.`,
+          supportingText: "Review what still makes sense tonight.",
+        };
+      }
+
       return {
         kind: "link",
         label: `Continue shaping ${currentDay}`,

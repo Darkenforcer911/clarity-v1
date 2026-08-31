@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { approvePlanAction } from "@/app/(app)/today/actions";
 import {
   removeProposedActionInlineAction,
+  reorderProposedActionsInlineAction,
   restoreProposedActionInlineAction,
   restoreRemovedProposedActionsAction,
 } from "@/app/(app)/today/action-workspace-actions";
@@ -28,9 +29,16 @@ import {
   formatProposedPlanSummary,
   shouldClearOpenDayConfirmation,
 } from "@/lib/clarity/proposed-plan-summary";
+import {
+  moveProposedActionByStep,
+  moveProposedActionToIndex,
+  proposedActionOrdersMatch,
+  reconcileProposedActionOrder,
+} from "@/lib/clarity/proposed-action-ordering";
 import { AddActionForm } from "./add-action-form";
 import { PendingButton } from "./pending-button";
 import { ProposedActionCard } from "./proposed-action-card";
+import { ProposedActionReorderControl } from "./proposed-action-reorder-control";
 import { DailyCommitments } from "./daily-commitments";
 import {
   isCalendarEventReconciliationCandidate,
@@ -80,6 +88,18 @@ export function ProposedPlan({
     useState<DailyAction | null>(null);
   const [removalError, setRemovalError] = useState<string | null>(null);
   const [undoPending, setUndoPending] = useState(false);
+  const initialProposedActionOrder = actions
+    .filter((action) => action.status === "proposed")
+    .sort((left, right) => left.sort_order - right.sort_order)
+    .map((action) => action.id);
+  const [orderedActionIds, setOrderedActionIds] = useState<string[]>(
+    initialProposedActionOrder,
+  );
+  const [orderingPending, setOrderingPending] = useState(false);
+  const [orderingError, setOrderingError] = useState<string | null>(null);
+  const [draggingActionId, setDraggingActionId] = useState<string | null>(null);
+  const orderedActionIdsRef = useRef(initialProposedActionOrder);
+  const orderBeforeDragRef = useRef<string[] | null>(null);
   const actionListRef = useRef<HTMLDivElement>(null);
   const scrollTargetActionIdRef = useRef<string | null>(null);
   const dayName = formatWeekday(plan.local_date);
@@ -105,9 +125,22 @@ export function ProposedPlan({
       optimisticallyRestoredAction,
     );
   }
-  const remainingActions = [...remainingActionMap.values()]
+  const availableRemainingActions = [...remainingActionMap.values()]
     .filter((action) => !locallyRemovedActionIds.has(action.id))
     .sort((left, right) => left.sort_order - right.sort_order);
+  const availableActionIds = availableRemainingActions.map(
+    (action) => action.id,
+  );
+  const displayOrder = reconcileProposedActionOrder(
+    orderedActionIds,
+    availableActionIds,
+  );
+  const remainingActionById = new Map(
+    availableRemainingActions.map((action) => [action.id, action]),
+  );
+  const remainingActions = displayOrder
+    .map((actionId) => remainingActionById.get(actionId))
+    .filter((action): action is DailyAction => Boolean(action));
   const passedActionIds = new Set(
     remainingActions
       .filter(
@@ -159,6 +192,24 @@ export function ProposedPlan({
     (removedActionCount > 0 || locallyRemovedActionIds.size > 0);
   const previousRemainingCountRef = useRef(remainingActions.length);
   const router = useRouter();
+  const availableActionIdsKey = availableActionIds.join(",");
+
+  useEffect(() => {
+    const nextAvailableActionIds = availableActionIdsKey
+      ? availableActionIdsKey.split(",")
+      : [];
+
+    setOrderedActionIds((currentOrder) => {
+      const reconciledOrder = reconcileProposedActionOrder(
+        currentOrder,
+        nextAvailableActionIds,
+      );
+      orderedActionIdsRef.current = reconciledOrder;
+      return proposedActionOrdersMatch(currentOrder, reconciledOrder)
+        ? currentOrder
+        : reconciledOrder;
+    });
+  }, [availableActionIdsKey]);
 
   useEffect(() => {
     let timer = 0;
@@ -240,6 +291,83 @@ export function ProposedPlan({
       currentActionId === actionId ? null : currentActionId,
     );
   }, []);
+
+  function applyLocalOrder(nextOrder: string[]) {
+    orderedActionIdsRef.current = nextOrder;
+    setOrderedActionIds(nextOrder);
+  }
+
+  async function persistOrder(previousOrder: string[], nextOrder: string[]) {
+    if (proposedActionOrdersMatch(previousOrder, nextOrder)) return;
+
+    setOrderingPending(true);
+    setOrderingError(null);
+    const result = await reorderProposedActionsInlineAction(
+      plan.id,
+      nextOrder,
+    );
+    setOrderingPending(false);
+
+    if (!result.success) {
+      applyLocalOrder(previousOrder);
+      setOrderingError(
+        result.error ?? "Couldn’t save the new order. Try again.",
+      );
+    }
+  }
+
+  function beginDragOrder(actionId: string) {
+    const currentOrder = reconcileProposedActionOrder(
+      orderedActionIdsRef.current,
+      availableActionIds,
+    );
+    orderBeforeDragRef.current = [...currentOrder];
+    setSwipedActionId(null);
+    setOrderingError(null);
+    setDraggingActionId(actionId);
+  }
+
+  function previewDragOrder(actionId: string, targetIndex: number) {
+    const nextOrder = moveProposedActionToIndex(
+      orderedActionIdsRef.current,
+      actionId,
+      targetIndex,
+    );
+    applyLocalOrder(nextOrder);
+  }
+
+  function finishDragOrder(cancelled: boolean) {
+    const previousOrder = orderBeforeDragRef.current;
+    const nextOrder = [...orderedActionIdsRef.current];
+    orderBeforeDragRef.current = null;
+    setDraggingActionId(null);
+
+    if (!previousOrder) return;
+
+    if (cancelled) {
+      applyLocalOrder(previousOrder);
+      return;
+    }
+
+    void persistOrder(previousOrder, nextOrder);
+  }
+
+  function moveActionByStep(actionId: string, direction: -1 | 1) {
+    if (orderingPending) return;
+
+    const previousOrder = reconcileProposedActionOrder(
+      orderedActionIdsRef.current,
+      availableActionIds,
+    );
+    const nextOrder = moveProposedActionByStep(
+      previousOrder,
+      actionId,
+      direction,
+    );
+
+    applyLocalOrder(nextOrder);
+    void persistOrder(previousOrder, nextOrder);
+  }
 
   async function handleRestoreRemovedActions(formData: FormData) {
     await restoreRemovedProposedActionsAction(formData);
@@ -431,6 +559,11 @@ export function ProposedPlan({
             {removalError}
           </p>
         )}
+        {orderingError && (
+          <p role="alert" className="text-sm text-destructive">
+            {orderingError}
+          </p>
+        )}
 
         <DailyCommitments
           heading="Fixed today"
@@ -448,9 +581,16 @@ export function ProposedPlan({
         />
 
         <div ref={actionListRef} className="min-w-0 space-y-4">
-          {remainingActions.map((action) => {
+          {remainingActions.map((action, actionIndex) => {
             return (
-              <div key={action.id} data-proposed-action-id={action.id}>
+              <div
+                key={action.id}
+                data-proposed-action-id={action.id}
+                data-proposed-action-index={actionIndex}
+                className={`rounded-2xl transition-opacity motion-reduce:transition-none ${
+                  draggingActionId === action.id ? "opacity-70" : ""
+                }`}
+              >
                 <SwipeToRemove
                   itemId={action.id}
                   itemTitle={action.title}
@@ -479,6 +619,27 @@ export function ProposedPlan({
                     onToggle={handleActionToggle}
                     onCollapse={handleActionCollapse}
                     onRemove={removeAction}
+                    reorderControl={
+                      remainingActions.length > 1 ? (
+                        <ProposedActionReorderControl
+                          actionId={action.id}
+                          actionTitle={action.title}
+                          disabled={orderingPending}
+                          canMoveUp={actionIndex > 0}
+                          canMoveDown={
+                            actionIndex < remainingActions.length - 1
+                          }
+                          onDragStart={() => beginDragOrder(action.id)}
+                          onDragOver={(targetIndex) =>
+                            previewDragOrder(action.id, targetIndex)
+                          }
+                          onDragEnd={finishDragOrder}
+                          onMoveStep={(direction) =>
+                            moveActionByStep(action.id, direction)
+                          }
+                        />
+                      ) : null
+                    }
                     planLocalDate={plan.local_date}
                     currentLocalDate={currentLocalDate}
                   />
@@ -578,6 +739,7 @@ export function ProposedPlan({
             size="lg"
             disabled={
               hasPassedActions ||
+              orderingPending ||
               !canApproveProposedPlan(
                 remainingActions.length,
                 keepDayOpen,
