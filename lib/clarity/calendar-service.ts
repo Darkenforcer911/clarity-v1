@@ -30,6 +30,10 @@ import {
   parseHistoricalActionOutcomeRevisions,
   type HistoricalActionOutcomeRevision,
 } from "./historical-action-outcomes";
+import {
+  getAcceptedCalendarDailyActions,
+  type CalendarDailyAction,
+} from "./calendar-daily-actions";
 
 type RpcClient = SupabaseClient<Database>;
 
@@ -53,6 +57,7 @@ export type CalendarHistoricalRecord = {
   summary: DaySummary | null;
   notes: string | null;
   actionOutcomeRevisions: HistoricalActionOutcomeRevision[];
+  actionResolutionNotes: Record<string, string>;
 };
 
 export async function getCalendarPageData(requestedDate?: string) {
@@ -60,15 +65,29 @@ export async function getCalendarPageData(requestedDate?: string) {
   const today = getLocalDate(profile.timezone);
   const selectedDate = resolveCalendarSelectedDate(requestedDate, today);
   const isPast = selectedDate < today;
-  const [commitments, corrections, historicalRecord] = await Promise.all([
-    getCalendarCommitmentsForDate(supabase, selectedDate),
-    isPast
-      ? getDayCorrectionsForDate(supabase, selectedDate)
-      : Promise.resolve([]),
-    isPast
-      ? getHistoricalRecord(supabase, user.id, selectedDate)
-      : Promise.resolve(null),
-  ]);
+  const [commitments, dailyActions, corrections, historicalRecord] =
+    await Promise.all([
+      getCalendarCommitmentsForDate(supabase, selectedDate),
+      getCalendarDailyActionsForDate(supabase, user.id, selectedDate),
+      isPast
+        ? getDayCorrectionsForDate(supabase, selectedDate)
+        : Promise.resolve([]),
+      isPast
+        ? getHistoricalRecord(supabase, user.id, selectedDate)
+        : Promise.resolve(null),
+    ]);
+  const resolvedHistoricalRecord = historicalRecord
+    ? {
+        ...historicalRecord,
+        actionResolutionNotes: Object.fromEntries(
+          dailyActions.flatMap((action) =>
+            action.resolution_note
+              ? [[action.id, action.resolution_note]]
+              : [],
+          ),
+        ),
+      }
+    : null;
 
   return {
     profile,
@@ -77,10 +96,35 @@ export async function getCalendarPageData(requestedDate?: string) {
     commitments: isPast
       ? commitments
       : filterActiveCalendarCommitments(commitments),
+    dailyActions:
+      isPast && resolvedHistoricalRecord?.summary ? [] : dailyActions,
     corrections,
-    historicalRecord,
+    historicalRecord: resolvedHistoricalRecord,
     stripDates: getCalendarStripDates(selectedDate),
   };
+}
+
+async function getCalendarDailyActionsForDate(
+  supabase: RpcClient,
+  authenticatedUserId: string,
+  localDate: string,
+): Promise<CalendarDailyAction[]> {
+  const { data, error } = await supabase
+    .from("daily_plans")
+    .select("status, approved_at, daily_actions(*)")
+    .eq("user_id", authenticatedUserId)
+    .eq("local_date", localDate)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+
+  return getAcceptedCalendarDailyActions(
+    data as {
+      status: string;
+      approved_at: string | null;
+      daily_actions: CalendarDailyAction[];
+    } | null,
+  );
 }
 
 export async function getCalendarCommitmentsForDate(
@@ -340,6 +384,7 @@ async function getHistoricalRecord(
     actionOutcomeRevisions: parseHistoricalActionOutcomeRevisions(
       revisionsResult.data,
     ),
+    actionResolutionNotes: {},
   };
 }
 

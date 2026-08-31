@@ -26,7 +26,7 @@ import {
   getProposedDateBoundary,
   getProposedDateBoundaryPresentation,
 } from "@/lib/clarity/proposed-date-boundary";
-import { formatDuration } from "@/lib/clarity/proposed-plan-summary";
+import { formatDuration } from "@/lib/clarity/duration";
 import { ActionFields } from "./action-fields";
 import { PendingButton } from "./pending-button";
 

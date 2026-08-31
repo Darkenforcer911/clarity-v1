@@ -13,7 +13,7 @@ import {
   formatCustomReminderOffset,
   formatReminderOffset,
 } from "./calendar-reminders.ts";
-import { formatDuration } from "./proposed-plan-summary.ts";
+import { formatDuration } from "./duration.ts";
 
 const commitmentKindPresentation: Record<
   CalendarCommitmentType,

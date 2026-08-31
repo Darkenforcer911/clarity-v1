@@ -42,7 +42,7 @@ import {
   formatScheduledTime,
   formatWeekday,
 } from "@/lib/clarity/date-time";
-import { formatDuration } from "@/lib/clarity/proposed-plan-summary";
+import { formatDuration } from "@/lib/clarity/duration";
 import { Button } from "@/components/ui/button";
 import { AddActionForm } from "./add-action-form";
 import { PendingButton } from "./pending-button";

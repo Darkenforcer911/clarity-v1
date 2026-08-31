@@ -47,12 +47,15 @@ import {
 import { HistoricalOutcomeCorrectionEditor } from "./historical-outcome-correction-editor";
 import { PendingButton } from "./pending-button";
 import { SwipeToRemove } from "./swipe-to-remove";
+import { CalendarDailyActions } from "./calendar-daily-actions";
+import type { CalendarDailyAction } from "@/lib/clarity/calendar-daily-actions";
 
 export function CalendarAgenda({
   selectedDate,
   today,
   timezone,
   commitments,
+  dailyActions,
   corrections,
   historicalRecord,
   stripDates,
@@ -63,6 +66,7 @@ export function CalendarAgenda({
   today: string;
   timezone: string;
   commitments: CalendarCommitment[];
+  dailyActions: CalendarDailyAction[];
   corrections: DayCorrection[];
   historicalRecord: CalendarHistoricalRecord | null;
   stripDates: string[];
@@ -224,7 +228,20 @@ export function CalendarAgenda({
         </div>
       </div>
 
-      {isPast && <HistoricalDayActivity record={historicalRecord} timezone={timezone} />}
+      {isPast && (
+        <HistoricalDayActivity
+          record={historicalRecord}
+          timezone={timezone}
+          localDate={selectedDate}
+        />
+      )}
+
+      <CalendarDailyActions
+        actions={dailyActions}
+        localDate={selectedDate}
+        today={today}
+        timezone={timezone}
+      />
 
       {events.length > 0 && (
         <AgendaSection
@@ -272,7 +289,11 @@ export function CalendarAgenda({
         />
       )}
 
-      {!isPast && events.length === 0 && deadlines.length === 0 && !addOpen && (
+      {!isPast &&
+        events.length === 0 &&
+        deadlines.length === 0 &&
+        dailyActions.length === 0 &&
+        !addOpen && (
         <div className="rounded-2xl border border-border bg-card p-5">
           <CalendarDays className="mb-3 size-6 text-[var(--clarity-completed)]" />
           <p className="text-sm text-muted-foreground">
@@ -286,6 +307,7 @@ export function CalendarAgenda({
         !historicalRecord?.gapAcknowledged &&
         events.length === 0 &&
         deadlines.length === 0 &&
+        dailyActions.length === 0 &&
         corrections.length === 0 && (
           <div className="rounded-2xl border border-border bg-card p-5">
             <p className="font-medium">

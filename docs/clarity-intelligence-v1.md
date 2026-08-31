@@ -33,6 +33,12 @@ Onboarding, Shape Today, Catch Up, Life changes, weekly review, and Action
 workspaces should eventually invoke this same orchestrator through their own
 surface context. Their current behavior is unchanged.
 
+An Action workspace invokes `/clarity` with a validated Action subject. The
+subject identifies what the user is asking about; it does not create an
+Action-specific conversation or a second intelligence relationship. The
+ownership-safe Action read can supply its plan, timing, Life relationships,
+and relevant outcomes to the same future persistent Clarity conversation.
+
 ## Shape Today and day-focus ownership
 
 Clarity will eventually propose the day's focus and priority ordering during

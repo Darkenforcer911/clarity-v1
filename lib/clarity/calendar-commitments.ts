@@ -6,7 +6,7 @@ import {
   getLocalTime,
   localDateTimeToIso,
 } from "./date-time";
-import { formatDuration } from "./proposed-plan-summary";
+import { formatDuration } from "./duration";
 import {
   calendarRecurrenceUnits,
   formatCalendarRecurrenceSummary,

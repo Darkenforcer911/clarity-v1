@@ -3,6 +3,7 @@ import type {
   ClarityContextBundle,
   ClarityExternalResearchRequest,
   ClarityInvocationSurface,
+  ClarityInvocationSubject,
   ClarityPersonalContextDomain,
 } from "./clarity-context";
 import type {
@@ -93,6 +94,7 @@ export type ClarityMutationProposal = {
 
 export type ClarityOrchestratorRequest = {
   surface: ClarityInvocationSurface;
+  subject?: ClarityInvocationSubject;
   userInput: string;
   context: ClarityContextBundle;
 };

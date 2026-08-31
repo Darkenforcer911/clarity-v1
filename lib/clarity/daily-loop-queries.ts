@@ -34,6 +34,11 @@ export type DayRecord = Tables<"day_records">;
 export type Profile = Tables<"profiles">;
 export type ActionNote = Tables<"action_notes">;
 export type ActionAssistantMessage = Tables<"action_assistant_messages">;
+export type ActionLifeContext = {
+  goal: Pick<Tables<"goals">, "id" | "title"> | null;
+  project: Pick<Tables<"projects">, "id" | "title"> | null;
+  routine: Pick<Tables<"routines">, "id" | "title"> | null;
+};
 export type CarriedAction = DailyAction & {
   sourceLocalDate: string;
 };
@@ -429,7 +434,7 @@ export async function getActionWorkspaceData(actionId: string) {
         supabase
           .from("daily_actions")
           .select(
-            "*, daily_plans!daily_actions_plan_owner_fkey(*)",
+            "*, daily_plans!daily_actions_plan_owner_fkey(*), goal:goals!daily_actions_goal_owner_fkey(id, title), project:projects!daily_actions_project_owner_fkey(id, title), routine:routines!daily_actions_routine_owner_fkey(id, title)",
           )
           .eq("id", actionId)
           .eq("user_id", user.id)
@@ -474,6 +479,9 @@ export async function getActionWorkspaceData(actionId: string) {
 
   const {
     daily_plans: plan,
+    goal,
+    project,
+    routine,
     ...action
   } = actionWithPlan;
 
@@ -486,6 +494,11 @@ export async function getActionWorkspaceData(actionId: string) {
     profile: profileResult.data,
     action: action as DailyAction,
     plan: plan as DailyPlan,
+    lifeContext: {
+      goal,
+      project,
+      routine,
+    } as ActionLifeContext,
     notes: notesResult.data,
     messages: messagesResult.data,
   };

@@ -4,24 +4,27 @@ import {
   Check,
   Clock3,
   Link2,
+  MessageCircle,
   MessageSquareText,
   Repeat2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type {
-  ActionAssistantMessage,
+  ActionLifeContext,
   ActionNote,
   DailyAction,
   DailyPlan,
   Profile,
 } from "@/lib/clarity/daily-loop-queries";
+import { buildActionClarityHref } from "@/lib/clarity/clarity-action-context";
 import {
   formatLocalDateTime,
   formatFullLocalDate,
   formatScheduledTime,
   formatWeekday,
 } from "@/lib/clarity/date-time";
+import { formatDuration } from "@/lib/clarity/duration";
 import { ActionWorkspace } from "./action-workspace";
 import { ActionCompletionControl } from "./action-completion-control";
 import { HistoricalActionUpdates } from "./action-update-history";
@@ -31,7 +34,7 @@ export function ActionDetail({
   action,
   plan,
   profile,
-  messages,
+  lifeContext,
   updates,
   readOnly = false,
   backHref = "/today",
@@ -39,7 +42,7 @@ export function ActionDetail({
   action: DailyAction;
   plan: DailyPlan;
   profile: Profile;
-  messages: ActionAssistantMessage[];
+  lifeContext: ActionLifeContext;
   updates: ActionNote[];
   readOnly?: boolean;
   backHref?: string;
@@ -92,6 +95,8 @@ export function ActionDetail({
           <ArrowLeft />
           {readOnly && backHref === "/today/summary"
             ? "Back to summary"
+            : backHref.startsWith("/calendar")
+              ? "Back to Calendar"
             : "Back to Today"}
         </Link>
       </Button>
@@ -104,7 +109,7 @@ export function ActionDetail({
           <Clock3 className="size-4" />
           <span>{scheduledTime ? `At ${scheduledTime}` : "Anytime today"}</span>
           <span aria-hidden="true">·</span>
-          <span>{action.estimated_minutes} minutes</span>
+          <span>{formatDuration(action.estimated_minutes)}</span>
           {action.recurrence_pattern !== "none" && (
             <>
               <span aria-hidden="true">·</span>
@@ -136,6 +141,8 @@ export function ActionDetail({
           </span>
         </div>
       )}
+
+      <ActionLifeRelationships lifeContext={lifeContext} />
 
       {linkedContext && (
         <div className="flex items-start gap-3 rounded-2xl bg-secondary p-4">
@@ -193,6 +200,13 @@ export function ActionDetail({
         </dl>
       </div>
 
+      <Button asChild variant="outline" size="lg" className="h-12 w-full rounded-xl text-base">
+        <Link href={buildActionClarityHref(action.id)}>
+          <MessageCircle className="size-5 text-primary" />
+          Ask Clarity
+        </Link>
+      </Button>
+
       {readOnly ? (
         <HistoricalActionRecord
           action={action}
@@ -202,7 +216,6 @@ export function ActionDetail({
       ) : (
         <ActionWorkspace
           action={action}
-          messages={messages}
           updates={updates}
           timezone={profile.timezone}
           scheduledTimeInput={scheduledTimeInput}
@@ -210,6 +223,39 @@ export function ActionDetail({
         />
       )}
     </section>
+  );
+}
+
+function ActionLifeRelationships({
+  lifeContext,
+}: {
+  lifeContext: ActionLifeContext;
+}) {
+  const relationships = [
+    lifeContext.project
+      ? { label: "Project", title: lifeContext.project.title }
+      : null,
+    lifeContext.routine
+      ? { label: "Routine", title: lifeContext.routine.title }
+      : null,
+    lifeContext.goal
+      ? { label: "Goal", title: lifeContext.goal.title }
+      : null,
+  ].filter((relationship): relationship is { label: string; title: string } =>
+    Boolean(relationship),
+  );
+
+  if (relationships.length === 0) return null;
+
+  return (
+    <dl className="grid gap-2 rounded-2xl border border-border bg-card p-4 text-sm">
+      {relationships.map((relationship) => (
+        <div key={relationship.label} className="flex items-baseline justify-between gap-4">
+          <dt className="text-muted-foreground">{relationship.label}</dt>
+          <dd className="text-right font-medium">{relationship.title}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 

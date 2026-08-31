@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ActionAssistantMessage } from "@/lib/clarity/daily-loop-queries";
 import { initialDailyLoopActionState } from "@/lib/clarity/action-state";
+import { formatDuration } from "@/lib/clarity/duration";
 import { parseTaskAssistantContent } from "@/lib/clarity/ai/task-assistant";
 import type { TaskRevisionProposal } from "@/lib/clarity/ai/task-assistant";
 import { PendingButton } from "./pending-button";
@@ -222,7 +223,7 @@ function RevisionCard({
         <RevisionDetail label="Action" value={proposal.action.title} />
         <RevisionDetail
           label="Duration"
-          value={`${proposal.action.estimatedMinutes} minutes`}
+          value={formatDuration(proposal.action.estimatedMinutes)}
         />
         <RevisionDetail
           label="Timing"

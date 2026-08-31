@@ -9,6 +9,7 @@ import {
 } from "@/app/(app)/today/actions";
 import type { DailyAction } from "@/lib/clarity/daily-loop-queries";
 import { initialDailyLoopActionState } from "@/lib/clarity/action-state";
+import { formatDuration } from "@/lib/clarity/duration";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -128,7 +129,7 @@ export function CloseDayForm({
                     {action.title}
                   </h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {action.estimated_minutes} minutes
+                    {formatDuration(action.estimated_minutes)}
                   </p>
 
                   <div className="mt-5 grid min-w-0 grid-cols-3 gap-2">

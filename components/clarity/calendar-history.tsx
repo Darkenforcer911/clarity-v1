@@ -2,6 +2,7 @@
 
 import { CheckCircle2, ChevronDown, CircleOff, CirclePlus, History, Pencil } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useActionState, useCallback, useEffect, useState, useTransition } from "react";
 
 import {
@@ -18,7 +19,7 @@ import {
   type DayCorrection,
 } from "@/lib/clarity/day-corrections";
 import { formatCommitmentTime } from "@/lib/clarity/calendar-rules";
-import { formatDuration } from "@/lib/clarity/proposed-plan-summary";
+import { formatDuration } from "@/lib/clarity/duration";
 import { applyHistoricalActionOutcomeRevisions } from "@/lib/clarity/historical-action-outcomes";
 import { useAppShellEditorState } from "./app-shell-editor-context";
 import { DayCorrectionForm } from "./day-correction-form";
@@ -33,9 +34,11 @@ import { SwipeToRemove } from "./swipe-to-remove";
 export function HistoricalDayActivity({
   record,
   timezone,
+  localDate,
 }: {
   record: CalendarHistoricalRecord | null;
   timezone: string;
+  localDate: string;
 }) {
   if (!record) return null;
   if (!record.planExists && !record.gapAcknowledged) return null;
@@ -90,16 +93,17 @@ export function HistoricalDayActivity({
             currentOutcome="completed"
             completedAt={item.completedAt}
             timezone={timezone}
+            localDate={localDate}
           />
         ))}
         {progressed.map((item) => (
-          <HistoricalActionRow key={item.id} actionId={item.id} icon={<History />} title={item.title} label="Some progress" detail={item.progressNote} currentOutcome="other" timezone={timezone} />
+          <HistoricalActionRow key={item.id} actionId={item.id} icon={<History />} title={item.title} label="Some progress" detail={item.progressNote} currentOutcome="other" timezone={timezone} localDate={localDate} />
         ))}
         {missed.map((item) => (
-          <HistoricalActionRow key={item.id} actionId={item.id} icon={<CircleOff />} title={item.title} label="Didn’t happen" detail={item.notDoneNote} currentOutcome="missed" timezone={timezone} />
+          <HistoricalActionRow key={item.id} actionId={item.id} icon={<CircleOff />} title={item.title} label="Didn’t happen" detail={item.notDoneNote} currentOutcome="missed" timezone={timezone} localDate={localDate} />
         ))}
         {closed.map((item) => (
-          <HistoricalActionRow key={item.id} actionId={item.id} icon={<CircleOff />} title={item.title} label="No longer needed" detail={item.closeContext ?? item.resolvedElsewhereNote} currentOutcome="other" timezone={timezone} />
+          <HistoricalActionRow key={item.id} actionId={item.id} icon={<CircleOff />} title={item.title} label="No longer needed" detail={item.closeContext ?? item.resolvedElsewhereNote} currentOutcome="other" timezone={timezone} localDate={localDate} />
         ))}
         {changed.map((item) => (
           <HistoricalActionRow
@@ -109,9 +113,14 @@ export function HistoricalDayActivity({
             title={item.title}
             label={item.outcome === "rescheduled" && item.rescheduledFor
               ? `Moved to ${formatLocalDateShort(item.rescheduledFor)}`
-              : item.outcome === "rescheduled" ? "Moved" : "Dropped"}
+              : item.outcome === "rescheduled"
+                ? "Moved"
+                : record.actionResolutionNotes[item.id] === "Removed from today"
+                  ? "Removed from today"
+                  : "Dropped"}
             currentOutcome="other"
             timezone={timezone}
+            localDate={localDate}
           />
         ))}
         {summary.unplannedProgress?.map((item, index) => (
@@ -153,6 +162,7 @@ function HistoricalActionRow({
   currentOutcome,
   completedAt,
   timezone,
+  localDate,
 }: {
   actionId: string;
   icon: React.ReactNode;
@@ -162,6 +172,7 @@ function HistoricalActionRow({
   currentOutcome: "completed" | "missed" | "other";
   completedAt?: string | null;
   timezone: string;
+  localDate: string;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -197,7 +208,12 @@ function HistoricalActionRow({
       <div className="flex min-h-11 gap-3">
         <span className="mt-0.5 [&_svg]:size-4 [&_svg]:text-[var(--clarity-completed)]">{icon}</span>
         <div className="min-w-0 flex-1">
-          <p className="font-medium">{title}</p>
+          <Link
+            href={`/today/actions/${actionId}?from=calendar&date=${localDate}`}
+            className="font-medium underline-offset-4 hover:underline"
+          >
+            {title}
+          </Link>
           <p className="mt-0.5 text-sm text-muted-foreground">{label}</p>
           {detail && <p className="mt-0.5 text-sm text-muted-foreground">{detail}</p>}
           {!editing && (

@@ -1,3 +1,7 @@
+import { formatDuration } from "./duration.ts";
+
+export { formatDuration } from "./duration.ts";
+
 export function formatProposedPlanSummary(
   actionCount: number,
   totalMinutes: number,
@@ -13,22 +17,6 @@ export function formatProposedPlanSummary(
   }
 
   return segments.join(" · ");
-}
-
-export function formatDuration(totalMinutes: number) {
-  const safeMinutes = Number.isFinite(totalMinutes)
-    ? Math.max(0, Math.trunc(totalMinutes))
-    : 0;
-  const hours = Math.floor(safeMinutes / 60);
-  const minutes = safeMinutes % 60;
-
-  if (hours === 0) {
-    return `${minutes} min`;
-  }
-
-  return minutes === 0
-    ? `${hours} hr`
-    : `${hours} hr ${minutes} min`;
 }
 
 export function canApproveProposedPlan(

@@ -11,6 +11,22 @@ export function splitEstimatedDuration(value: string | number) {
   };
 }
 
+export function formatDuration(totalMinutes: number) {
+  const safeMinutes = Number.isFinite(totalMinutes)
+    ? Math.max(0, Math.trunc(totalMinutes))
+    : 0;
+  const hours = Math.floor(safeMinutes / 60);
+  const minutes = safeMinutes % 60;
+
+  if (hours === 0) {
+    return `${minutes}m`;
+  }
+
+  return minutes === 0
+    ? `${hours}h`
+    : `${hours}h ${minutes}m`;
+}
+
 export function resolveEstimatedDuration(
   hours: string,
   minutes: string,

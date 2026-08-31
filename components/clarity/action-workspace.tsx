@@ -16,20 +16,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type {
-  ActionAssistantMessage,
-  ActionNote,
-  DailyAction,
-} from "@/lib/clarity/daily-loop-queries";
+import type { ActionNote, DailyAction } from "@/lib/clarity/daily-loop-queries";
 import { ChangeActionTimeForm } from "./change-action-time-form";
-import { AskClarityPanel } from "./ask-clarity-panel";
 import { ActionUpdateHistory } from "./action-update-history";
 import { CorrectCompletionTimeForm } from "./correct-completion-time-form";
 import { LogActionUpdate } from "./log-action-note";
 import { RemoveActionPanel } from "./remove-action-panel";
 
 type OpenPanel =
-  | "ask"
   | "time"
   | "completion-time"
   | "log"
@@ -39,14 +33,12 @@ type OpenPanel =
 
 export function ActionWorkspace({
   action,
-  messages,
   updates,
   timezone,
   scheduledTimeInput,
   completionTimeInput,
 }: {
   action: DailyAction;
-  messages: ActionAssistantMessage[];
   updates: ActionNote[];
   timezone: string;
   scheduledTimeInput: string;
@@ -84,10 +76,6 @@ export function ActionWorkspace({
     [],
   );
 
-  const handleClarityChangeApplied = useCallback(() => {
-    setStatusMessage("Changes saved.");
-  }, []);
-
   useEffect(() => {
     if (!statusMessage) {
       return;
@@ -104,22 +92,7 @@ export function ActionWorkspace({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <AskClarityPanel
-            actionId={action.id}
-            messages={messages}
-            timezone={timezone}
-            open={openPanel === "ask"}
-            onToggle={() =>
-              setOpenPanel((current) => {
-                setStatusMessage(null);
-                return current === "ask" ? null : "ask";
-              })
-            }
-            onChangeApplied={handleClarityChangeApplied}
-          />
-        </div>
+      <div className="flex items-start justify-end gap-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button

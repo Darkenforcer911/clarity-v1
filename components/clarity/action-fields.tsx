@@ -13,11 +13,11 @@ import {
   resolveActionRecurrencePrimaryChoice,
 } from "@/lib/clarity/action-recurrence";
 import {
+  formatDuration,
   resolveEstimatedDuration,
   splitEstimatedDuration,
 } from "@/lib/clarity/duration";
 import { resolveSecondarySettingExpansion } from "@/lib/clarity/secondary-setting-accordion";
-import { formatDuration } from "@/lib/clarity/proposed-plan-summary";
 import { DetailsControl } from "./details-control";
 import { RecurrenceControl } from "./recurrence-control";
 import {

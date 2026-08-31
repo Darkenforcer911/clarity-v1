@@ -9,6 +9,7 @@ import type {
 import type { LifeModel } from "../life-model";
 import type { AuthoritativeReturnState } from "../previous-day-routing";
 import type { ClarityMemoryContext, ClarityMemorySource } from "./clarity-memory";
+import type { ClarityActionInvocation } from "../clarity-action-context";
 
 export const clarityInvocationSurfaces = [
   "clarity",
@@ -95,6 +96,8 @@ export type ClarityContextBundle = {
   memory?: ClarityMemoryContext;
   verifiedExternalWorld?: ClarityVerifiedExternalContext;
 };
+
+export type ClarityInvocationSubject = ClarityActionInvocation;
 
 export interface ClarityLifeContextSource {
   loadCanonicalLife(): Promise<ClarityLifeContext>;
