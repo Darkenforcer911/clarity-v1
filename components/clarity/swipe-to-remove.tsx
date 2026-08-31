@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 
 import {
   ACTIVE_ACTION_SWIPE_REVEAL_PX,
+  resolveActiveActionSwipeIntent,
   resolveActiveActionSwipeOpen,
 } from "@/lib/clarity/active-today-swipe";
 
@@ -45,7 +46,7 @@ export function SwipeToRemove({
     startX: number;
     startY: number;
     startOffset: number;
-    horizontal: boolean | null;
+    intent: "undecided" | "horizontal" | "vertical";
   } | null>(null);
 
   function moveCard(nextOffset: number) {
@@ -70,7 +71,7 @@ export function SwipeToRemove({
       startX: event.clientX,
       startY: event.clientY,
       startOffset: offset,
-      horizontal: null,
+      intent: "undecided",
     };
     currentOffsetRef.current = offset;
   }
@@ -82,14 +83,31 @@ export function SwipeToRemove({
     const deltaX = event.clientX - gesture.startX;
     const deltaY = event.clientY - gesture.startY;
 
-    if (gesture.horizontal === null) {
-      if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) < 7) return;
-      const startedOpen = gesture.startOffset < 0;
-      gesture.horizontal =
-        Math.abs(deltaX) > Math.abs(deltaY) && (startedOpen || deltaX < 0);
+    if (gesture.intent === "undecided") {
+      gesture.intent = resolveActiveActionSwipeIntent(
+        deltaX,
+        deltaY,
+        gesture.startOffset < 0,
+      );
+    } else if (
+      gesture.intent === "horizontal" &&
+      resolveActiveActionSwipeIntent(deltaX, deltaY, false) === "vertical"
+    ) {
+      gesture.intent = "vertical";
     }
 
-    if (!gesture.horizontal) return;
+    if (gesture.intent === "vertical") {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      moveCard(0);
+      setDragging(false);
+      suppressClickRef.current = false;
+      onOpenChange(false);
+      return;
+    }
+
+    if (gesture.intent !== "horizontal") return;
 
     event.preventDefault();
     if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
@@ -115,7 +133,10 @@ export function SwipeToRemove({
 
     gestureRef.current = null;
     setDragging(false);
-    if (!gesture.horizontal) return;
+    if (gesture.intent !== "horizontal") {
+      setDragOffset(null);
+      return;
+    }
 
     setDragOffset(null);
     onOpenChange(
@@ -127,6 +148,25 @@ export function SwipeToRemove({
     window.setTimeout(() => {
       suppressClickRef.current = false;
     }, 50);
+  }
+
+  function cancelGesture(event: React.PointerEvent<HTMLDivElement>) {
+    const gesture = gestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    const closeForVerticalScroll = gesture.intent === "vertical";
+    gestureRef.current = null;
+    currentOffsetRef.current = closeForVerticalScroll
+      ? 0
+      : gesture.startOffset;
+    setDragOffset(closeForVerticalScroll ? 0 : null);
+    setDragging(false);
+    suppressClickRef.current = false;
+    if (closeForVerticalScroll) onOpenChange(false);
   }
 
   function handleClickCapture(event: React.MouseEvent<HTMLDivElement>) {
@@ -159,11 +199,11 @@ export function SwipeToRemove({
   return (
     <div
       data-swipe-action-id={itemId}
-      className="relative min-w-0 overflow-hidden rounded-2xl [touch-action:pan-y]"
+      className="relative isolate min-w-0 overflow-hidden rounded-2xl [touch-action:pan-y]"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={finishGesture}
-      onPointerCancel={finishGesture}
+      onPointerCancel={cancelGesture}
       onClickCapture={handleClickCapture}
     >
       <div

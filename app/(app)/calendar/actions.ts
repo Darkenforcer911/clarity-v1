@@ -251,6 +251,7 @@ export async function deleteDayCorrectionAction(
 
 function revalidateCalendar() {
   revalidatePath("/calendar");
+  revalidatePath("/today");
   revalidatePath("/today/plan");
   revalidatePath("/today/active");
 }

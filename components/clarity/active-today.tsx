@@ -46,12 +46,16 @@ import { formatDuration } from "@/lib/clarity/duration";
 import { Button } from "@/components/ui/button";
 import { AddActionForm } from "./add-action-form";
 import { PendingButton } from "./pending-button";
-import { DailyCommitments } from "./daily-commitments";
-import type { CalendarCommitment } from "@/lib/clarity/calendar-commitments";
 import {
-  getLaterCommitmentsHeading,
-  partitionTodayCommitmentsForAttention,
-} from "@/lib/clarity/today-commitment-priority";
+  DailyCommitmentCard,
+  DailyCommitments,
+} from "./daily-commitments";
+import type { CalendarCommitment } from "@/lib/clarity/calendar-commitments";
+import { partitionTodayCommitmentsForAttention } from "@/lib/clarity/today-commitment-priority";
+import {
+  orderLaterTodayItems,
+  partitionRemainingActions,
+} from "@/lib/clarity/today-display-order";
 import { SwipeToRemove } from "./swipe-to-remove";
 
 type ActiveTodayProps = {
@@ -169,9 +173,6 @@ export function ActiveToday({
     now,
     nextActionDurationMinutes: nextAction?.estimated_minutes ?? null,
   });
-  const laterActions = remaining.filter(
-    (action) => action.id !== nextAction?.id,
-  );
   const timingByActionId = new Map(
     remaining.map((action) => [
       action.id,
@@ -183,6 +184,32 @@ export function ActiveToday({
       ),
     ]),
   );
+  const { timed: laterTimedActions, untimed: remainingUntimedActions } =
+    partitionRemainingActions(remaining, nextAction?.id ?? null);
+  const unresolvedLaterCommitments = laterCommitments.filter(
+    (commitment) =>
+      commitment.status === "scheduled" &&
+      !commitment.reconciliation_outcome,
+  );
+  const resolvedCommitments = laterCommitments.filter(
+    (commitment) =>
+      commitment.status !== "scheduled" ||
+      Boolean(commitment.reconciliation_outcome),
+  );
+  const laterTodayItems = orderLaterTodayItems({
+    actions: laterTimedActions,
+    commitments: unresolvedLaterCommitments,
+    timezone: profile.timezone,
+  });
+  const nextActionTiming = nextAction
+    ? timingByActionId.get(nextAction.id)
+    : undefined;
+  const nextActionHeading =
+    nextActionTiming?.kind === "overdue" || nextActionTiming?.kind === "now"
+      ? "Happening now"
+      : nextActionTiming?.kind === "future"
+        ? "Coming up"
+        : "Next action";
   const router = useRouter();
   const total = remaining.length + completed.length;
   const carriedFromByActionId = matchCarriedActions(
@@ -429,7 +456,7 @@ export function ActiveToday({
       {nextAction ? (
         <div className="space-y-3">
           <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            Next action
+            {nextActionHeading}
           </h2>
           <SwipeableActionCard
             action={nextAction}
@@ -451,7 +478,7 @@ export function ActiveToday({
             enabled={!isClosing}
           />
         </div>
-      ) : (
+      ) : remaining.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card p-5 text-[var(--clarity-completed)]">
           <CheckCircle2 className="mb-4 size-7" />
           <h2 className="text-xl font-semibold">Everything is complete.</h2>
@@ -459,27 +486,62 @@ export function ActiveToday({
             Close the day when you&apos;re ready to record your progress.
           </p>
         </div>
+      ) : null}
+
+      {laterTodayItems.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Later today
+          </h2>
+          <div className="space-y-3">
+            {laterTodayItems.map((item) =>
+              item.kind === "commitment" ? (
+                <DailyCommitmentCard
+                  key={`commitment-${item.value.id}`}
+                  commitment={item.value}
+                  timezone={profile.timezone}
+                  now={now}
+                />
+              ) : (
+                <SwipeableActionCard
+                  key={`action-${item.value.id}`}
+                  action={item.value}
+                  timing={timingByActionId.get(item.value.id)}
+                  timezone={profile.timezone}
+                  carriedFrom={carriedFromByActionId.get(item.value.id)}
+                  canToggle={!isClosing}
+                  canOpen={!isClosing}
+                  pending={pendingActionIds.has(item.value.id)}
+                  onCompletionChange={updateCompletion}
+                  open={swipedActionId === item.value.id}
+                  onOpenChange={(open) =>
+                    setSwipedActionId(open ? item.value.id : null)
+                  }
+                  onRemove={removeAction}
+                  removalPending={pendingRemovalIds.has(item.value.id)}
+                  removing={removingActionIds.has(item.value.id)}
+                  enabled={!isClosing}
+                />
+              ),
+            )}
+          </div>
+        </div>
       )}
 
       <DailyCommitments
-        heading={getLaterCommitmentsHeading({
-          commitments: laterCommitments,
-          localDate: plan.local_date,
-          timezone: profile.timezone,
-          now,
-        })}
-        commitments={laterCommitments}
+        heading="Today's commitments"
+        commitments={resolvedCommitments}
         timezone={profile.timezone}
         now={now}
       />
 
-      {laterActions.length > 0 && (
+      {remainingUntimedActions.length > 0 && (
         <div className="space-y-3">
           <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-muted-foreground">
             Remaining actions
           </h2>
           <div className="space-y-3">
-            {laterActions.map((action) => (
+            {remainingUntimedActions.map((action) => (
               <SwipeableActionCard
                 key={action.id}
                 action={action}

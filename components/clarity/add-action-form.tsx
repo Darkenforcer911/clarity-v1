@@ -108,12 +108,20 @@ function AddActionPanel({
       const navigation = document.querySelector<HTMLElement>(
         'nav[aria-label="Primary"]',
       );
+      const appHeader = document.querySelector<HTMLElement>(
+        "[data-app-shell-header]",
+      );
+      const safeAreaTop =
+        Number.parseFloat(
+          appHeader ? window.getComputedStyle(appHeader).paddingTop : "0",
+        ) || 0;
+      const visibleTop = safeAreaTop + 12;
       const visibleBottom =
         (navigation?.getBoundingClientRect().top ?? window.innerHeight) - 12;
       let adjustment = 0;
 
-      if (bounds.top < 12) {
-        adjustment = bounds.top - 12;
+      if (bounds.top < visibleTop) {
+        adjustment = bounds.top - visibleTop;
       } else if (bounds.top > visibleBottom - 44) {
         adjustment = bounds.top - (visibleBottom - 44);
       }

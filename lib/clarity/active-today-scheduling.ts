@@ -12,6 +12,8 @@ export type ActiveActionTiming =
       minutesFromNow: number;
     };
 
+export const ACTIVE_ACTION_COMING_UP_WINDOW_MINUTES = 30;
+
 const localDateFormatters = new Map<string, Intl.DateTimeFormat>();
 
 export function selectNextActiveAction<
@@ -68,7 +70,11 @@ export function selectNextActiveAction<
     (action) => action.estimated_minutes <= availableMinutes,
   );
 
-  return fittingFlexibleAction ?? nextTimed.action;
+  if (fittingFlexibleAction) return fittingFlexibleAction;
+  if (availableMinutes <= ACTIVE_ACTION_COMING_UP_WINDOW_MINUTES) {
+    return nextTimed.action;
+  }
+  return flexible[0];
 }
 
 export function getActiveActionTiming(

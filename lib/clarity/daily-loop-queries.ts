@@ -19,7 +19,7 @@ import {
   parseCalendarCommitments,
   type CalendarCommitment,
 } from "./calendar-commitments";
-import { filterActiveCalendarCommitments } from "./calendar-commitment-visibility";
+import { filterTodayCalendarCommitments } from "./calendar-commitment-visibility";
 
 export type DailyPlan = Tables<"daily_plans"> & {
   record_kind: "planned" | "recorded_without_plan" | "skipped";
@@ -332,7 +332,7 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
     previousDayTransition,
     pendingReturnGap,
     latestReturnGapRecord,
-    commitments: filterActiveCalendarCommitments(
+    commitments: filterTodayCalendarCommitments(
       parseCalendarCommitments(commitmentsResult.data),
     ),
   };

@@ -71,7 +71,10 @@ export function AppShell({
               : "mx-auto min-h-svh w-full min-w-0 max-w-[480px] overflow-x-clip border-x-0 border-border bg-background min-[481px]:border-x"
           }
         >
-          <header className="shrink-0 border-b border-border bg-background pt-[env(safe-area-inset-top)]">
+          <header
+            data-app-shell-header
+            className="shrink-0 border-b border-border bg-background pt-[env(safe-area-inset-top)]"
+          >
             <div className="flex h-14 w-full items-center justify-between px-4">
               {allowProductNavigation ? (
                 <Link
