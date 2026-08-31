@@ -15,6 +15,7 @@ import {
   cancelCalendarCommitmentAction,
   correctCalendarEventOccurrenceOutcomeAction,
   deleteCalendarCommitmentAction,
+  skipCalendarEventOccurrenceAction,
 } from "@/app/(app)/calendar/actions";
 import { initialCalendarActionState } from "@/lib/clarity/calendar-action-state";
 import { Button } from "@/components/ui/button";
@@ -464,6 +465,13 @@ function CommitmentRow({
         : timingState !== "scheduled"
         ? formatTimingState(timingState)
         : null;
+  const recurringEvent =
+    commitment.commitment_type === "event" && commitment.recurrence !== "none";
+  const canSkipThisOccurrence =
+    recurringEvent &&
+    commitment.occurrence_date === today &&
+    commitment.status === "scheduled" &&
+    !commitment.reconciliation_outcome;
   const [deletionPending, setDeletionPending] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [deletionError, setDeletionError] = useState<string | null>(null);
@@ -565,8 +573,16 @@ function CommitmentRow({
                     onClick={onEdit}
                     className="h-11 w-full"
                   >
-                    Edit commitment
+                    {recurringEvent
+                      ? "Edit recurring commitment"
+                      : "Edit commitment"}
                   </Button>
+                )}
+                {canSkipThisOccurrence && (
+                  <SkipCalendarEventOccurrenceControl
+                    commitment={commitment}
+                    onSaved={onSaved}
+                  />
                 )}
                 <CommitmentMutationControls
                   commitment={commitment}
@@ -591,6 +607,76 @@ function CommitmentRow({
         )}
       </article>
     </SwipeToRemove>
+  );
+}
+
+function SkipCalendarEventOccurrenceControl({
+  commitment,
+  onSaved,
+}: {
+  commitment: CalendarCommitment;
+  onSaved: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [skipState, skipAction] = useActionState(
+    skipCalendarEventOccurrenceAction,
+    initialCalendarActionState,
+  );
+
+  useEffect(() => {
+    if (skipState.saved) onSaved();
+  }, [skipState.saved, skipState.version, onSaved]);
+
+  if (!confirming) {
+    return (
+      <Button
+        type="button"
+        variant="ghost"
+        onClick={() => setConfirming(true)}
+        className="h-11 w-full text-muted-foreground"
+      >
+        Skip this occurrence
+      </Button>
+    );
+  }
+
+  return (
+    <div className="space-y-3 rounded-xl bg-secondary p-3">
+      <div className="space-y-1">
+        <p className="text-sm font-medium">Skip this occurrence?</p>
+        <p className="text-xs leading-5 text-muted-foreground">
+          Only this date will be cancelled. The recurring commitment will
+          continue.
+        </p>
+      </div>
+      <form action={skipAction} className="grid grid-cols-2 gap-2">
+        <input type="hidden" name="commitmentId" value={commitment.id} />
+        <input
+          type="hidden"
+          name="occurrenceDate"
+          value={commitment.occurrence_date}
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => setConfirming(false)}
+        >
+          Keep
+        </Button>
+        <PendingButton
+          type="submit"
+          variant="destructive"
+          pendingLabel="Skipping…"
+        >
+          Skip
+        </PendingButton>
+      </form>
+      {skipState.error && (
+        <p role="alert" className="text-xs text-destructive">
+          {skipState.error}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -720,6 +806,8 @@ function CommitmentMutationControls({
   commitment: CalendarCommitment;
   onSaved: () => void;
 }) {
+  const recurringEvent =
+    commitment.commitment_type === "event" && commitment.recurrence !== "none";
   const [confirming, setConfirming] = useState(false);
   const [cancelState, cancelAction] = useActionState(
     cancelCalendarCommitmentAction,
@@ -738,14 +826,18 @@ function CommitmentMutationControls({
         onClick={() => setConfirming(true)}
         className="h-11 w-full text-muted-foreground"
       >
-        Cancel commitment
+        {recurringEvent ? "Cancel recurring series" : "Cancel commitment"}
       </Button>
     ) : null;
   }
 
   return (
     <div className="space-y-3 rounded-xl bg-secondary p-3">
-      <p className="text-sm font-medium">Cancel this commitment?</p>
+      <p className="text-sm font-medium">
+        {recurringEvent
+          ? "Cancel this recurring series?"
+          : "Cancel this commitment?"}
+      </p>
       <form action={cancelAction} className="grid grid-cols-2 gap-2">
         <input type="hidden" name="commitmentId" value={commitment.id} />
         <Button type="button" variant="ghost" onClick={() => setConfirming(false)}>

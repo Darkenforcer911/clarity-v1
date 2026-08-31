@@ -1,5 +1,9 @@
 import type { RecurrencePrimaryChoice } from "./recurrence-ui";
 
+// Legacy Daily Action recurrence is presentation metadata only. Canonical
+// repeating behaviour belongs to a Routine, which materializes independent
+// dated Daily Action occurrences at the Shape Today boundary.
+
 const weekdayLabels = new Map([
   [1, "Mon"],
   [2, "Tue"],

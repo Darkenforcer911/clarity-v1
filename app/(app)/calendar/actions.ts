@@ -174,6 +174,32 @@ export async function correctCalendarEventOccurrenceOutcomeAction(
   }
 }
 
+export async function skipCalendarEventOccurrenceAction(
+  previous: CalendarActionState,
+  formData: FormData,
+): Promise<CalendarActionState> {
+  try {
+    const input = z.object({
+      commitmentId: z.string().uuid(),
+      occurrenceDate: z.iso.date(),
+    }).parse({
+      commitmentId: formData.get("commitmentId"),
+      occurrenceDate: formData.get("occurrenceDate"),
+    });
+    await correctCalendarEventOccurrenceOutcome({
+      commitmentId: input.commitmentId,
+      occurrenceDate: input.occurrenceDate,
+      outcome: "cancelled",
+      completedTime: null,
+      note: null,
+    });
+    revalidateCalendar();
+    return { error: null, saved: true, version: previous.version + 1 };
+  } catch (error) {
+    return actionError(error, previous);
+  }
+}
+
 export async function createDayCorrectionAction(
   previous: CalendarActionState,
   formData: FormData,
