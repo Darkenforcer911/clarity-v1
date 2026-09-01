@@ -459,6 +459,7 @@ export const previousDayResolutionSchema = z
     ]),
     completedAt: z.string().regex(timestampPattern).optional(),
     completionCorrected: z.boolean().optional(),
+    approximateMinutes: z.number().int().min(1).max(1440).optional(),
     progressNote: z.string().trim().max(500).optional(),
     notDoneNote: z.string().max(500).optional(),
     closeReason: z
@@ -485,6 +486,18 @@ export const previousDayResolutionSchema = z
         code: "custom",
         message: "Completion time only applies to Done.",
         path: ["completedAt"],
+      });
+    }
+
+    if (
+      value.approximateMinutes !== undefined &&
+      value.outcome !== "finished" &&
+      value.outcome !== "made_progress"
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Actual duration only applies to Done or Some progress.",
+        path: ["approximateMinutes"],
       });
     }
 

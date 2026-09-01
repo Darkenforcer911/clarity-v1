@@ -8,11 +8,13 @@ import { initialHistoricalCompletionTime } from "@/lib/clarity/historical-comple
 
 import { ClarityFormHeader } from "./clarity-form-header";
 import { TimeSelector } from "./time-selector";
+import { TimeSpentField } from "./time-spent-field";
 
 export type RecapCompletedItem = {
   id: string;
   title: string;
   completionTime: string;
+  actualMinutes: number | null;
 };
 
 export function RecapCompletedItemForm({
@@ -37,10 +39,16 @@ export function RecapCompletedItemForm({
       existingCompletionTime: initialItem?.completionTime,
     }),
   );
+  const [actualMinutes, setActualMinutes] = useState(
+    initialItem?.actualMinutes?.toString() ?? "",
+  );
   const [error, setError] = useState<string | null>(null);
 
   function save() {
     const normalizedTitle = title.trim();
+    const normalizedActualMinutes = actualMinutes
+      ? Number(actualMinutes)
+      : null;
 
     if (!normalizedTitle) {
       setError("Enter what you did.");
@@ -55,10 +63,21 @@ export function RecapCompletedItemForm({
       return;
     }
 
+    if (
+      normalizedActualMinutes !== null &&
+      (!Number.isInteger(normalizedActualMinutes) ||
+        normalizedActualMinutes < 1 ||
+        normalizedActualMinutes > 1440)
+    ) {
+      setError("Duration must be between 1 minute and 24 hours.");
+      return;
+    }
+
     onSave({
       id: initialItem?.id ?? crypto.randomUUID(),
       title: normalizedTitle,
       completionTime,
+      actualMinutes: normalizedActualMinutes,
     });
   }
 
@@ -110,6 +129,13 @@ export function RecapCompletedItemForm({
         }}
         onRemove={() => {
           setCompletionTime("");
+          setError(null);
+        }}
+      />
+      <TimeSpentField
+        value={actualMinutes}
+        onChange={(value) => {
+          setActualMinutes(value);
           setError(null);
         }}
       />

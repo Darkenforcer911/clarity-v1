@@ -89,7 +89,11 @@ export function HistoricalDayActivity({
             actionId={item.id}
             icon={<CheckCircle2 />}
             title={item.title}
-            label={formatCompletedLabel(item.completedAt, timezone)}
+            label={formatCompletedLabel(
+              item.completedAt,
+              timezone,
+              item.approximateMinutes,
+            )}
             currentOutcome="completed"
             completedAt={item.completedAt}
             timezone={timezone}
@@ -97,7 +101,7 @@ export function HistoricalDayActivity({
           />
         ))}
         {progressed.map((item) => (
-          <HistoricalActionRow key={item.id} actionId={item.id} icon={<History />} title={item.title} label="Some progress" detail={item.progressNote} currentOutcome="other" timezone={timezone} localDate={localDate} />
+          <HistoricalActionRow key={item.id} actionId={item.id} icon={<History />} title={item.title} label={item.approximateMinutes ? `Some progress · ${formatDuration(item.approximateMinutes)}` : "Some progress"} detail={item.progressNote} currentOutcome="other" timezone={timezone} localDate={localDate} />
         ))}
         {missed.map((item) => (
           <HistoricalActionRow key={item.id} actionId={item.id} icon={<CircleOff />} title={item.title} label="Didn’t happen" detail={item.notDoneNote} currentOutcome="missed" timezone={timezone} localDate={localDate} />
@@ -128,7 +132,9 @@ export function HistoricalDayActivity({
             key={typeof item === "string" ? `${item}-${index}` : `${item.title}-${index}`}
             icon={<CheckCircle2 />}
             title={typeof item === "string" ? item : item.title}
-            label={typeof item === "string" || item.outcome === "finished" ? "Unplanned completed item" : "Unplanned progress"}
+            label={typeof item === "string"
+              ? "Unplanned completed item"
+              : `${item.outcome === "finished" ? "Unplanned completed item" : "Unplanned progress"}${item.estimatedMinutes ? ` · ${formatDuration(item.estimatedMinutes)}` : ""}`}
             detail={typeof item === "string" ? null : item.progressNote}
           />
         ))}
@@ -260,13 +266,23 @@ function HistoricalActionRow({
   );
 }
 
-function formatCompletedLabel(completedAt: string | null | undefined, timezone: string) {
-  if (!completedAt) return "Completed";
-  return `Completed · ${new Intl.DateTimeFormat("en-AU", {
-    timeZone: timezone,
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(completedAt))}`;
+function formatCompletedLabel(
+  completedAt: string | null | undefined,
+  timezone: string,
+  actualMinutes?: number | null,
+) {
+  const parts = ["Completed"];
+  if (completedAt) {
+    parts.push(
+      new Intl.DateTimeFormat("en-AU", {
+        timeZone: timezone,
+        hour: "numeric",
+        minute: "2-digit",
+      }).format(new Date(completedAt)),
+    );
+  }
+  if (actualMinutes) parts.push(formatDuration(actualMinutes));
+  return parts.join(" · ");
 }
 
 function localTimeValue(timestamp: string, timezone: string) {
@@ -413,8 +429,18 @@ function CalendarCompletedItemEditor({
     formData.set("correctionType", "completed_item");
     formData.set("title", item.title);
     formData.set("occurredTime", item.completionTime);
-    formData.set("durationHours", "");
-    formData.set("durationMinutes", "");
+    formData.set(
+      "durationHours",
+      item.actualMinutes === null
+        ? ""
+        : String(Math.floor(item.actualMinutes / 60)),
+    );
+    formData.set(
+      "durationMinutes",
+      item.actualMinutes === null
+        ? ""
+        : String(item.actualMinutes % 60),
+    );
     formData.set("details", "");
     if (correction) formData.set("correctionId", correction.id);
     startTransition(() => dispatch(formData));
@@ -430,6 +456,7 @@ function CalendarCompletedItemEditor({
                 id: correction.id,
                 title: correction.title ?? "",
                 completionTime: correction.occurred_time?.slice(0, 5) ?? "",
+                actualMinutes: correction.duration_minutes,
               }
             : undefined
         }

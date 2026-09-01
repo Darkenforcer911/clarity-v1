@@ -71,6 +71,7 @@ export function PreviousDayCatchUp({
           current[actionId]?.resolvedElsewhereNote ?? "",
         supportingPhrase:
           current[actionId]?.supportingPhrase ?? "",
+        actualMinutes: current[actionId]?.actualMinutes ?? "",
         ...update,
       },
     }));
@@ -111,6 +112,14 @@ export function PreviousDayCatchUp({
                 value={draft.progressNote}
               />
             )}
+            {(outcome === "finished" || outcome === "made_progress") &&
+              validActualMinutes(draft.actualMinutes) !== null && (
+                <input
+                  type="hidden"
+                  name={`actualMinutes:${action.id}`}
+                  value={draft.actualMinutes}
+                />
+              )}
             {outcome === "not_done" && draft.notDoneNote.trim() && (
               <input
                 type="hidden"
@@ -157,6 +166,13 @@ export function PreviousDayCatchUp({
               value={item.completionTime}
             />
           )}
+          {item.actualMinutes !== null && (
+            <input
+              type="hidden"
+              name={`unplannedActualMinutes:${item.id}`}
+              value={item.actualMinutes}
+            />
+          )}
         </span>
       ))}
     </>
@@ -173,6 +189,7 @@ export function PreviousDayCatchUp({
           id: action.id,
           title: action.title,
           initiallyConfirmed: action.status === "completed",
+          plannedMinutes: action.estimated_minutes,
         })),
         drafts,
         activities: completedItems,
@@ -223,9 +240,18 @@ function initialDrafts(
         closeContext: "",
         resolvedElsewhereNote: "",
         supportingPhrase: "",
+        actualMinutes: "",
       } satisfies RecapActionDraft,
     ]),
   );
+}
+
+function validActualMinutes(value: string) {
+  if (!value) return null;
+  const minutes = Number(value);
+  return Number.isInteger(minutes) && minutes >= 1 && minutes <= 1440
+    ? minutes
+    : null;
 }
 
 function submittedOutcome(draft: RecapActionDraft | undefined) {

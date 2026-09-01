@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { formatFullLocalDate, formatWeekday } from "@/lib/clarity/date-time";
+import { formatDuration } from "@/lib/clarity/duration";
 import { progressExplanationError } from "@/lib/clarity/recap-validation";
 import { PendingButton } from "./pending-button";
 import {
@@ -24,6 +25,7 @@ export type RecapPlanAction = {
   id: string;
   title: string;
   initiallyConfirmed: boolean;
+  plannedMinutes?: number;
 };
 
 export function RecapExperience({
@@ -207,6 +209,7 @@ export function RecapExperience({
               : "review"
           }`}
           title={action.title}
+          plannedMinutes={action.plannedMinutes}
           draft={drafts[action.id]}
           open={openActionId === action.id}
           subdued={subdued}
@@ -276,6 +279,10 @@ export function RecapExperience({
                   activity.completionTime
                     ? formatLocalTimeLabel(activity.completionTime)
                     : "Anytime"
+                }${
+                  activity.actualMinutes
+                    ? ` · ${formatDuration(activity.actualMinutes)}`
+                    : ""
                 }`}
               </span>
             </span>
@@ -470,6 +477,7 @@ export function RecapExperience({
 
         <RecapDayContextField
           day={day}
+          localDate={recapDate}
           value={contextValue}
           open={auxiliaryPanel === "note"}
           onOpenChange={(open) => {
@@ -540,6 +548,14 @@ export function isRecapDraftResolved(
     return false;
   }
 
+  if (
+    (draft.outcome === "finished" || draft.outcome === "made_progress") &&
+    draft.actualMinutes &&
+    !isValidActualDuration(draft.actualMinutes)
+  ) {
+    return false;
+  }
+
   if (draft.outcome === "made_progress") {
     return progressExplanationError(draft.progressNote) === null;
   }
@@ -553,6 +569,11 @@ export function isRecapDraftResolved(
   }
 
   return true;
+}
+
+function isValidActualDuration(value: string) {
+  const minutes = Number(value);
+  return Number.isInteger(minutes) && minutes >= 1 && minutes <= 1440;
 }
 
 function scrollIntoViewIfNeeded(element: HTMLElement | undefined) {

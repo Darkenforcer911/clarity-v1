@@ -2,49 +2,59 @@
 
 import { useState } from "react";
 
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { formatDuration } from "@/lib/clarity/duration";
 
 const choices = [
-  { label: "15 min", value: "15" },
-  { label: "30 min", value: "30" },
-  { label: "45 min", value: "45" },
-  { label: "1 hr", value: "60" },
-  { label: "2 hr", value: "120" },
+  "15",
+  "30",
+  "45",
+  "60",
+  "120",
 ] as const;
 
 export function TimeSpentField({
   value,
   onChange,
+  plannedMinutes,
 }: {
   value: string;
   onChange: (value: string) => void;
+  plannedMinutes?: number;
 }) {
   const [custom, setCustom] = useState(
     () =>
       Boolean(value) &&
-      !choices.some((choice) => choice.value === value),
+      !choices.some((choice) => choice === value),
   );
+  const invalid = Boolean(value) && !isValidDuration(value);
 
   return (
     <fieldset className="space-y-2">
-      <legend className="text-sm font-medium">Time spent</legend>
+      <legend className="text-sm font-medium">How long?</legend>
+      <p className="text-xs text-muted-foreground">
+        {plannedMinutes
+          ? `Planned ${formatDuration(plannedMinutes)} · Actual time is optional`
+          : "Actual time is optional"}
+      </p>
       <div className="flex flex-wrap gap-2">
         {choices.map((choice) => (
           <button
-            key={choice.value}
+            key={choice}
             type="button"
-            aria-pressed={!custom && value === choice.value}
+            aria-pressed={!custom && value === choice}
             onClick={() => {
               setCustom(false);
-              onChange(choice.value);
+              onChange(choice);
             }}
             className={`min-h-11 rounded-full border px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-              !custom && value === choice.value
+              !custom && value === choice
                 ? "border-primary bg-primary text-primary-foreground"
                 : "border-border text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
             }`}
           >
-            {choice.label}
+            {formatDuration(Number(choice))}
           </button>
         ))}
         <button
@@ -52,7 +62,7 @@ export function TimeSpentField({
           aria-pressed={custom}
           onClick={() => {
             setCustom(true);
-            if (choices.some((choice) => choice.value === value)) {
+            if (choices.some((choice) => choice === value)) {
               onChange("");
             }
           }}
@@ -83,6 +93,31 @@ export function TimeSpentField({
           </span>
         </label>
       )}
+
+      {invalid && (
+        <p role="alert" className="text-sm text-destructive">
+          Duration must be between 1 minute and 24 hours.
+        </p>
+      )}
+
+      {value && (
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => {
+            setCustom(false);
+            onChange("");
+          }}
+          className="h-9 rounded-lg px-2 text-xs text-muted-foreground"
+        >
+          Remove duration
+        </Button>
+      )}
     </fieldset>
   );
+}
+
+function isValidDuration(value: string) {
+  const minutes = Number(value);
+  return Number.isInteger(minutes) && minutes >= 1 && minutes <= 1440;
 }

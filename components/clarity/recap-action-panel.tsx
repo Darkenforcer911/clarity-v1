@@ -5,8 +5,10 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { formatDuration } from "@/lib/clarity/duration";
 import { progressExplanationError } from "@/lib/clarity/recap-validation";
 import { TimeSelector } from "./time-selector";
+import { TimeSpentField } from "./time-spent-field";
 
 export type RecapOutcome =
   | "finished"
@@ -29,10 +31,12 @@ export type RecapActionDraft = {
   closeContext: string;
   resolvedElsewhereNote: string;
   supportingPhrase: string;
+  actualMinutes: string;
 };
 
 export function RecapActionPanel({
   title,
+  plannedMinutes,
   draft,
   open,
   onToggle,
@@ -41,6 +45,7 @@ export function RecapActionPanel({
   subdued = false,
 }: {
   title: string;
+  plannedMinutes?: number;
   draft: RecapActionDraft;
   open: boolean;
   onToggle: () => void;
@@ -300,52 +305,70 @@ export function RecapActionPanel({
             {!closeEditorOpen &&
               !notDoneEditorOpen &&
               activeOutcome === "made_progress" && (
-                <label className="block space-y-2">
-                  <span className="text-sm font-semibold">
-                    What moved forward?
-                  </span>
-                  <Textarea
-                    value={draft.progressNote}
-                    maxLength={500}
-                    placeholder="Added my work history and rewrote the summary."
-                    onChange={(event) => {
-                      onDraftChange({
-                        progressNote: event.currentTarget.value,
-                      });
-                      setExplanationError(null);
-                    }}
-                    className="min-h-20 rounded-xl"
+                <div className="space-y-3">
+                  <label className="block space-y-2">
+                    <span className="text-sm font-semibold">
+                      What moved forward?
+                    </span>
+                    <Textarea
+                      value={draft.progressNote}
+                      maxLength={500}
+                      placeholder="Added my work history and rewrote the summary."
+                      onChange={(event) => {
+                        onDraftChange({
+                          progressNote: event.currentTarget.value,
+                        });
+                        setExplanationError(null);
+                      }}
+                      className="min-h-20 rounded-xl"
+                    />
+                  </label>
+                  <TimeSpentField
+                    value={draft.actualMinutes}
+                    plannedMinutes={plannedMinutes}
+                    onChange={(actualMinutes) =>
+                      onDraftChange({ actualMinutes })
+                    }
                   />
-                </label>
+                </div>
               )}
 
             {!closeEditorOpen &&
               !notDoneEditorOpen &&
               activeOutcome === "finished" && (
-                <TimeSelector
-                  name="recapCompletionTime"
-                  label="When"
-                  summary={
-                    draft.completionTime && !draft.timeUnknown
-                      ? formatLocalTimeLabel(draft.completionTime)
-                      : "Anytime"
-                  }
-                  value={draft.timeUnknown ? "" : draft.completionTime}
-                  onChange={(completionTime) => {
-                    onDraftChange({
-                      completionTime,
-                      timeUnknown: !completionTime,
-                      completionCorrected: true,
-                    });
-                  }}
-                  onRemove={() => {
-                    onDraftChange({
-                      completionTime: "",
-                      timeUnknown: true,
-                      completionCorrected: true,
-                    });
-                  }}
-                />
+                <div className="space-y-3">
+                  <TimeSelector
+                    name="recapCompletionTime"
+                    label="When"
+                    summary={
+                      draft.completionTime && !draft.timeUnknown
+                        ? formatLocalTimeLabel(draft.completionTime)
+                        : "Anytime"
+                    }
+                    value={draft.timeUnknown ? "" : draft.completionTime}
+                    onChange={(completionTime) => {
+                      onDraftChange({
+                        completionTime,
+                        timeUnknown: !completionTime,
+                        completionCorrected: true,
+                      });
+                    }}
+                    onRemove={() => {
+                      onDraftChange({
+                        completionTime: "",
+                        timeUnknown: true,
+                        completionCorrected: true,
+                      });
+                    }}
+                  />
+                  <TimeSpentField
+                    value={draft.actualMinutes}
+                    plannedMinutes={plannedMinutes}
+                    onChange={(actualMinutes) =>
+                      onDraftChange({ actualMinutes })
+                    }
+                  />
+                </div>
               )}
 
             {activeOutcome === "not_done" &&
@@ -485,13 +508,20 @@ function recapResolutionLabel(draft: RecapActionDraft) {
   }
 
   if (draft.outcome === "finished") {
-    return draft.completionTime && !draft.timeUnknown
+    const completion = draft.completionTime && !draft.timeUnknown
       ? `Done · ${formatLocalTimeLabel(draft.completionTime)}`
       : "Done · Anytime";
+    const actualMinutes = validActualMinutes(draft.actualMinutes);
+    return actualMinutes
+      ? `${completion} · ${formatDuration(actualMinutes)}`
+      : completion;
   }
 
   if (draft.outcome === "made_progress") {
-    return "Some progress";
+    const actualMinutes = validActualMinutes(draft.actualMinutes);
+    return actualMinutes
+      ? `Some progress · ${formatDuration(actualMinutes)}`
+      : "Some progress";
   }
 
   if (draft.outcome === "not_done") {
@@ -517,6 +547,14 @@ function visualOutcome(
   return outcome === "resolved_elsewhere"
     ? "not_done"
     : outcome ?? null;
+}
+
+function validActualMinutes(value: string) {
+  if (!value) return null;
+  const minutes = Number(value);
+  return Number.isInteger(minutes) && minutes >= 1 && minutes <= 1440
+    ? minutes
+    : null;
 }
 
 function shortText(value: string) {

@@ -9,7 +9,10 @@ import type {
 import type { LifeModel } from "../life-model";
 import type { AuthoritativeReturnState } from "../previous-day-routing";
 import type { ClarityMemoryContext, ClarityMemorySource } from "./clarity-memory";
-import type { ClarityActionInvocation } from "../clarity-action-context";
+import type {
+  ClarityActionInvocation,
+  ClarityDayInvocation,
+} from "../clarity-action-context";
 
 export const clarityInvocationSurfaces = [
   "clarity",
@@ -97,7 +100,9 @@ export type ClarityContextBundle = {
   verifiedExternalWorld?: ClarityVerifiedExternalContext;
 };
 
-export type ClarityInvocationSubject = ClarityActionInvocation;
+export type ClarityInvocationSubject =
+  | ClarityActionInvocation
+  | ClarityDayInvocation;
 
 export interface ClarityLifeContextSource {
   loadCanonicalLife(): Promise<ClarityLifeContext>;

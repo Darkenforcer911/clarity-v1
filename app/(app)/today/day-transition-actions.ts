@@ -111,11 +111,17 @@ export async function confirmPreviousDayAction(
             : undefined;
         const completionCorrected =
           formData.get(`completionCorrected:${id}`) === "true";
+        const actualMinutes = String(
+          formData.get(`actualMinutes:${id}`) ?? "",
+        );
         return previousDayResolutionSchema.parse({
           actionId: id,
           outcome,
           completedAt,
           completionCorrected,
+          approximateMinutes: actualMinutes
+            ? Number(actualMinutes)
+            : undefined,
           progressNote:
             outcome === "made_progress"
               ? formData.get(`progressNote:${id}`)
@@ -151,6 +157,9 @@ export async function confirmPreviousDayAction(
         const completionTime = String(
           formData.get(`unplannedCompletionTime:${id}`) ?? "",
         );
+        const actualMinutes = String(
+          formData.get(`unplannedActualMinutes:${id}`) ?? "",
+        );
 
         return previousDayUnplannedWorkSchema.parse({
           title: formData.get(`unplannedTitle:${id}`),
@@ -163,7 +172,11 @@ export async function confirmPreviousDayAction(
               )
             : undefined,
           completionTimeUnknown: !completionTime,
-          estimatedMinutes: null,
+          // The applied recap RPC names this legacy JSON field
+          // `estimatedMinutes`; in this historical flow it is actual time.
+          estimatedMinutes: actualMinutes
+            ? Number(actualMinutes)
+            : null,
         });
       });
 

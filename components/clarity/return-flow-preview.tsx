@@ -121,6 +121,7 @@ export function ReturnFlowPreview() {
               activity.timeUnknown || !activity.completionTime
                 ? ""
                 : activity.completionTime,
+            actualMinutes: activity.estimatedMinutes,
           })),
       );
       setContexts(contextsFromRecapInterpretation(result));
@@ -264,6 +265,7 @@ export function ReturnFlowPreview() {
                   id: action.id,
                   title: action.title,
                   initiallyConfirmed: action.completed,
+                  plannedMinutes: 30,
                 })),
                 drafts,
                 activities,
@@ -348,6 +350,7 @@ function initialDrafts(): Record<string, RecapActionDraft> {
         closeContext: "",
         resolvedElsewhereNote: "",
         supportingPhrase: "",
+        actualMinutes: "",
       },
     ]),
   );
