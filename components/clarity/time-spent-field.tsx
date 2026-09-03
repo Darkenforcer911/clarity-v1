@@ -63,7 +63,7 @@ export function TimeSpentField({
         value={draft}
         aria-label={label}
         aria-invalid={invalid}
-        placeholder="45m or 1h 30m"
+        placeholder="30m or 1h 30m"
         onChange={(event) => updateDraft(event.currentTarget.value)}
         className="h-12 w-full min-w-0 max-w-full rounded-xl"
       />
