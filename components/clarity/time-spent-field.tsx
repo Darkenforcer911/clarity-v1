@@ -4,15 +4,10 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { formatDuration } from "@/lib/clarity/duration";
-
-const choices = [
-  "15",
-  "30",
-  "45",
-  "60",
-  "120",
-] as const;
+import {
+  formatDuration,
+  parseDurationInput,
+} from "@/lib/clarity/duration";
 
 export function TimeSpentField({
   value,
@@ -27,95 +22,63 @@ export function TimeSpentField({
   label?: string;
   hideHeading?: boolean;
 }) {
-  const [custom, setCustom] = useState(
-    () =>
-      Boolean(value) &&
-      !choices.some((choice) => choice === value),
-  );
-  const invalid = Boolean(value) && !isValidDuration(value);
+  const [draft, setDraft] = useState(() => {
+    const initialMinutes = Number(value);
+    return Number.isInteger(initialMinutes) && initialMinutes > 0
+      ? formatDuration(initialMinutes)
+      : "";
+  });
+  const parsed = parseDurationInput(draft);
+  const invalid = Boolean(draft.trim()) && Boolean(parsed.error);
+
+  function updateDraft(nextDraft: string) {
+    setDraft(nextDraft);
+    const result = parseDurationInput(nextDraft);
+    onChange(
+      result.error
+        ? nextDraft
+        : result.totalMinutes === null
+          ? ""
+          : String(result.totalMinutes),
+    );
+  }
 
   return (
-    <fieldset className="space-y-2">
+    <fieldset className="m-0 min-w-0 space-y-2 border-0 p-0">
       <legend className={hideHeading ? "sr-only" : "text-sm font-medium"}>
         {label}
       </legend>
-      {!hideHeading && (
+      {!hideHeading && plannedMinutes && (
         <p className="text-xs text-muted-foreground">
-          {plannedMinutes
-            ? `Planned ${formatDuration(plannedMinutes)} · Actual time is optional`
-            : "Actual time is optional"}
+          Planned {formatDuration(plannedMinutes)}
         </p>
       )}
-      <div className="flex flex-wrap gap-2">
-        {choices.map((choice) => (
-          <button
-            key={choice}
-            type="button"
-            aria-pressed={!custom && value === choice}
-            onClick={() => {
-              setCustom(false);
-              onChange(choice);
-            }}
-            className={`min-h-11 rounded-full border px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-              !custom && value === choice
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-border text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
-            }`}
-          >
-            {formatDuration(Number(choice))}
-          </button>
-        ))}
-        <button
-          type="button"
-          aria-pressed={custom}
-          onClick={() => {
-            setCustom(true);
-            if (choices.some((choice) => choice === value)) {
-              onChange("");
-            }
-          }}
-          className={`min-h-11 rounded-full border px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-            custom
-              ? "border-primary bg-primary text-primary-foreground"
-              : "border-border text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
-          }`}
-        >
-          Custom
-        </button>
-      </div>
 
-      {custom && (
-        <label className="flex items-center gap-2">
-          <span className="sr-only">Custom time spent</span>
-          <Input
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={1440}
-            value={value}
-            onChange={(event) => onChange(event.currentTarget.value)}
-            className="h-11 min-w-0 rounded-xl"
-          />
-          <span className="shrink-0 text-sm text-muted-foreground">
-            minutes
-          </span>
-        </label>
-      )}
+      <Input
+        type="text"
+        inputMode="text"
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+        value={draft}
+        aria-label={label}
+        aria-invalid={invalid}
+        placeholder="45m or 1h 30m"
+        onChange={(event) => updateDraft(event.currentTarget.value)}
+        className="h-12 w-full min-w-0 max-w-full rounded-xl"
+      />
 
       {invalid && (
         <p role="alert" className="text-sm text-destructive">
-          Duration must be between 1 minute and 24 hours.
+          {parsed.error}
         </p>
       )}
 
-      {value && (
+      {draft && (
         <Button
           type="button"
           variant="ghost"
-          onClick={() => {
-            setCustom(false);
-            onChange("");
-          }}
+          onClick={() => updateDraft("")}
           className="h-9 rounded-lg px-2 text-xs text-muted-foreground"
         >
           Remove duration
@@ -123,9 +86,4 @@ export function TimeSpentField({
       )}
     </fieldset>
   );
-}
-
-function isValidDuration(value: string) {
-  const minutes = Number(value);
-  return Number.isInteger(minutes) && minutes >= 1 && minutes <= 1440;
 }

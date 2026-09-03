@@ -39,7 +39,7 @@ export function SecondarySettingDisclosure({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-w-0 space-y-3">
+    <div className="w-full min-w-0 max-w-full space-y-3">
       <button
         type="button"
         aria-expanded={expanded}
@@ -61,7 +61,7 @@ export function SecondarySettingDisclosure({
       </button>
 
       {expanded && (
-        <div className="space-y-3 pl-1">
+        <div className="w-full min-w-0 max-w-full space-y-3 overflow-x-clip pl-1">
           {children}
           {showDone && (
             <div className="flex justify-end">

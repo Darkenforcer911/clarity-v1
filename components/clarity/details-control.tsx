@@ -29,7 +29,7 @@ export function DetailsControl({
   const inputId = useId();
 
   return (
-    <div className="min-w-0">
+    <div className="w-full min-w-0 max-w-full">
       <input type="hidden" name={name} value={value} />
       <SecondarySettingDisclosure
         icon={NotebookPen}

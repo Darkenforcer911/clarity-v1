@@ -34,7 +34,7 @@ export function RecurrenceControl({
   choices?: ReadonlyArray<{ value: RecurrencePrimaryChoice; label: string }>;
 }) {
   return (
-    <fieldset className="m-0 min-w-0 border-0 p-0">
+    <fieldset className="m-0 w-full min-w-0 max-w-full border-0 p-0">
       <legend className="sr-only">Repeats</legend>
       <SecondarySettingDisclosure
         icon={Repeat2}

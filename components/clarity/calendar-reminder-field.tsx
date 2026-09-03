@@ -97,7 +97,7 @@ export function CalendarReminderField({
   };
 
   return (
-    <fieldset className="m-0 min-w-0 border-0 p-0">
+    <fieldset className="m-0 w-full min-w-0 max-w-full border-0 p-0">
       <legend className="sr-only">Reminders</legend>
       {offsets.map((offset) => (
         <input key={offset} type="hidden" name="reminderOffsets" value={offset} />

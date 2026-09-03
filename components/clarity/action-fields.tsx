@@ -14,8 +14,6 @@ import {
 } from "@/lib/clarity/action-recurrence";
 import {
   formatDuration,
-  resolveEstimatedDuration,
-  splitEstimatedDuration,
 } from "@/lib/clarity/duration";
 import { resolveSecondarySettingExpansion } from "@/lib/clarity/secondary-setting-accordion";
 import { CalendarReminderField } from "./calendar-reminder-field";
@@ -472,13 +470,13 @@ function ActionDueField({
   onExpandedChange: (expanded: boolean) => void;
 }) {
   const summary = dueLocalDate
-    ? [dueLocalDate, dueLocalTime ? formatActionTime(dueLocalTime) : null]
+    ? [formatActionDueDate(dueLocalDate), dueLocalTime ? formatActionTime(dueLocalTime) : null]
         .filter(Boolean)
         .join(" · ")
     : "Not set";
 
   return (
-    <fieldset className="m-0 min-w-0 border-0 p-0">
+    <fieldset className="m-0 w-full min-w-0 max-w-full border-0 p-0">
       <legend className="sr-only">Due</legend>
       <SecondarySettingDisclosure
         icon={CalendarClock}
@@ -487,28 +485,35 @@ function ActionDueField({
         expanded={expanded}
         onExpandedChange={onExpandedChange}
       >
-        <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+        <div className="grid w-full min-w-0 max-w-full gap-3 overflow-x-clip">
           <label className="block min-w-0 space-y-2">
             <span className="text-xs font-medium text-muted-foreground">Date</span>
             <Input
               type="date"
               name="dueLocalDate"
               value={dueLocalDate}
-              onChange={(event) => onDateChange(event.currentTarget.value)}
-              className="h-12 rounded-xl"
+              onChange={(event) => {
+                const value = event.currentTarget.value;
+                onDateChange(value);
+                if (!value) onTimeChange("");
+              }}
+              className="h-12 w-full min-w-0 max-w-full rounded-xl [inline-size:100%] [max-inline-size:100%] [min-inline-size:0]"
             />
           </label>
-          <label className="block min-w-0 space-y-2">
-            <span className="text-xs font-medium text-muted-foreground">Time</span>
-            <Input
-              type="time"
-              name="dueLocalTime"
-              value={dueLocalTime}
-              disabled={!dueLocalDate}
-              onChange={(event) => onTimeChange(event.currentTarget.value)}
-              className="h-12 rounded-xl"
-            />
-          </label>
+          {dueLocalDate && (
+            <label className="block w-full min-w-0 max-w-full space-y-2 overflow-hidden">
+              <span className="text-xs font-medium text-muted-foreground">
+                Optional time
+              </span>
+              <Input
+                type="time"
+                name="dueLocalTime"
+                value={dueLocalTime}
+                onChange={(event) => onTimeChange(event.currentTarget.value)}
+                className="h-12 w-full min-w-0 max-w-full rounded-xl [inline-size:100%] [max-inline-size:100%] [min-inline-size:0]"
+              />
+            </label>
+          )}
         </div>
         {dueLocalDate && (
           <button
@@ -534,6 +539,20 @@ function formatActionTime(value: string) {
   return `${hour % 12 || 12}:${minute} ${hour < 12 ? "am" : "pm"}`;
 }
 
+function formatActionDueDate(value: string) {
+  const [, monthText, dayText] = value.split("-");
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const months = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
+
+  return months[month - 1] && Number.isInteger(day)
+    ? `${months[month - 1]} ${day}`
+    : value;
+}
+
 export function DurationFields({
   initialMinutes = 30,
   error,
@@ -545,73 +564,30 @@ export function DurationFields({
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
 }) {
-  const initialDuration = splitEstimatedDuration(initialMinutes);
-  const [hours, setHours] = useState(initialDuration.hours);
-  const [minutes, setMinutes] = useState(initialDuration.minutes);
-  const duration = resolveEstimatedDuration(hours, minutes);
-  const minutesMax = hours === "24" ? 0 : 59;
-  const displayedError = duration.error ?? error;
-  const summary = formatDuration(duration.totalMinutes ?? 0);
+  const parsedInitialMinutes = Number(initialMinutes);
+  const [durationMinutes, setDurationMinutes] = useState(
+    Number.isInteger(parsedInitialMinutes) &&
+      parsedInitialMinutes >= 1 &&
+      parsedInitialMinutes <= 1440
+      ? String(parsedInitialMinutes)
+      : "30",
+  );
+  const parsedMinutes = Number(durationMinutes);
+  const validDuration =
+    Number.isInteger(parsedMinutes) && parsedMinutes >= 1 && parsedMinutes <= 1440;
+  const summary = validDuration ? formatDuration(parsedMinutes) : "Not set";
 
   const editor = (
     <>
-      <div className="grid min-w-0 grid-cols-2 gap-3">
-        <label className="block min-w-0 space-y-2">
-          <span className="block text-xs font-medium text-muted-foreground">
-            Hours
-          </span>
-          <span className="relative block min-w-0">
-            <Input
-              type="number"
-              inputMode="numeric"
-              min={0}
-              max={24}
-              step={1}
-              value={hours}
-              aria-invalid={Boolean(displayedError)}
-              onChange={(event) => {
-                const value = event.currentTarget.value;
-                if (/^\d*$/.test(value)) {
-                  setHours(value);
-                }
-              }}
-              className="duration-number-input h-12 w-full min-w-0 max-w-full rounded-xl pr-9"
-            />
-            <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
-              h
-            </span>
-          </span>
-        </label>
-        <label className="block min-w-0 space-y-2">
-          <span className="block text-xs font-medium text-muted-foreground">
-            Minutes
-          </span>
-          <span className="relative block min-w-0">
-            <Input
-              type="number"
-              inputMode="numeric"
-              min={hours === "0" ? 1 : 0}
-              max={minutesMax}
-              step={1}
-              value={minutes}
-              aria-invalid={Boolean(displayedError)}
-              onChange={(event) => {
-                const value = event.currentTarget.value;
-                if (/^\d*$/.test(value)) {
-                  setMinutes(value);
-                }
-              }}
-              className="duration-number-input h-12 w-full min-w-0 max-w-full rounded-xl pr-9"
-            />
-            <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
-              m
-            </span>
-          </span>
-        </label>
-      </div>
-      {displayedError && (
+      <TimeSpentField
+        label="Duration"
+        value={durationMinutes}
+        onChange={setDurationMinutes}
+        hideHeading
+      />
+      {error && (
         <p className="text-sm text-destructive">
-          {displayedError}
+          {error}
         </p>
       )}
     </>
@@ -624,7 +600,7 @@ export function DurationFields({
         <input
           type="hidden"
           name="estimatedMinutes"
-          value={duration.totalMinutes ?? ""}
+          value={durationMinutes}
         />
         <SecondarySettingDisclosure
           icon={Timer}
@@ -645,7 +621,7 @@ export function DurationFields({
       <input
         type="hidden"
         name="estimatedMinutes"
-        value={duration.totalMinutes ?? ""}
+        value={durationMinutes}
       />
       {editor}
     </fieldset>

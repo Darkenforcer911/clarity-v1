@@ -27,6 +27,43 @@ export function formatDuration(totalMinutes: number) {
     : `${hours}h ${minutes}m`;
 }
 
+export function parseDurationInput(value: string) {
+  const normalized = value.trim().toLowerCase();
+
+  if (!normalized) {
+    return { totalMinutes: null, error: null };
+  }
+
+  const minutesOnly = normalized.match(/^(\d+)\s*m$/);
+  const hoursAndMinutes = normalized.match(/^(\d+)\s*h(?:\s*(\d+)\s*m)?$/);
+  let totalMinutes: number | null = null;
+
+  if (minutesOnly) {
+    totalMinutes = Number(minutesOnly[1]);
+  } else if (hoursAndMinutes) {
+    const hours = Number(hoursAndMinutes[1]);
+    const minutes = hoursAndMinutes[2] ? Number(hoursAndMinutes[2]) : 0;
+
+    if (minutes <= 59) {
+      totalMinutes = hours * 60 + minutes;
+    }
+  }
+
+  if (
+    totalMinutes === null ||
+    !Number.isInteger(totalMinutes) ||
+    totalMinutes < 1 ||
+    totalMinutes > 1440
+  ) {
+    return {
+      totalMinutes: null,
+      error: "Use a duration from 1m to 24h, such as 45m or 1h 30m.",
+    };
+  }
+
+  return { totalMinutes, error: null };
+}
+
 export function resolveEstimatedDuration(
   hours: string,
   minutes: string,

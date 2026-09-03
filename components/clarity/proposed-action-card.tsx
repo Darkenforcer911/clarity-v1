@@ -437,7 +437,7 @@ function ProposedActionCompactCard({
       {disabled ? (
         <div
           data-proposed-action-header
-          className={`flex min-w-0 flex-1 items-start gap-3 text-left ${scheduledTime ? "p-4" : "py-5 pr-5"}`}
+          className={`flex min-w-0 flex-1 items-start gap-3 text-left ${scheduledTime ? "p-4" : reorderControl ? "py-5 pr-5" : "p-5"}`}
         >
           {content}
         </div>
@@ -448,7 +448,7 @@ function ProposedActionCompactCard({
           disabled={disabled}
           aria-expanded={expanded}
           data-proposed-action-header
-          className={`flex min-w-0 flex-1 items-start gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${scheduledTime ? "p-4" : "py-5 pr-5"}`}
+          className={`flex min-w-0 flex-1 items-start gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${scheduledTime ? "p-4" : reorderControl ? "py-5 pr-5" : "p-5"}`}
         >
           {content}
         </button>
