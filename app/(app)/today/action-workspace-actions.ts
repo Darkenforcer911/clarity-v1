@@ -56,6 +56,21 @@ function actionFields(formData: FormData) {
   };
 }
 
+function editableActionFields(formData: FormData) {
+  const fields = actionFields(formData);
+  if (!formData.has("context")) return fields;
+
+  const context = String(formData.get("context") ?? "").trim();
+  return {
+    ...fields,
+    whyItExists: context
+      ? `Context: ${context}`
+      : fields.whyItExists.startsWith("Context: ")
+        ? "Added because it matters today."
+        : fields.whyItExists,
+  };
+}
+
 function addActionFields(formData: FormData) {
   return {
     title: String(formData.get("title") ?? ""),
@@ -222,7 +237,7 @@ export async function updateActionAction(
 ): Promise<DailyLoopActionState> {
   try {
     const actionId = z.string().uuid().parse(formData.get("actionId"));
-    const input = editActionSchema.parse(actionFields(formData));
+    const input = editActionSchema.parse(editableActionFields(formData));
     await actionWorkspaceService.updateProposedAction(actionId, input);
     revalidatePath("/today/plan");
     revalidatePath(`/today/actions/${actionId}`);
@@ -323,7 +338,8 @@ export async function reorderProposedActionsInlineAction(
     revalidatePath("/today");
     revalidatePath("/today/plan");
     return { success: true as const, error: null };
-  } catch {
+  } catch (error) {
+    console.error("Failed to reorder proposed daily actions", error);
     return {
       success: false as const,
       error: "Couldn’t save the new order. Try again.",

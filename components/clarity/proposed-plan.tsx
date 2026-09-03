@@ -3,7 +3,15 @@
 import { ArrowLeft, MoveRight, Plus, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 
 import { approvePlanAction } from "@/app/(app)/today/actions";
 import {
@@ -22,7 +30,6 @@ import {
   formatScheduledTime,
   formatWeekday,
   getLocalDate,
-  hasScheduledMinutePassed,
 } from "@/lib/clarity/date-time";
 import {
   canApproveProposedPlan,
@@ -30,20 +37,21 @@ import {
   shouldClearOpenDayConfirmation,
 } from "@/lib/clarity/proposed-plan-summary";
 import {
-  moveProposedActionByStep,
-  moveProposedActionToIndex,
+  constrainTimedActionOrder,
+  getDraggedRowTop,
+  getUntimedActionOrder,
+  moveUntimedActionWithinUntimedSlots,
   proposedActionOrdersMatch,
   reconcileProposedActionOrder,
+  resolveDiscreteInsertionSlot,
 } from "@/lib/clarity/proposed-action-ordering";
 import { AddActionForm } from "./add-action-form";
 import { PendingButton } from "./pending-button";
 import { ProposedActionCard } from "./proposed-action-card";
 import { ProposedActionReorderControl } from "./proposed-action-reorder-control";
 import { DailyCommitments } from "./daily-commitments";
-import {
-  isCalendarEventReconciliationCandidate,
-  type CalendarCommitment,
-} from "@/lib/clarity/calendar-commitments";
+import type { CalendarCommitment } from "@/lib/clarity/calendar-commitments";
+import { partitionShapeTodayItems } from "@/lib/clarity/shape-today-items";
 import { SoFarToday } from "./so-far-today";
 import { SwipeToRemove } from "./swipe-to-remove";
 
@@ -55,6 +63,16 @@ type ProposedPlanProps = {
   initialNow: string;
   commitments: CalendarCommitment[];
 };
+
+type ReorderGesture = {
+  actionId: string;
+  pointerId: number;
+  startPointerY: number;
+  grabOffsetY: number;
+  dragging: boolean;
+};
+
+const DRAG_START_THRESHOLD_PX = 8;
 
 export function ProposedPlan({
   plan,
@@ -88,19 +106,33 @@ export function ProposedPlan({
     useState<DailyAction | null>(null);
   const [removalError, setRemovalError] = useState<string | null>(null);
   const [undoPending, setUndoPending] = useState(false);
-  const initialProposedActionOrder = actions
+  const initialProposedActions = actions
     .filter((action) => action.status === "proposed")
-    .sort((left, right) => left.sort_order - right.sort_order)
-    .map((action) => action.id);
+    .sort((left, right) => left.sort_order - right.sort_order);
+  const initialProposedActionOrder = constrainTimedActionOrder(
+    initialProposedActions.map((action) => action.id),
+    initialProposedActions,
+  );
   const [orderedActionIds, setOrderedActionIds] = useState<string[]>(
     initialProposedActionOrder,
   );
   const [orderingPending, setOrderingPending] = useState(false);
   const [orderingError, setOrderingError] = useState<string | null>(null);
+  const [reorderMode, setReorderMode] = useState(false);
   const [draggingActionId, setDraggingActionId] = useState<string | null>(null);
+  const [reorderRevision, setReorderRevision] = useState(0);
   const orderedActionIdsRef = useRef(initialProposedActionOrder);
   const orderBeforeDragRef = useRef<string[] | null>(null);
   const actionListRef = useRef<HTMLDivElement>(null);
+  const actionRowRefs = useRef(new Map<string, HTMLDivElement>());
+  const rowPositionsBeforeOrderRef = useRef<Map<string, number> | null>(null);
+  const reorderGestureRef = useRef<ReorderGesture | null>(null);
+  const dragPointerYRef = useRef<number | null>(null);
+  const dragGrabOffsetYRef = useRef(0);
+  const draggedRowOffsetRef = useRef(0);
+  const dragSettleFrameRef = useRef(0);
+  const dragSettleAnimationRef = useRef<Animation | null>(null);
+  const dragSettlingRef = useRef(false);
   const scrollTargetActionIdRef = useRef<string | null>(null);
   const dayName = formatWeekday(plan.local_date);
   const currentLocalDate = getLocalDate(
@@ -131,46 +163,40 @@ export function ProposedPlan({
   const availableActionIds = availableRemainingActions.map(
     (action) => action.id,
   );
-  const displayOrder = reconcileProposedActionOrder(
-    orderedActionIds,
-    availableActionIds,
+  const displayOrder = constrainTimedActionOrder(
+    reconcileProposedActionOrder(orderedActionIds, availableActionIds),
+    availableRemainingActions,
   );
+  const displayOrderKey = displayOrder.join(",");
   const remainingActionById = new Map(
     availableRemainingActions.map((action) => [action.id, action]),
   );
   const remainingActions = displayOrder
     .map((actionId) => remainingActionById.get(actionId))
     .filter((action): action is DailyAction => Boolean(action));
-  const passedActionIds = new Set(
-    remainingActions
-      .filter(
-        (action) =>
-          action.action_type === "fixed" &&
-          hasScheduledMinutePassed(
-            action.scheduled_time,
-            plan.local_date,
-            profile.timezone,
-            new Date(now),
-          ),
-      )
-      .map((action) => action.id),
-  );
+  const shapeTodayItems = partitionShapeTodayItems({
+    actions: remainingActions,
+    commitments,
+    localDate: plan.local_date,
+    timezone: profile.timezone,
+    now: new Date(now),
+  });
+  const {
+    earlierActions,
+    earlierCommitments,
+    fixedActions,
+    fixedCommitments,
+    flexibleActions: flexibleRemainingActions,
+  } = shapeTodayItems;
+  const passedActionIds = new Set(earlierActions.map((action) => action.id));
   const hasPassedActions = passedActionIds.size > 0;
-  const reconciliationEvents = commitments.filter((commitment) =>
-    isCalendarEventReconciliationCandidate(
-      commitment,
-      profile.timezone,
-      new Date(now),
-    ),
-  );
-  const reconciliationEventIds = new Set(
-    reconciliationEvents.map((commitment) => commitment.id),
-  );
-  const upcomingCommitments = commitments.filter(
-    (commitment) => !reconciliationEventIds.has(commitment.id),
+  const completedEvidenceActions = completedActions.filter(
+    (action) => action.completion_evidence_only,
   );
   const hasSoFarToday =
-    completedActions.length > 0 || reconciliationEvents.length > 0;
+    completedActions.length > 0 ||
+    earlierActions.length > 0 ||
+    earlierCommitments.length > 0;
   const totalMinutes = remainingActions.reduce(
     (total, action) => total + action.estimated_minutes,
     0,
@@ -187,6 +213,7 @@ export function ProposedPlan({
     specificTimeCount,
   );
   const hasRemainingActions = remainingActions.length > 0;
+  const canReorderActions = flexibleRemainingActions.length > 1;
   const canRestoreRemovedActions =
     !hasRemainingActions &&
     (removedActionCount > 0 || locallyRemovedActionIds.size > 0);
@@ -194,22 +221,81 @@ export function ProposedPlan({
   const router = useRouter();
   const availableActionIdsKey = availableActionIds.join(",");
 
+  const positionDraggedRow = useCallback(
+    (actionId: string, pointerY: number) => {
+      const row = actionRowRefs.current.get(actionId);
+      if (!row) return;
+
+      const bounds = row.getBoundingClientRect();
+      const layoutTop = bounds.top - draggedRowOffsetRef.current;
+      const desiredTop = getDraggedRowTop(
+        pointerY,
+        dragGrabOffsetYRef.current,
+      );
+      const nextOffset = desiredTop - layoutTop;
+      dragPointerYRef.current = pointerY;
+      draggedRowOffsetRef.current = nextOffset;
+      row.style.transform = `translate3d(0, ${nextOffset}px, 0)`;
+      row.style.willChange = "transform";
+    },
+    [],
+  );
+
   useEffect(() => {
     const nextAvailableActionIds = availableActionIdsKey
       ? availableActionIdsKey.split(",")
       : [];
 
     setOrderedActionIds((currentOrder) => {
-      const reconciledOrder = reconcileProposedActionOrder(
-        currentOrder,
-        nextAvailableActionIds,
+      const reconciledOrder = constrainTimedActionOrder(
+        reconcileProposedActionOrder(currentOrder, nextAvailableActionIds),
+        availableRemainingActions,
       );
       orderedActionIdsRef.current = reconciledOrder;
       return proposedActionOrdersMatch(currentOrder, reconciledOrder)
         ? currentOrder
         : reconciledOrder;
     });
-  }, [availableActionIdsKey]);
+  }, [availableActionIdsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useLayoutEffect(() => {
+    const previousPositions = rowPositionsBeforeOrderRef.current;
+    rowPositionsBeforeOrderRef.current = null;
+
+    if (draggingActionId && dragPointerYRef.current !== null) {
+      positionDraggedRow(draggingActionId, dragPointerYRef.current);
+    }
+
+    if (!previousPositions || prefersReducedMotion()) return;
+
+    for (const [actionId, element] of actionRowRefs.current) {
+      if (actionId === draggingActionId) continue;
+      const previousTop = previousPositions.get(actionId);
+      if (previousTop === undefined) continue;
+      const delta = previousTop - element.getBoundingClientRect().top;
+      if (Math.abs(delta) < 1) continue;
+
+      element.animate(
+        [
+          { transform: `translateY(${delta}px)` },
+          { transform: "translateY(0)" },
+        ],
+        { duration: 160, easing: "cubic-bezier(0.2, 0, 0, 1)" },
+      );
+    }
+  }, [displayOrderKey, draggingActionId, positionDraggedRow]);
+
+  useEffect(() => {
+    return () => {
+      window.cancelAnimationFrame(dragSettleFrameRef.current);
+      const animation = dragSettleAnimationRef.current;
+      if (animation) {
+        animation.onfinish = null;
+        animation.oncancel = null;
+        animation.cancel();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let timer = 0;
@@ -278,13 +364,14 @@ export function ProposedPlan({
   }, [remainingActions.length]);
 
   const handleActionToggle = useCallback((actionId: string) => {
+    if (reorderMode) return;
     setSwipedActionId(null);
     setExpandedActionId((currentActionId) => {
       const nextActionId = currentActionId === actionId ? null : actionId;
       scrollTargetActionIdRef.current = nextActionId;
       return nextActionId;
     });
-  }, []);
+  }, [reorderMode]);
 
   const handleActionCollapse = useCallback((actionId: string) => {
     setExpandedActionId((currentActionId) =>
@@ -293,8 +380,21 @@ export function ProposedPlan({
   }, []);
 
   function applyLocalOrder(nextOrder: string[]) {
-    orderedActionIdsRef.current = nextOrder;
-    setOrderedActionIds(nextOrder);
+    const constrainedOrder = constrainTimedActionOrder(
+      nextOrder,
+      availableRemainingActions,
+    );
+    orderedActionIdsRef.current = constrainedOrder;
+    setOrderedActionIds(constrainedOrder);
+  }
+
+  function captureRowPositions() {
+    rowPositionsBeforeOrderRef.current = new Map(
+      [...actionRowRefs.current].map(([actionId, element]) => [
+        actionId,
+        element.getBoundingClientRect().top,
+      ]),
+    );
   }
 
   async function persistOrder(previousOrder: string[], nextOrder: string[]) {
@@ -309,6 +409,7 @@ export function ProposedPlan({
     setOrderingPending(false);
 
     if (!result.success) {
+      captureRowPositions();
       applyLocalOrder(previousOrder);
       setOrderingError(
         result.error ?? "Couldn’t save the new order. Try again.",
@@ -316,40 +417,192 @@ export function ProposedPlan({
     }
   }
 
-  function beginDragOrder(actionId: string) {
-    const currentOrder = reconcileProposedActionOrder(
-      orderedActionIdsRef.current,
-      availableActionIds,
-    );
-    orderBeforeDragRef.current = [...currentOrder];
+  function enterReorderMode() {
+    flushSync(() => {
+      setExpandedActionId(null);
+      setSwipedActionId(null);
+      setOrderingError(null);
+      setReorderRevision((current) => current + 1);
+      setReorderMode(true);
+    });
+  }
+
+  function exitReorderMode() {
+    if (draggingActionId || orderingPending) return;
+    setExpandedActionId(null);
     setSwipedActionId(null);
-    setOrderingError(null);
-    setDraggingActionId(actionId);
+    setReorderRevision((current) => current + 1);
+    setReorderMode(false);
   }
 
-  function previewDragOrder(actionId: string, targetIndex: number) {
-    const nextOrder = moveProposedActionToIndex(
-      orderedActionIdsRef.current,
-      actionId,
-      targetIndex,
-    );
-    applyLocalOrder(nextOrder);
-  }
-
-  function finishDragOrder(cancelled: boolean) {
-    const previousOrder = orderBeforeDragRef.current;
-    const nextOrder = [...orderedActionIdsRef.current];
-    orderBeforeDragRef.current = null;
-    setDraggingActionId(null);
-
-    if (!previousOrder) return;
-
-    if (cancelled) {
-      applyLocalOrder(previousOrder);
+  function handleReorderPointerDown(
+    action: DailyAction,
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) {
+    if (
+      !reorderMode ||
+      orderingPending ||
+      dragSettlingRef.current ||
+      action.scheduled_time !== null ||
+      event.button !== 0
+    ) {
       return;
     }
 
-    void persistOrder(previousOrder, nextOrder);
+    event.stopPropagation();
+    const row = actionRowRefs.current.get(action.id);
+    if (!row) return;
+    const bounds = row.getBoundingClientRect();
+    const grabOffsetY = event.clientY - bounds.top;
+    reorderGestureRef.current = {
+      actionId: action.id,
+      pointerId: event.pointerId,
+      startPointerY: event.clientY,
+      grabOffsetY,
+      dragging: false,
+    };
+    dragGrabOffsetYRef.current = grabOffsetY;
+  }
+
+  function handleReorderPointerMove(
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) {
+    const gesture = reorderGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+
+    if (
+      !gesture.dragging &&
+      Math.abs(event.clientY - gesture.startPointerY) <
+        DRAG_START_THRESHOLD_PX
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    if (!gesture.dragging) {
+      gesture.dragging = true;
+      beginDragOrder(gesture.actionId, event.clientY);
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+
+    previewDragOrder(gesture.actionId, event.clientY);
+  }
+
+  function finishReorderPointer(
+    event: ReactPointerEvent<HTMLButtonElement>,
+    cancelled: boolean,
+  ) {
+    const gesture = reorderGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+
+    event.stopPropagation();
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    reorderGestureRef.current = null;
+    if (gesture.dragging) {
+      finishDragOrder(gesture.actionId, cancelled);
+    }
+  }
+
+  function beginDragOrder(actionId: string, pointerY: number) {
+    const currentOrder = constrainTimedActionOrder(
+      reconcileProposedActionOrder(
+        orderedActionIdsRef.current,
+        availableActionIds,
+      ),
+      availableRemainingActions,
+    );
+    orderBeforeDragRef.current = [...currentOrder];
+    dragPointerYRef.current = pointerY;
+    draggedRowOffsetRef.current = 0;
+    flushSync(() => {
+      setExpandedActionId(null);
+      setSwipedActionId(null);
+      setOrderingError(null);
+      setDraggingActionId(actionId);
+    });
+    positionDraggedRow(actionId, pointerY);
+  }
+
+  function previewDragOrder(actionId: string, pointerY: number) {
+    positionDraggedRow(actionId, pointerY);
+
+    const currentOrder = orderedActionIdsRef.current;
+    const currentFlexibleOrder = getUntimedActionOrder(
+      currentOrder,
+      availableRemainingActions,
+    );
+    const currentSlot = currentFlexibleOrder.indexOf(actionId);
+    if (currentSlot < 0) return;
+
+    const validSlots = currentFlexibleOrder.map((_, index) => index);
+    const rowMidpoints = currentFlexibleOrder.flatMap((orderedActionId) => {
+      const row = actionRowRefs.current.get(orderedActionId);
+      if (!row) return [];
+      const bounds = row.getBoundingClientRect();
+      return [
+        {
+          actionId: orderedActionId,
+          midpointY: bounds.top + bounds.height / 2,
+        },
+      ];
+    });
+    const draggedRow = actionRowRefs.current.get(actionId);
+    if (!draggedRow) return;
+    const draggedTop = getDraggedRowTop(
+      pointerY,
+      dragGrabOffsetYRef.current,
+    );
+    const targetIndex = resolveDiscreteInsertionSlot({
+      currentSlot,
+      draggedActionId: actionId,
+      draggedCenterY:
+        draggedTop + draggedRow.getBoundingClientRect().height / 2,
+      rowMidpoints,
+      validSlots,
+    });
+
+    const nextOrder = moveUntimedActionWithinUntimedSlots(
+      currentOrder,
+      actionId,
+      targetIndex,
+      availableRemainingActions,
+    );
+    if (proposedActionOrdersMatch(orderedActionIdsRef.current, nextOrder)) {
+      return;
+    }
+
+    captureRowPositions();
+    applyLocalOrder(nextOrder);
+  }
+
+  function finishDragOrder(actionId: string, cancelled: boolean) {
+    if (dragSettlingRef.current) return;
+
+    const previousOrder = orderBeforeDragRef.current;
+    const nextOrder = [...orderedActionIdsRef.current];
+    orderBeforeDragRef.current = null;
+
+    if (!previousOrder) {
+      completeDragCleanup(actionId);
+      return;
+    }
+
+    if (cancelled) {
+      captureRowPositions();
+      applyLocalOrder(previousOrder);
+    }
+
+    dragSettlingRef.current = true;
+    snapDraggedRowToSlot(actionId, () => {
+      dragSettlingRef.current = false;
+      completeDragCleanup(actionId);
+      if (!cancelled) {
+        void persistOrder(previousOrder, nextOrder);
+      }
+    });
   }
 
   function moveActionByStep(actionId: string, direction: -1 | 1) {
@@ -359,14 +612,81 @@ export function ProposedPlan({
       orderedActionIdsRef.current,
       availableActionIds,
     );
-    const nextOrder = moveProposedActionByStep(
+    const currentFlexibleOrder = getUntimedActionOrder(
+      previousOrder,
+      availableRemainingActions,
+    );
+    const currentFlexibleIndex = currentFlexibleOrder.indexOf(actionId);
+    const nextOrder = moveUntimedActionWithinUntimedSlots(
       previousOrder,
       actionId,
-      direction,
+      currentFlexibleIndex + direction,
+      availableRemainingActions,
     );
 
+    captureRowPositions();
     applyLocalOrder(nextOrder);
     void persistOrder(previousOrder, nextOrder);
+  }
+
+  function completeDragCleanup(actionId: string) {
+    const row = actionRowRefs.current.get(actionId);
+    if (row) {
+      row.style.transform = "";
+      row.style.willChange = "";
+    }
+    dragPointerYRef.current = null;
+    dragGrabOffsetYRef.current = 0;
+    draggedRowOffsetRef.current = 0;
+    setExpandedActionId(null);
+    setDraggingActionId(null);
+    setReorderRevision((current) => current + 1);
+  }
+
+  function snapDraggedRowToSlot(actionId: string, onSettled: () => void) {
+    window.cancelAnimationFrame(dragSettleFrameRef.current);
+    dragSettleFrameRef.current = window.requestAnimationFrame(() => {
+      const row = actionRowRefs.current.get(actionId);
+      if (!row) {
+        onSettled();
+        return;
+      }
+
+      if (prefersReducedMotion()) {
+        row.style.transform = "";
+        row.style.willChange = "";
+        onSettled();
+        return;
+      }
+
+      const currentTransform = window.getComputedStyle(row).transform;
+      const animation = row.animate(
+        [
+          { transform: currentTransform },
+          { transform: "translate3d(0, 0, 0)" },
+        ],
+        {
+          duration: 120,
+          easing: "cubic-bezier(0.2, 0, 0, 1)",
+          fill: "forwards",
+        },
+      );
+      dragSettleAnimationRef.current = animation;
+      let completed = false;
+      const finish = () => {
+        if (completed) return;
+        completed = true;
+        animation.onfinish = null;
+        animation.oncancel = null;
+        row.style.transform = "";
+        row.style.willChange = "";
+        animation.cancel();
+        dragSettleAnimationRef.current = null;
+        onSettled();
+      };
+      animation.onfinish = finish;
+      animation.oncancel = finish;
+    });
   }
 
   async function handleRestoreRemovedActions(formData: FormData) {
@@ -459,7 +779,7 @@ export function ProposedPlan({
     const timer = window.setTimeout(() => {
       frame = window.requestAnimationFrame(() => {
         const card = actionListRef.current?.querySelector<HTMLElement>(
-          `[data-proposed-action-id="${expandedActionId}"]`,
+          `[data-proposed-action-id="${expandedActionId}"], [data-fixed-daily-action-id="${expandedActionId}"]`,
         );
         const header = card?.querySelector<HTMLElement>(
           "[data-proposed-action-header]",
@@ -507,9 +827,48 @@ export function ProposedPlan({
     };
   }, [expandedActionId]);
 
+  function renderTimedAction(action: DailyAction) {
+    return (
+      <SwipeToRemove
+        itemId={action.id}
+        itemTitle={action.title}
+        open={swipedActionId === action.id}
+        onOpenChange={(open) => setSwipedActionId(open ? action.id : null)}
+        onRemove={() => removeAction(action.id)}
+        removalPending={pendingRemovalIds.has(action.id)}
+        removing={removingActionIds.has(action.id)}
+        enabled={!reorderMode}
+        accessibilityContext="from the proposed plan"
+      >
+        <div data-fixed-daily-action-id={action.id}>
+          <ProposedActionCard
+            action={action}
+            scheduledTime={formatScheduledTime(
+              action.scheduled_time,
+              profile.timezone,
+            )}
+            scheduledTimeInput={formatTimeInput(
+              action.scheduled_time,
+              profile.timezone,
+            )}
+            timePassed={passedActionIds.has(action.id)}
+            expanded={!reorderMode && expandedActionId === action.id}
+            onToggle={handleActionToggle}
+            onCollapse={handleActionCollapse}
+            onRemove={removeAction}
+            reorderControl={null}
+            reordering={reorderMode}
+            planLocalDate={plan.local_date}
+            currentLocalDate={currentLocalDate}
+          />
+        </div>
+      </SwipeToRemove>
+    );
+  }
+
   return (
     <section className="w-full min-w-0 max-w-full space-y-8">
-      <div className="min-w-0 space-y-8">
+      <div ref={actionListRef} className="min-w-0 space-y-8">
         <div className="space-y-3">
           <Link
             href="/today"
@@ -566,88 +925,146 @@ export function ProposedPlan({
         )}
 
         <DailyCommitments
+          heading="Earlier today"
+          commitments={earlierCommitments}
+          actions={earlierActions}
+          renderAction={renderTimedAction}
+          needsOutcome
+          timezone={profile.timezone}
+          now={new Date(now)}
+        />
+
+        <DailyCommitments
           heading="Fixed today"
-          commitments={upcomingCommitments}
+          commitments={fixedCommitments}
+          actions={fixedActions}
+          renderAction={renderTimedAction}
           timezone={profile.timezone}
           now={new Date(now)}
         />
 
         <SoFarToday
           planId={plan.id}
-          planDate={plan.local_date}
           timezone={profile.timezone}
-          completedActions={completedActions}
-          calendarEvents={reconciliationEvents}
+          completedActions={completedEvidenceActions}
         />
 
-        <div ref={actionListRef} className="min-w-0 space-y-4">
-          {remainingActions.map((action, actionIndex) => {
-            return (
-              <div
-                key={action.id}
-                data-proposed-action-id={action.id}
-                data-proposed-action-index={actionIndex}
-                className={`rounded-2xl transition-opacity motion-reduce:transition-none ${
-                  draggingActionId === action.id ? "opacity-70" : ""
-                }`}
-              >
-                <SwipeToRemove
-                  itemId={action.id}
-                  itemTitle={action.title}
-                  open={swipedActionId === action.id}
-                  onOpenChange={(open) =>
-                    setSwipedActionId(open ? action.id : null)
-                  }
-                  onRemove={() => removeAction(action.id)}
-                  removalPending={pendingRemovalIds.has(action.id)}
-                  removing={removingActionIds.has(action.id)}
-                  enabled
-                  accessibilityContext="from the proposed plan"
+        {flexibleRemainingActions.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex min-h-10 items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                Actions
+              </h2>
+              {(canReorderActions || reorderMode) && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={Boolean(draggingActionId) || orderingPending}
+                  onClick={reorderMode ? exitReorderMode : enterReorderMode}
+                  className="h-10 w-auto px-3 text-muted-foreground"
                 >
-                  <ProposedActionCard
-                    action={action}
-                    scheduledTime={formatScheduledTime(
-                      action.scheduled_time,
-                      profile.timezone,
-                    )}
-                    scheduledTimeInput={formatTimeInput(
-                      action.scheduled_time,
-                      profile.timezone,
-                    )}
-                    timePassed={passedActionIds.has(action.id)}
-                    expanded={expandedActionId === action.id}
-                    onToggle={handleActionToggle}
-                    onCollapse={handleActionCollapse}
-                    onRemove={removeAction}
-                    reorderControl={
-                      remainingActions.length > 1 ? (
-                        <ProposedActionReorderControl
-                          actionId={action.id}
-                          actionTitle={action.title}
-                          disabled={orderingPending}
-                          canMoveUp={actionIndex > 0}
-                          canMoveDown={
-                            actionIndex < remainingActions.length - 1
-                          }
-                          onDragStart={() => beginDragOrder(action.id)}
-                          onDragOver={(targetIndex) =>
-                            previewDragOrder(action.id, targetIndex)
-                          }
-                          onDragEnd={finishDragOrder}
-                          onMoveStep={(direction) =>
-                            moveActionByStep(action.id, direction)
-                          }
-                        />
-                      ) : null
-                    }
-                    planLocalDate={plan.local_date}
-                    currentLocalDate={currentLocalDate}
-                  />
-                </SwipeToRemove>
-              </div>
-            );
-          })}
-        </div>
+                  {reorderMode ? "Done" : "Reorder"}
+                </Button>
+              )}
+            </div>
+
+            <div
+              data-proposed-action-list
+              data-reorder-mode={reorderMode ? "true" : "false"}
+              className="min-w-0 space-y-4"
+            >
+              {flexibleRemainingActions.map((action, actionIndex) => {
+                const movable = reorderMode && action.scheduled_time === null;
+                const dragging = draggingActionId === action.id;
+                return (
+                  <div
+                    key={action.id}
+                    ref={(element) => {
+                      if (element) {
+                        actionRowRefs.current.set(action.id, element);
+                      } else {
+                        actionRowRefs.current.delete(action.id);
+                      }
+                    }}
+                    data-proposed-action-id={action.id}
+                    data-proposed-action-index={actionIndex}
+                    data-dragging-action={dragging ? "true" : undefined}
+                    data-reorder-eligible={movable ? "true" : "false"}
+                    aria-grabbed={movable ? dragging : undefined}
+                    className={`relative rounded-2xl ${
+                      dragging
+                        ? "z-40 cursor-grabbing shadow-xl ring-1 ring-primary/50"
+                        : ""
+                    }`}
+                  >
+                    <SwipeToRemove
+                      itemId={action.id}
+                      itemTitle={action.title}
+                      open={swipedActionId === action.id}
+                      onOpenChange={(open) =>
+                        setSwipedActionId(open ? action.id : null)
+                      }
+                      onRemove={() => removeAction(action.id)}
+                      removalPending={pendingRemovalIds.has(action.id)}
+                      removing={removingActionIds.has(action.id)}
+                      enabled={!reorderMode}
+                      accessibilityContext="from the proposed plan"
+                    >
+                      <ProposedActionCard
+                        key={`${action.id}:${reorderRevision}`}
+                        action={action}
+                        scheduledTime={formatScheduledTime(
+                          action.scheduled_time,
+                          profile.timezone,
+                        )}
+                        scheduledTimeInput={formatTimeInput(
+                          action.scheduled_time,
+                          profile.timezone,
+                        )}
+                        timePassed={passedActionIds.has(action.id)}
+                        expanded={
+                          !reorderMode && expandedActionId === action.id
+                        }
+                        onToggle={handleActionToggle}
+                        onCollapse={handleActionCollapse}
+                        onRemove={removeAction}
+                        reorderControl={
+                          movable ? (
+                            <ProposedActionReorderControl
+                              actionTitle={action.title}
+                              disabled={orderingPending}
+                              canMoveUp={actionIndex > 0}
+                              canMoveDown={
+                                actionIndex <
+                                flexibleRemainingActions.length - 1
+                              }
+                              onMoveStep={(direction) =>
+                                moveActionByStep(action.id, direction)
+                              }
+                              onPointerDown={(event) =>
+                                handleReorderPointerDown(action, event)
+                              }
+                              onPointerMove={handleReorderPointerMove}
+                              onPointerUp={(event) =>
+                                finishReorderPointer(event, false)
+                              }
+                              onPointerCancel={(event) =>
+                                finishReorderPointer(event, true)
+                              }
+                            />
+                          ) : null
+                        }
+                        reordering={reorderMode}
+                        planLocalDate={plan.local_date}
+                        currentLocalDate={currentLocalDate}
+                      />
+                    </SwipeToRemove>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {!hasRemainingActions && (
           <div className="space-y-5 rounded-2xl border border-border bg-card p-5">
@@ -724,7 +1141,7 @@ export function ProposedPlan({
       <div className="w-full min-w-0 max-w-full rounded-2xl bg-background py-2">
         {hasPassedActions && (
           <p className="mb-3 text-center text-sm leading-6 text-muted-foreground">
-            Resolve passed action times before beginning.
+            Resolve earlier Actions before beginning.
           </p>
         )}
         <form action={approvePlanAction}>
@@ -770,4 +1187,8 @@ function formatTimeInput(value: string | null, timezone: string) {
     minute: "2-digit",
     hourCycle: "h23",
   }).format(new Date(value));
+}
+
+function prefersReducedMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }

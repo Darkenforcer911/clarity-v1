@@ -45,6 +45,7 @@ export function ActionFields({
   detailsRequired = false,
   simple = false,
   hideGeneratedDetails = false,
+  showRecurrence = true,
   onTitleChange,
 }: {
   initialValues?: ActionFieldValues;
@@ -52,6 +53,7 @@ export function ActionFields({
   detailsRequired?: boolean;
   simple?: boolean;
   hideGeneratedDetails?: boolean;
+  showRecurrence?: boolean;
   onTitleChange?: (value: string) => void;
 }) {
   const [context, setContext] = useState(initialValues.context ?? "");
@@ -125,15 +127,36 @@ export function ActionFields({
               setSectionExpanded("details", expanded)
             }
           />
-          <RecurrenceFields
-            initialPattern={initialValues.recurrencePattern}
-            initialDays={initialValues.recurrenceDays}
-            error={recurrenceError}
-            expanded={openSection === "repeats"}
-            onExpandedChange={(expanded) =>
-              setSectionExpanded("repeats", expanded)
-            }
-          />
+          {showRecurrence && (
+            <RecurrenceFields
+              initialPattern={initialValues.recurrencePattern}
+              initialDays={initialValues.recurrenceDays}
+              error={recurrenceError}
+              expanded={openSection === "repeats"}
+              onExpandedChange={(expanded) =>
+                setSectionExpanded("repeats", expanded)
+              }
+            />
+          )}
+          {hideGeneratedDetails && (
+            <>
+              <input
+                type="hidden"
+                name="whyItExists"
+                defaultValue={initialValues.whyItExists}
+              />
+              <input
+                type="hidden"
+                name="definitionOfDone"
+                defaultValue={initialValues.definitionOfDone}
+              />
+              <input
+                type="hidden"
+                name="suggestedMethod"
+                defaultValue={initialValues.suggestedMethod}
+              />
+            </>
+          )}
         </SecondarySettingStack>
       ) : (
         <>

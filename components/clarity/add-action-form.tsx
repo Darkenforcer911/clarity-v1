@@ -199,6 +199,7 @@ function AddActionPanel({
             key={responseVersion}
             state={state}
             simple
+            showRecurrence={false}
             initialValues={state.addActionDraft}
             onTitleChange={handleTitleChange}
           />

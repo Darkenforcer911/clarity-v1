@@ -29,6 +29,7 @@ import {
 import { formatDuration } from "@/lib/clarity/duration";
 import { ActionFields } from "./action-fields";
 import { PendingButton } from "./pending-button";
+import { TimedDayItemSummary } from "./timed-day-item-summary";
 
 export function ProposedActionCard({
   action,
@@ -40,6 +41,7 @@ export function ProposedActionCard({
   onCollapse,
   onRemove,
   reorderControl,
+  reordering = false,
   planLocalDate,
   currentLocalDate,
 }: {
@@ -52,6 +54,7 @@ export function ProposedActionCard({
   onCollapse: (actionId: string) => void;
   onRemove: (actionId: string) => void;
   reorderControl: ReactNode;
+  reordering?: boolean;
   planLocalDate: string;
   currentLocalDate: string;
 }) {
@@ -118,51 +121,24 @@ export function ProposedActionCard({
   return (
     <article
       ref={cardRef}
+      data-proposed-action-card
       className={`overflow-hidden rounded-2xl border transition-colors duration-200 motion-reduce:transition-none ${
         expanded
           ? "border-[var(--clarity-completed)] bg-secondary"
           : "border-border bg-card"
       }`}
     >
-      <div className="flex items-start gap-1 pl-2">
-        <div className="pt-3">{reorderControl}</div>
-        <button
-          type="button"
-          onClick={() => onToggle(action.id)}
-          aria-expanded={expanded}
-          data-proposed-action-header
-          className="flex min-w-0 flex-1 items-start gap-3 py-5 pr-5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-        >
-          <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-            <Check className="size-4" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block font-semibold leading-6">{action.title}</span>
-            <span className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-              {scheduledTime && (
-                <span className="font-semibold text-[var(--clarity-completed)]">
-                  {scheduledTime}
-                  {timePassed && (
-                    <span className="text-secondary-foreground">
-                      {" · Time passed"}
-                    </span>
-                  )}
-                </span>
-              )}
-              {scheduledTime && <span aria-hidden="true">·</span>}
-              <span>{formatDuration(action.estimated_minutes)}</span>
-            </span>
-          </span>
-          <span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-            Kept
-            <ChevronDown
-              className={`size-4 transition-transform duration-200 motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`}
-            />
-          </span>
-        </button>
-      </div>
+      <ProposedActionCompactCard
+        action={action}
+        scheduledTime={scheduledTime}
+        timePassed={timePassed}
+        expanded={expanded}
+        disabled={reordering}
+        reorderControl={reorderControl}
+        onToggle={() => onToggle(action.id)}
+      />
 
-      {showUpdateConfirmation && !expanded && (
+      {!reordering && showUpdateConfirmation && !expanded && (
         <p
           role="status"
           aria-live="polite"
@@ -172,13 +148,14 @@ export function ProposedActionCard({
         </p>
       )}
 
-      <div
-        aria-hidden={!expanded}
-        inert={!expanded}
-        className={`grid transition-[grid-template-rows] duration-200 motion-reduce:transition-none ${
-          expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
-        }`}
-      >
+      {!reordering && (
+        <div
+          aria-hidden={!expanded}
+          inert={!expanded}
+          className={`grid transition-[grid-template-rows] duration-200 motion-reduce:transition-none ${
+            expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+          }`}
+        >
         <div className="min-h-0 overflow-hidden">
           <div className="border-t border-border px-5 pb-5 pt-4">
             {dateBoundaryPresentation ? (
@@ -202,8 +179,9 @@ export function ProposedActionCard({
                 <input type="hidden" name="actionId" value={action.id} />
                 <ActionFields
                   state={state}
-                  detailsRequired
+                  simple
                   hideGeneratedDetails
+                  showRecurrence={false}
                   initialValues={{
                     title: action.title,
                     actionType: action.action_type,
@@ -212,6 +190,7 @@ export function ProposedActionCard({
                     whyItExists: action.why_it_exists,
                     definitionOfDone: action.definition_of_done,
                     suggestedMethod: action.suggested_method,
+                    context: userEnteredDetails ?? "",
                   }}
                 />
                 {state.error && (
@@ -382,8 +361,89 @@ export function ProposedActionCard({
             )}
           </div>
         </div>
-      </div>
+        </div>
+      )}
     </article>
+  );
+}
+
+function ProposedActionCompactCard({
+  action,
+  scheduledTime,
+  timePassed,
+  expanded = false,
+  disabled = false,
+  reorderControl,
+  onToggle,
+}: {
+  action: Pick<DailyAction, "title" | "estimated_minutes">;
+  scheduledTime: string | null;
+  timePassed: boolean;
+  expanded?: boolean;
+  disabled?: boolean;
+  reorderControl?: ReactNode;
+  onToggle?: () => void;
+}) {
+  const content = (
+    <>
+      {scheduledTime ? (
+        <TimedDayItemSummary
+          title={action.title}
+          meta={`${scheduledTime} · ${formatDuration(action.estimated_minutes)}`}
+          status={timePassed ? "Needs outcome" : null}
+          disclosure
+          expanded={expanded}
+        />
+      ) : (
+        <>
+          <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <Check className="size-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-semibold leading-6">{action.title}</span>
+            <span className="mt-2 block text-sm text-muted-foreground">
+              {formatDuration(action.estimated_minutes)}
+            </span>
+          </span>
+          <span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+            Kept
+            <ChevronDown
+              className={`size-4 transition-transform duration-200 motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`}
+            />
+          </span>
+        </>
+      )}
+    </>
+  );
+
+  return (
+    <div
+      data-proposed-action-compact
+      className={`flex items-start ${reorderControl ? "gap-1 pl-2" : ""}`}
+    >
+      {reorderControl && (
+        <div className="w-11 shrink-0 pt-3">{reorderControl}</div>
+      )}
+      {disabled ? (
+        <div
+          data-proposed-action-header
+          className={`flex min-w-0 flex-1 items-start gap-3 text-left ${scheduledTime ? "p-4" : "py-5 pr-5"}`}
+        >
+          {content}
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={onToggle}
+          disabled={disabled}
+          aria-expanded={expanded}
+          data-proposed-action-header
+          className={`flex min-w-0 flex-1 items-start gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${scheduledTime ? "p-4" : "py-5 pr-5"}`}
+        >
+          {content}
+        </button>
+      )}
+    </div>
   );
 }
 

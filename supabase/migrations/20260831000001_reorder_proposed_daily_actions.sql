@@ -108,6 +108,30 @@ begin
     raise exception 'Proposed Action order is stale or incomplete';
   end if;
 
+  if exists (
+    select 1
+    from (
+      select
+        action.scheduled_time,
+        lag(action.scheduled_time) over (order by ordered.ordinality)
+          as previous_scheduled_time
+      from unnest(p_ordered_action_ids) with ordinality
+        as ordered(id, ordinality)
+      join public.daily_actions as action
+        on action.id = ordered.id
+      where action.daily_plan_id = v_plan.id
+        and action.user_id = v_user_id
+        and action.status = 'proposed'
+        and action.approved_at is null
+        and action.scheduled_time is not null
+    ) as timed_actions
+    where timed_actions.previous_scheduled_time is not null
+      and timed_actions.scheduled_time
+        < timed_actions.previous_scheduled_time
+  ) then
+    raise exception 'Fixed-time Actions must remain in chronological order';
+  end if;
+
   if v_current_order = p_ordered_action_ids then
     return;
   end if;

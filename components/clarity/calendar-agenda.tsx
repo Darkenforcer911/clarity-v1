@@ -593,9 +593,10 @@ function CommitmentRow({
             {commitment.commitment_type === "event" &&
               (readOnly ||
                 (commitment.occurrence_date === today &&
-                  isRecordedCalendarOutcome(
-                    commitment.reconciliation_outcome,
-                  ))) && (
+                  (timingState === "time_passed" ||
+                    isRecordedCalendarOutcome(
+                      commitment.reconciliation_outcome,
+                    )))) && (
                 <CorrectCalendarOutcomeControl
                   commitment={commitment}
                   timezone={timezone}
