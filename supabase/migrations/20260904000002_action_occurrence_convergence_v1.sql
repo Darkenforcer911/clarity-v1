@@ -532,12 +532,12 @@ begin
     if p_local_date > v_today then
       raise exception 'Completed activity cannot be recorded in the future';
     end if;
-    if p_duration_minutes is not between 0 and 1440 then
+    if p_duration_minutes not between 0 and 1440 then
       raise exception 'Completed Action duration must be between 0 and 1440 minutes';
     end if;
   elsif p_local_date < v_today then
     raise exception 'A planned Action cannot be created in the past';
-  elsif p_duration_minutes is not between 1 and 1440 then
+  elsif p_duration_minutes not between 1 and 1440 then
     raise exception 'Action duration must be between 1 and 1440 minutes';
   end if;
   if v_details is not null and char_length(v_details) > 2000 then

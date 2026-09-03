@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.17"
+    PostgrestVersion: "14.5"
   }
   graphql_public: {
     Tables: {
@@ -688,10 +688,10 @@ export type Database = {
           project_id: string | null
           recurrence_days: number[]
           recurrence_pattern: string
-          reminder_offsets_minutes: number[]
           relationship_source:
             | Database["public"]["Enums"]["life_model_provenance"]
             | null
+          reminder_offsets_minutes: number[]
           reschedule_count: number
           rescheduled_for: string | null
           resolution_note: string | null
@@ -735,10 +735,10 @@ export type Database = {
           project_id?: string | null
           recurrence_days?: number[]
           recurrence_pattern?: string
-          reminder_offsets_minutes?: number[]
           relationship_source?:
             | Database["public"]["Enums"]["life_model_provenance"]
             | null
+          reminder_offsets_minutes?: number[]
           reschedule_count?: number
           rescheduled_for?: string | null
           resolution_note?: string | null
@@ -782,10 +782,10 @@ export type Database = {
           project_id?: string | null
           recurrence_days?: number[]
           recurrence_pattern?: string
-          reminder_offsets_minutes?: number[]
           relationship_source?:
             | Database["public"]["Enums"]["life_model_provenance"]
             | null
+          reminder_offsets_minutes?: number[]
           reschedule_count?: number
           rescheduled_for?: string | null
           resolution_note?: string | null
@@ -1784,7 +1784,10 @@ export type Database = {
       }
       profiles: {
         Row: {
+          city: string | null
+          country: string | null
           created_at: string
+          date_of_birth: string | null
           id: string
           last_active_at: string | null
           name: string | null
@@ -1793,7 +1796,10 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          city?: string | null
+          country?: string | null
           created_at?: string
+          date_of_birth?: string | null
           id: string
           last_active_at?: string | null
           name?: string | null
@@ -1802,7 +1808,10 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          city?: string | null
+          country?: string | null
           created_at?: string
+          date_of_birth?: string | null
           id?: string
           last_active_at?: string | null
           name?: string | null
@@ -2025,12 +2034,12 @@ export type Database = {
           id: string
           life_area_id: string | null
           preferred_time: string | null
-          reminder_offsets_minutes: number[]
           project_id: string | null
+          reminder_offsets_minutes: number[]
           skip_policy: Database["public"]["Enums"]["routine_skip_policy"]
           source_proposal_id: string | null
-          status: Database["public"]["Enums"]["routine_status"]
           start_on: string
+          status: Database["public"]["Enums"]["routine_status"]
           title: string
           updated_at: string
           user_id: string
@@ -2050,12 +2059,12 @@ export type Database = {
           id?: string
           life_area_id?: string | null
           preferred_time?: string | null
-          reminder_offsets_minutes?: number[]
           project_id?: string | null
+          reminder_offsets_minutes?: number[]
           skip_policy?: Database["public"]["Enums"]["routine_skip_policy"]
           source_proposal_id?: string | null
-          status?: Database["public"]["Enums"]["routine_status"]
           start_on: string
+          status?: Database["public"]["Enums"]["routine_status"]
           title: string
           updated_at?: string
           user_id: string
@@ -2075,12 +2084,12 @@ export type Database = {
           id?: string
           life_area_id?: string | null
           preferred_time?: string | null
-          reminder_offsets_minutes?: number[]
           project_id?: string | null
+          reminder_offsets_minutes?: number[]
           skip_policy?: Database["public"]["Enums"]["routine_skip_policy"]
           source_proposal_id?: string | null
-          status?: Database["public"]["Enums"]["routine_status"]
           start_on?: string
+          status?: Database["public"]["Enums"]["routine_status"]
           title?: string
           updated_at?: string
           user_id?: string
@@ -2166,27 +2175,6 @@ export type Database = {
           p_suggested_method?: string
           p_title: string
           p_why_it_exists?: string
-        }
-        Returns: string
-      }
-      create_action_occurrence_v1: {
-        Args: {
-          p_completed?: boolean
-          p_completion_evidence_only?: boolean
-          p_daily_plan_id?: string
-          p_details?: string
-          p_due_local_date?: string
-          p_due_local_time?: string
-          p_duration_minutes: number
-          p_local_date: string
-          p_linked_context_kind?: string
-          p_linked_context_label?: string
-          p_ongoing_context_suggestion?: string
-          p_recurrence_days?: number[]
-          p_recurrence_pattern?: string
-          p_reminder_offsets_minutes?: number[]
-          p_title: string
-          p_when_time?: string
         }
         Returns: string
       }
@@ -2277,6 +2265,27 @@ export type Database = {
         }
         Returns: undefined
       }
+      create_action_occurrence_v1: {
+        Args: {
+          p_completed?: boolean
+          p_completion_evidence_only?: boolean
+          p_daily_plan_id?: string
+          p_details?: string
+          p_due_local_date?: string
+          p_due_local_time?: string
+          p_duration_minutes: number
+          p_linked_context_kind?: string
+          p_linked_context_label?: string
+          p_local_date: string
+          p_ongoing_context_suggestion?: string
+          p_recurrence_days?: number[]
+          p_recurrence_pattern?: string
+          p_reminder_offsets_minutes?: number[]
+          p_title: string
+          p_when_time?: string
+        }
+        Returns: string
+      }
       create_calendar_commitment: {
         Args: {
           p_commitment_type: Database["public"]["Enums"]["calendar_commitment_type"]
@@ -2296,8 +2305,8 @@ export type Database = {
       }
       create_completed_plan_evidence: {
         Args: {
-          p_actual_minutes?: number | null
-          p_completed_time?: string | null
+          p_actual_minutes?: number
+          p_completed_time?: string
           p_daily_plan_id: string
           p_details?: string
           p_title: string
@@ -2480,10 +2489,6 @@ export type Database = {
         Args: { p_local_date: string }
         Returns: number
       }
-      remove_action_occurrence_v1: {
-        Args: { p_daily_action_id: string }
-        Returns: undefined
-      }
       reconcile_previous_day: {
         Args: {
           p_context_summary?: string
@@ -2630,6 +2635,10 @@ export type Database = {
         Args: { p_daily_action_id: string }
         Returns: undefined
       }
+      remove_action_occurrence_v1: {
+        Args: { p_daily_action_id: string }
+        Returns: undefined
+      }
       remove_proposed_action: {
         Args: { p_daily_action_id: string }
         Returns: undefined
@@ -2640,6 +2649,10 @@ export type Database = {
       }
       reorder_life_areas: {
         Args: { p_ordered_life_area_ids: string[] }
+        Returns: undefined
+      }
+      reorder_proposed_daily_actions: {
+        Args: { p_daily_plan_id: string; p_ordered_action_ids: string[] }
         Returns: undefined
       }
       replace_active_action: {
@@ -2698,6 +2711,18 @@ export type Database = {
           p_context_for_today: string
           p_focus: string
           p_local_date: string
+        }
+        Returns: string
+      }
+      save_onboarding_identity_step_v1: {
+        Args: {
+          p_city: string
+          p_country: string
+          p_date_of_birth: string
+          p_name: string
+          p_onboarding_version: number
+          p_timezone: string
+          p_user_draft: Json
         }
         Returns: string
       }
@@ -2841,6 +2866,21 @@ export type Database = {
         Returns: string
       }
       undo_day_close: { Args: { p_daily_plan_id: string }; Returns: undefined }
+      update_action_occurrence_v1: {
+        Args: {
+          p_daily_action_id: string
+          p_details?: string
+          p_due_local_date?: string
+          p_due_local_time?: string
+          p_duration_minutes: number
+          p_recurrence_days?: number[]
+          p_recurrence_pattern?: string
+          p_reminder_offsets_minutes?: number[]
+          p_title: string
+          p_when_time?: string
+        }
+        Returns: undefined
+      }
       update_calendar_commitment: {
         Args: {
           p_calendar_commitment_id: string
@@ -2858,6 +2898,21 @@ export type Database = {
           p_title: string
         }
         Returns: string
+      }
+      update_completed_action_occurrence_v1: {
+        Args: {
+          p_actual_minutes?: number
+          p_completed_time?: string
+          p_daily_action_id: string
+          p_details?: string
+          p_due_local_date?: string
+          p_due_local_time?: string
+          p_recurrence_days?: number[]
+          p_recurrence_pattern?: string
+          p_reminder_offsets_minutes?: number[]
+          p_title: string
+        }
+        Returns: undefined
       }
       update_completed_plan_evidence: {
         Args: {
@@ -2890,36 +2945,6 @@ export type Database = {
           p_suggested_method: string
           p_title: string
           p_why_it_exists: string
-        }
-        Returns: undefined
-      }
-      update_action_occurrence_v1: {
-        Args: {
-          p_daily_action_id: string
-          p_details?: string | null
-          p_due_local_date?: string | null
-          p_due_local_time?: string | null
-          p_duration_minutes: number
-          p_reminder_offsets_minutes?: number[]
-          p_recurrence_days?: number[]
-          p_recurrence_pattern?: string
-          p_title: string
-          p_when_time?: string
-        }
-        Returns: undefined
-      }
-      update_completed_action_occurrence_v1: {
-        Args: {
-          p_actual_minutes?: number
-          p_completed_time?: string
-          p_daily_action_id: string
-          p_details?: string
-          p_due_local_date?: string
-          p_due_local_time?: string
-          p_recurrence_days?: number[]
-          p_recurrence_pattern?: string
-          p_reminder_offsets_minutes?: number[]
-          p_title: string
         }
         Returns: undefined
       }
@@ -3070,12 +3095,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3099,11 +3124,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3124,11 +3149,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3149,11 +3174,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3166,11 +3191,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
