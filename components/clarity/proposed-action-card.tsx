@@ -44,6 +44,7 @@ export function ProposedActionCard({
   reordering = false,
   planLocalDate,
   currentLocalDate,
+  timezone,
 }: {
   action: DailyAction;
   scheduledTime: string | null;
@@ -57,6 +58,7 @@ export function ProposedActionCard({
   reordering?: boolean;
   planLocalDate: string;
   currentLocalDate: string;
+  timezone: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [completing, setCompleting] = useState(false);
@@ -181,7 +183,9 @@ export function ProposedActionCard({
                   state={state}
                   simple
                   hideGeneratedDetails
-                  showRecurrence={false}
+                  showRecurrence
+                  localDate={action.local_date}
+                  timezone={timezone}
                   initialValues={{
                     title: action.title,
                     actionType: action.action_type,
@@ -191,6 +195,12 @@ export function ProposedActionCard({
                     definitionOfDone: action.definition_of_done,
                     suggestedMethod: action.suggested_method,
                     context: userEnteredDetails ?? "",
+                    details: action.details ?? userEnteredDetails ?? "",
+                    dueLocalDate: action.due_local_date ?? "",
+                    dueLocalTime: action.due_local_time?.slice(0, 5) ?? "",
+                    reminderOffsets: action.reminder_offsets_minutes,
+                    recurrencePattern: action.routine?.cadence ?? "none",
+                    recurrenceDays: action.routine?.weekdays ?? [],
                   }}
                 />
                 {state.error && (
@@ -419,7 +429,7 @@ function ProposedActionCompactCard({
   return (
     <div
       data-proposed-action-compact
-      className={`flex items-start ${reorderControl ? "gap-1 pl-2" : ""}`}
+      className={`flex items-start ${reorderControl ? "gap-0 pl-3" : ""}`}
     >
       {reorderControl && (
         <div className="w-11 shrink-0 pt-3">{reorderControl}</div>

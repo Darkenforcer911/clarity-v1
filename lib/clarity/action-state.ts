@@ -16,6 +16,11 @@ export type AddActionDraft = {
   clarificationAnswer?: string;
   recurrencePattern?: string;
   recurrenceDays?: number[];
+  localDate?: string;
+  dueLocalDate?: string;
+  dueLocalTime?: string;
+  reminderOffsets?: number[];
+  details?: string;
 };
 
 export type AddActionTimeWarning = {

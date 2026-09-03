@@ -11,20 +11,34 @@ import {
 } from "./notification-dispatch-core";
 import { reminderOffsetMinutesSchema } from "./notification-dispatch-domain";
 
-const deliverySchema = z.object({
+const deliveryBaseSchema = z.object({
   deliveryId: z.string().uuid(),
   attemptCount: z.number().int().positive(),
   endpoint: z.string().url(),
   p256dhKey: z.string().min(1),
   authKey: z.string().min(1),
-  commitmentId: z.string().uuid(),
-  commitmentType: z.enum(["event", "deadline"]),
   title: z.string().min(1).max(200),
   occurrenceDate: z.iso.date(),
   reminderOffsetMinutes: reminderOffsetMinutesSchema,
   scheduledFor: z.iso.datetime({ offset: true }),
   usefulUntil: z.iso.datetime({ offset: true }),
 });
+
+const deliverySchema = z.discriminatedUnion("targetType", [
+  deliveryBaseSchema.extend({
+    targetType: z.literal("calendar"),
+    commitmentId: z.string().uuid(),
+    commitmentType: z.enum(["event", "deadline"]),
+    actionId: z.null(),
+  }),
+  deliveryBaseSchema.extend({
+    targetType: z.literal("action"),
+    commitmentId: z.null(),
+    commitmentType: z.null(),
+    actionId: z.string().uuid(),
+    actionReminderAnchor: z.enum(["when", "due"]),
+  }),
+]);
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 

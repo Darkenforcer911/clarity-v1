@@ -16,6 +16,20 @@ export type CalendarDailyAction = {
   sort_order: number;
   approved_at: string | null;
   source_routine_id: string | null;
+  daily_plan_id: string | null;
+  local_date: string;
+  due_local_date: string | null;
+  due_local_time: string | null;
+  reminder_offsets_minutes: number[];
+  calendar_projection?: "occurrence" | "due";
+  original_input?: string | null;
+};
+
+export type CalendarDailyActionWithPlan = CalendarDailyAction & {
+  daily_plans: {
+    status: string;
+    approved_at: string | null;
+  } | null;
 };
 
 type CalendarDailyPlanWithActions = {
@@ -42,13 +56,60 @@ export function getAcceptedCalendarDailyActions(
     .sort((left, right) => left.sort_order - right.sort_order);
 }
 
+export function getVisibleCalendarDailyActions(
+  rows: CalendarDailyActionWithPlan[],
+  today: string,
+) {
+  return rows
+    .filter((action) => {
+      if (!action.daily_plans) {
+        return action.local_date >= today && action.status === "proposed";
+      }
+      if (
+        action.daily_plans.approved_at &&
+        acceptedPlanStatuses.has(action.daily_plans.status) &&
+        action.approved_at
+      ) {
+        return true;
+      }
+      return (
+        action.local_date >= today &&
+        action.daily_plans.status === "proposed" &&
+        action.status === "proposed" &&
+        (Boolean(action.original_input) || Boolean(action.source_routine_id))
+      );
+    })
+    .map(({ daily_plans, ...action }) => {
+      void daily_plans;
+      return action;
+    })
+    .sort((left, right) => left.sort_order - right.sort_order);
+}
+
 export function partitionCalendarDailyActions(
   actions: CalendarDailyAction[],
 ) {
   return {
-    timed: actions.filter((action) => action.scheduled_time !== null),
-    untimed: actions.filter((action) => action.scheduled_time === null),
+    due: actions.filter((action) => action.calendar_projection === "due"),
+    timed: actions.filter(
+      (action) =>
+        action.calendar_projection !== "due" && action.scheduled_time !== null,
+    ),
+    untimed: actions.filter(
+      (action) =>
+        action.calendar_projection !== "due" && action.scheduled_time === null,
+    ),
   };
+}
+
+export function formatCalendarActionDue(action: CalendarDailyAction) {
+  if (action.calendar_projection !== "due" || !action.due_local_date) {
+    return null;
+  }
+  if (!action.due_local_time) return "Due";
+  const [hourText, minute] = action.due_local_time.slice(0, 5).split(":");
+  const hour = Number(hourText);
+  return `Due · ${hour % 12 || 12}:${minute} ${hour < 12 ? "am" : "pm"}`;
 }
 
 export function formatCalendarActionTimeRange(

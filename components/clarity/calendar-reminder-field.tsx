@@ -27,6 +27,7 @@ export function CalendarReminderField({
   expanded,
   onExpandedChange,
   legacyMultipleNotice = false,
+  atTimeLabel = "At start time",
 }: {
   kind: ReminderCommitmentKind;
   offsets: number[];
@@ -35,6 +36,7 @@ export function CalendarReminderField({
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
   legacyMultipleNotice?: boolean;
+  atTimeLabel?: string;
 }) {
   const allowedPresets = getAllowedReminderPresets(kind);
   const selectedOffset = offsets[0];
@@ -104,7 +106,9 @@ export function CalendarReminderField({
       <SecondarySettingDisclosure
         icon={Bell}
         label="Reminders"
-        summary={formatReminderSummary(offsets)}
+        summary={
+          selectedOffset === 0 ? atTimeLabel : formatReminderSummary(offsets)
+        }
         expanded={expanded}
         onExpandedChange={onExpandedChange}
         showDone={false}
@@ -137,7 +141,7 @@ export function CalendarReminderField({
                       : "border-border text-muted-foreground hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
                   }`}
                 >
-                  {formatReminderOffset(offset)}
+                  {offset === 0 ? atTimeLabel : formatReminderOffset(offset)}
                 </button>
               );
             })}

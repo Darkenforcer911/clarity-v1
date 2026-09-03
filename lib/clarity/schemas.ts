@@ -81,6 +81,15 @@ const coreActionFieldsSchema = z
 
 export const addActionSchema = coreActionFieldsSchema
   .safeExtend({
+    localDate: z.union([z.literal(""), z.string().regex(localDatePattern)]).default(""),
+    dueLocalDate: z.union([z.literal(""), z.string().regex(localDatePattern)]).default(""),
+    dueLocalTime: z.union([z.literal(""), z.string().regex(localTimePattern)]).default(""),
+    reminderOffsets: z.array(z.coerce.number().int().min(0).max(43_200)).max(10).default([]),
+    details: z
+      .string()
+      .trim()
+      .max(2000, "Keep Details under 2,000 characters.")
+      .default(""),
     context: z
       .string()
       .trim()
@@ -99,6 +108,34 @@ export const addActionSchema = coreActionFieldsSchema
     recurrenceDays: z.array(z.coerce.number().int().min(0).max(6)).max(7),
   })
   .superRefine((value, context) => {
+    if (value.dueLocalTime && !value.dueLocalDate) {
+      context.addIssue({
+        code: "custom",
+        message: "Choose a due date before adding a due time.",
+        path: ["dueLocalDate"],
+      });
+    }
+
+    if (value.dueLocalDate && value.localDate && value.dueLocalDate < value.localDate) {
+      context.addIssue({
+        code: "custom",
+        message: "Due must be on or after When.",
+        path: ["dueLocalDate"],
+      });
+    }
+
+    if (
+      value.reminderOffsets.length > 0 &&
+      !value.scheduledTime &&
+      !value.dueLocalTime
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Choose a time in When or Due before adding a reminder.",
+        path: ["reminderOffsets"],
+      });
+    }
+
     if (
       value.recurrencePattern === "certain_days" &&
       value.recurrenceDays.length === 0
@@ -128,12 +165,22 @@ export const actionContextDecisionSchema = z.object({
   destination: z
     .string()
     .regex(
-      /^\/today(?:\/(?:plan|actions\/[0-9a-f-]+))?(?:\?notice=action-added(?:&time=(?:[01]\d|2[0-3])%3A[0-5]\d)?)?$/,
+      /^(?:\/today(?:\/(?:plan|actions\/[0-9a-f-]+))?(?:\?notice=action-added(?:&time=(?:[01]\d|2[0-3])%3A[0-5]\d)?)?|\/calendar\?date=\d{4}-\d{2}-\d{2})$/,
     ),
 });
 
 const actionFieldsSchema = coreActionFieldsSchema
   .safeExtend({
+    dueLocalDate: z.union([z.literal(""), z.string().regex(localDatePattern)]).default(""),
+    dueLocalTime: z.union([z.literal(""), z.string().regex(localTimePattern)]).default(""),
+    reminderOffsets: z.array(z.coerce.number().int().min(0).max(43_200)).max(10).default([]),
+    recurrencePattern: z.enum(["none", "daily", "weekly", "certain_days"]).default("none"),
+    recurrenceDays: z.array(z.coerce.number().int().min(0).max(6)).max(7).default([]),
+    details: z
+      .string()
+      .trim()
+      .max(2000, "Keep Details under 2,000 characters.")
+      .default(""),
     whyItExists: z.string().trim().max(1000),
     definitionOfDone: z.string().trim().max(1000),
     suggestedMethod: z.string().trim().max(2000),
@@ -141,6 +188,48 @@ const actionFieldsSchema = coreActionFieldsSchema
 
 export const editActionSchema = actionFieldsSchema.superRefine(
   (value, context) => {
+    if (value.dueLocalTime && !value.dueLocalDate) {
+      context.addIssue({
+        code: "custom",
+        message: "Choose a due date before adding a due time.",
+        path: ["dueLocalDate"],
+      });
+    }
+
+    if (
+      value.reminderOffsets.length > 0 &&
+      !value.scheduledTime &&
+      !value.dueLocalTime
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Choose a time in When or Due before adding a reminder.",
+        path: ["reminderOffsets"],
+      });
+    }
+
+    if (
+      value.recurrencePattern === "certain_days" &&
+      value.recurrenceDays.length === 0
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Choose at least one weekday.",
+        path: ["recurrenceDays"],
+      });
+    }
+
+    if (
+      value.recurrencePattern !== "certain_days" &&
+      value.recurrenceDays.length > 0
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Weekdays only apply to Certain days.",
+        path: ["recurrenceDays"],
+      });
+    }
+
     const requiredDetails = [
       ["whyItExists", value.whyItExists],
       ["definitionOfDone", value.definitionOfDone],

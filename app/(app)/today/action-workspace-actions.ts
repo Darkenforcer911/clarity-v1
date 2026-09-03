@@ -50,6 +50,12 @@ function actionFields(formData: FormData) {
     actionType: String(formData.get("actionType") ?? ""),
     estimatedMinutes: String(formData.get("estimatedMinutes") ?? ""),
     scheduledTime: String(formData.get("scheduledTime") ?? ""),
+    dueLocalDate: String(formData.get("dueLocalDate") ?? ""),
+    dueLocalTime: String(formData.get("dueLocalTime") ?? ""),
+    reminderOffsets: formData.getAll("reminderOffsets"),
+    details: String(formData.get("details") ?? ""),
+    recurrencePattern: String(formData.get("recurrencePattern") ?? "none"),
+    recurrenceDays: formData.getAll("recurrenceDays"),
     whyItExists: String(formData.get("whyItExists") ?? ""),
     definitionOfDone: String(formData.get("definitionOfDone") ?? ""),
     suggestedMethod: String(formData.get("suggestedMethod") ?? ""),
@@ -77,6 +83,11 @@ function addActionFields(formData: FormData) {
     actionType: String(formData.get("actionType") ?? ""),
     estimatedMinutes: String(formData.get("estimatedMinutes") ?? ""),
     scheduledTime: String(formData.get("scheduledTime") ?? ""),
+    localDate: String(formData.get("localDate") ?? ""),
+    dueLocalDate: String(formData.get("dueLocalDate") ?? ""),
+    dueLocalTime: String(formData.get("dueLocalTime") ?? ""),
+    reminderOffsets: formData.getAll("reminderOffsets"),
+    details: String(formData.get("details") ?? ""),
     context: String(formData.get("context") ?? ""),
     clarificationQuestion: String(
       formData.get("clarificationQuestion") ?? "",
@@ -106,6 +117,13 @@ function addActionDraft(formData: FormData) {
     recurrenceDays: input.recurrenceDays
       .map(Number)
       .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
+    localDate: input.localDate,
+    dueLocalDate: input.dueLocalDate,
+    dueLocalTime: input.dueLocalTime,
+    reminderOffsets: input.reminderOffsets
+      .map(Number)
+      .filter((value) => Number.isInteger(value) && value >= 0),
+    details: input.details,
   };
 }
 
@@ -113,7 +131,7 @@ export async function addActionAction(
   _previousState: DailyLoopActionState,
   formData: FormData,
 ): Promise<DailyLoopActionState> {
-  if (!formData.has("planId") || !formData.has("title")) {
+  if (!formData.has("title")) {
     return {
       error:
         "Couldn’t read the action details. Try closing and reopening this form.",
@@ -124,7 +142,8 @@ export async function addActionAction(
   const draft = addActionDraft(formData);
 
   try {
-    const planId = z.string().uuid().parse(formData.get("planId"));
+    const rawPlanId = String(formData.get("planId") ?? "");
+    const planId = rawPlanId ? z.string().uuid().parse(rawPlanId) : null;
     const parsedInput = addActionSchema.safeParse(addActionFields(formData));
 
     if (!parsedInput.success) {
@@ -162,6 +181,11 @@ export async function addActionAction(
           clarificationAnswer: input.clarificationAnswer,
           recurrencePattern: input.recurrencePattern,
           recurrenceDays: input.recurrenceDays,
+          localDate: input.localDate,
+          dueLocalDate: input.dueLocalDate,
+          dueLocalTime: input.dueLocalTime,
+          reminderOffsets: input.reminderOffsets,
+          details: input.details,
         },
       };
     }
@@ -182,13 +206,16 @@ export async function addActionAction(
       };
     }
 
-    destination = addedActionNoticeDestination(
-      result.planStatus,
-      input.actionType === "fixed" ? input.scheduledTime ?? "" : "",
-    );
+    destination = formData.get("destination") === "calendar"
+      ? `/calendar?date=${encodeURIComponent(result.localDate)}`
+      : addedActionNoticeDestination(
+          result.planStatus,
+          input.actionType === "fixed" ? input.scheduledTime ?? "" : "",
+        );
     revalidatePath("/today");
     revalidatePath("/today/active");
     revalidatePath("/today/plan");
+    revalidatePath("/calendar");
 
     if (
       result.planStatus === "proposed" &&
@@ -238,7 +265,7 @@ export async function updateActionAction(
   try {
     const actionId = z.string().uuid().parse(formData.get("actionId"));
     const input = editActionSchema.parse(editableActionFields(formData));
-    await actionWorkspaceService.updateProposedAction(actionId, input);
+    await actionWorkspaceService.updateAction(actionId, input);
     revalidatePath("/today/plan");
     revalidatePath(`/today/actions/${actionId}`);
     return {
@@ -487,6 +514,25 @@ export async function removeActionFromTodayInlineAction(
     return {
       success: false,
       error: "Couldn’t remove the action from today. Try again.",
+      actionId: null,
+    };
+  }
+}
+
+export async function removeActionOccurrenceAction(
+  _previousState: ActiveActionMutationResult,
+  formData: FormData,
+): Promise<ActiveActionMutationResult> {
+  try {
+    const actionId = z.string().uuid().parse(formData.get("actionId"));
+    await actionWorkspaceService.removeOccurrence(actionId);
+    revalidateActiveActionPaths(actionId);
+    revalidatePath("/calendar");
+    return { success: true, error: null, actionId };
+  } catch {
+    return {
+      success: false,
+      error: "Couldn’t remove this Action. Try again.",
       actionId: null,
     };
   }

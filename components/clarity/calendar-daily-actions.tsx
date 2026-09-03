@@ -1,8 +1,9 @@
-import { CheckCircle2, Circle, Clock3 } from "lucide-react";
+import { CalendarClock, CheckCircle2, Circle, Clock3 } from "lucide-react";
 import Link from "next/link";
 
 import {
   formatCalendarActionOutcome,
+  formatCalendarActionDue,
   formatCalendarActionTimeRange,
   partitionCalendarDailyActions,
   type CalendarDailyAction,
@@ -20,7 +21,7 @@ export function CalendarDailyActions({
   today: string;
   timezone: string;
 }) {
-  const { timed, untimed } = partitionCalendarDailyActions(actions);
+  const { due, timed, untimed } = partitionCalendarDailyActions(actions);
 
   if (actions.length === 0) return null;
 
@@ -33,6 +34,14 @@ export function CalendarDailyActions({
         today={today}
         timezone={timezone}
         timed
+      />
+      <CalendarActionSection
+        title="Due"
+        actions={due}
+        localDate={localDate}
+        today={today}
+        timezone={timezone}
+        due
       />
       <CalendarActionSection
         title="Actions"
@@ -52,6 +61,7 @@ function CalendarActionSection({
   today,
   timezone,
   timed = false,
+  due = false,
 }: {
   title: string;
   actions: CalendarDailyAction[];
@@ -59,6 +69,7 @@ function CalendarActionSection({
   today: string;
   timezone: string;
   timed?: boolean;
+  due?: boolean;
 }) {
   if (actions.length === 0) return null;
 
@@ -76,6 +87,7 @@ function CalendarActionSection({
             today={today}
             timezone={timezone}
             timed={timed}
+            due={due}
           />
         ))}
       </div>
@@ -89,21 +101,26 @@ function CalendarActionRow({
   today,
   timezone,
   timed,
+  due,
 }: {
   action: CalendarDailyAction;
   localDate: string;
   today: string;
   timezone: string;
   timed: boolean;
+  due: boolean;
 }) {
   const outcome = formatCalendarActionOutcome(action, timezone);
   const timing = timed
     ? formatCalendarActionTimeRange(action, timezone)
     : null;
+  const dueTiming = due ? formatCalendarActionDue(action) : null;
   const content = (
     <>
       {action.status === "completed" ? (
         <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-[var(--clarity-completed)]" />
+      ) : due ? (
+        <CalendarClock className="mt-0.5 size-4 shrink-0 text-[var(--clarity-completed)]" />
       ) : timed ? (
         <Clock3 className="mt-0.5 size-4 shrink-0 text-[var(--clarity-completed)]" />
       ) : (
@@ -114,7 +131,7 @@ function CalendarActionRow({
           {action.title}
         </span>
         <span className="mt-1 block text-sm text-muted-foreground">
-          {[timing, formatDuration(action.estimated_minutes)]
+          {[dueTiming ?? timing, due ? null : formatDuration(action.estimated_minutes)]
             .filter(Boolean)
             .join(" · ")}
         </span>
@@ -128,8 +145,9 @@ function CalendarActionRow({
   );
 
   if (
-    localDate === today &&
-    (action.status === "active" || action.status === "completed")
+    (action.local_date === today &&
+      (action.status === "active" || action.status === "completed")) ||
+    (action.local_date >= today && action.status === "proposed")
   ) {
     return (
       <Link

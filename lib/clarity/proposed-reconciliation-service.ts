@@ -6,6 +6,7 @@ import type { Database } from "@/lib/supabase/database.types";
 import { getAuthenticatedUserAndProfile } from "./daily-loop-queries";
 import type { CalendarEventOutcome } from "./calendar-commitments";
 import { getLocalDate } from "./date-time";
+import type { CompletedPlanEvidenceInput } from "./completed-plan-evidence";
 
 export class ProposedPlanDateBoundaryError extends Error {
   constructor(
@@ -21,34 +22,48 @@ type PendingRpcClient = SupabaseClient<Database>;
 
 export async function createCompletedPlanEvidence(input: {
   planId: string;
-  title: string;
-  completedTime: string | null;
-  actualMinutes: number | null;
-  details: string | null;
-}) {
-  const { supabase } = await getAuthenticatedUserAndProfile();
-  await callPendingRpc(supabase, "create_completed_plan_evidence", {
+} & CompletedPlanEvidenceInput) {
+  const { supabase, user } = await getAuthenticatedUserAndProfile();
+  const { data: plan, error: planError } = await supabase
+    .from("daily_plans")
+    .select("local_date")
+    .eq("id", input.planId)
+    .eq("user_id", user.id)
+    .single();
+  if (planError || !plan) {
+    throw new Error(planError?.message ?? "Daily plan not found.");
+  }
+  await callPendingRpc(supabase, "create_action_occurrence_v1", {
     p_daily_plan_id: input.planId,
+    p_local_date: plan.local_date,
     p_title: input.title,
-    p_completed_time: input.completedTime,
-    p_actual_minutes: input.actualMinutes,
+    p_when_time: input.completedTime,
+    p_duration_minutes: input.actualMinutes ?? 0,
+    p_due_local_date: input.dueLocalDate,
+    p_due_local_time: input.dueLocalTime,
+    p_recurrence_pattern: input.recurrencePattern,
+    p_recurrence_days: input.recurrenceDays,
+    p_reminder_offsets_minutes: input.reminderOffsets,
     p_details: input.details,
+    p_completed: true,
+    p_completion_evidence_only: true,
   });
 }
 
 export async function updateCompletedPlanEvidence(input: {
   actionId: string;
-  title: string;
-  completedTime: string | null;
-  actualMinutes: number | null;
-  details: string | null;
-}) {
+} & CompletedPlanEvidenceInput) {
   const { supabase } = await getAuthenticatedUserAndProfile();
-  await callPendingRpc(supabase, "update_completed_plan_evidence", {
+  await callPendingRpc(supabase, "update_completed_action_occurrence_v1", {
     p_daily_action_id: input.actionId,
     p_title: input.title,
     p_completed_time: input.completedTime,
     p_actual_minutes: input.actualMinutes,
+    p_due_local_date: input.dueLocalDate,
+    p_due_local_time: input.dueLocalTime,
+    p_recurrence_pattern: input.recurrencePattern,
+    p_recurrence_days: input.recurrenceDays,
+    p_reminder_offsets_minutes: input.reminderOffsets,
     p_details: input.details,
   });
 }
@@ -74,6 +89,10 @@ export async function completeProposedAction(input: {
 
   if (actionError || !action) {
     throw new Error(actionError?.message ?? "Daily action not found.");
+  }
+
+  if (!action.daily_plan_id) {
+    throw new Error("Daily action is not part of a proposed plan.");
   }
 
   const { data: plan, error: planError } = await supabase

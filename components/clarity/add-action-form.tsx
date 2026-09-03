@@ -17,12 +17,18 @@ import { PendingButton } from "./pending-button";
 
 export function AddActionForm({
   planId,
+  localDate,
+  timezone,
+  destination = "today",
   open: controlledOpen,
   onOpenChange,
   hideTrigger = false,
   onActionSaved,
 }: {
-  planId: string;
+  planId?: string;
+  localDate: string;
+  timezone: string;
+  destination?: "today" | "calendar";
   proposed?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -63,6 +69,9 @@ export function AddActionForm({
   return (
     <AddActionPanel
       planId={planId}
+      localDate={localDate}
+      timezone={timezone}
+      destination={destination}
       label={label}
       onClose={closePanel}
       onActionSaved={onActionSaved}
@@ -72,11 +81,17 @@ export function AddActionForm({
 
 function AddActionPanel({
   planId,
+  localDate,
+  timezone,
+  destination,
   label,
   onClose,
   onActionSaved,
 }: {
-  planId: string;
+  planId?: string;
+  localDate: string;
+  timezone: string;
+  destination: "today" | "calendar";
   label: string;
   onClose: () => void;
   onActionSaved?: () => void;
@@ -194,12 +209,15 @@ function AddActionPanel({
           action={submitAction}
           className="w-full min-w-0 max-w-full space-y-5"
         >
-          <input type="hidden" name="planId" value={planId} />
+          {planId && <input type="hidden" name="planId" value={planId} />}
+          <input type="hidden" name="destination" value={destination} />
           <ActionFields
             key={responseVersion}
             state={state}
             simple
-            showRecurrence={false}
+            showRecurrence
+            localDate={localDate}
+            timezone={timezone}
             initialValues={state.addActionDraft}
             onTitleChange={handleTitleChange}
           />

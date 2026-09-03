@@ -860,6 +860,7 @@ export function ProposedPlan({
             reordering={reorderMode}
             planLocalDate={plan.local_date}
             currentLocalDate={currentLocalDate}
+            timezone={profile.timezone}
           />
         </div>
       </SwipeToRemove>
@@ -945,6 +946,7 @@ export function ProposedPlan({
 
         <SoFarToday
           planId={plan.id}
+          localDate={plan.local_date}
           timezone={profile.timezone}
           completedActions={completedEvidenceActions}
         />
@@ -1057,6 +1059,7 @@ export function ProposedPlan({
                         reordering={reorderMode}
                         planLocalDate={plan.local_date}
                         currentLocalDate={currentLocalDate}
+                        timezone={profile.timezone}
                       />
                     </SwipeToRemove>
                   </div>
@@ -1130,6 +1133,8 @@ export function ProposedPlan({
 
         <AddActionForm
           planId={plan.id}
+          localDate={plan.local_date}
+          timezone={profile.timezone}
           proposed
           open={addActionOpen}
           onOpenChange={setAddActionOpen}

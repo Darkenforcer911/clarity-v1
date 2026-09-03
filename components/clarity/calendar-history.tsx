@@ -445,7 +445,7 @@ function CalendarCompletedItemEditor({
         ? ""
         : String(item.actualMinutes % 60),
     );
-    formData.set("details", "");
+    formData.set("details", item.details ?? "");
     if (correction) formData.set("correctionId", correction.id);
     startTransition(() => dispatch(formData));
   }
@@ -461,12 +461,14 @@ function CalendarCompletedItemEditor({
                 title: correction.title ?? "",
                 completionTime: correction.occurred_time?.slice(0, 5) ?? "",
                 actualMinutes: correction.duration_minutes,
+                details: correction.details,
               }
             : undefined
         }
         submitting={pending}
         onSave={save}
         onCancel={onCancel}
+        showDetails
       />
       {state.error && (
         <p role="alert" className="text-sm text-destructive">

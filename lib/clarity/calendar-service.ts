@@ -31,8 +31,9 @@ import {
   type HistoricalActionOutcomeRevision,
 } from "./historical-action-outcomes";
 import {
-  getAcceptedCalendarDailyActions,
+  getVisibleCalendarDailyActions,
   type CalendarDailyAction,
+  type CalendarDailyActionWithPlan,
 } from "./calendar-daily-actions";
 
 type RpcClient = SupabaseClient<Database>;
@@ -72,7 +73,12 @@ export async function getCalendarPageData(requestedDate?: string) {
   const [commitments, dailyActions, corrections, historicalRecord] =
     await Promise.all([
       getCalendarCommitmentsForDate(supabase, selectedDate),
-      getCalendarDailyActionsForDate(supabase, user.id, selectedDate),
+      getCalendarDailyActionsForDate(
+        supabase,
+        user.id,
+        selectedDate,
+        today,
+      ),
       isPast
         ? getDayCorrectionsForDate(supabase, selectedDate)
         : Promise.resolve([]),
@@ -85,13 +91,14 @@ export async function getCalendarPageData(requestedDate?: string) {
         ...historicalRecord,
         actionResolutionNotes: Object.fromEntries(
           dailyActions.flatMap((action) =>
-            action.resolution_note
+            action.calendar_projection !== "due" && action.resolution_note
               ? [[action.id, action.resolution_note]]
               : [],
           ),
         ),
         completedEvidence: Object.fromEntries(
           dailyActions.flatMap((action) =>
+            action.calendar_projection !== "due" &&
             action.completion_evidence_only
               ? [
                   [
@@ -116,7 +123,11 @@ export async function getCalendarPageData(requestedDate?: string) {
       ? commitments
       : filterActiveCalendarCommitments(commitments),
     dailyActions:
-      isPast && resolvedHistoricalRecord?.summary ? [] : dailyActions,
+      isPast && resolvedHistoricalRecord?.summary
+        ? dailyActions.filter(
+            (action) => action.calendar_projection === "due",
+          )
+        : dailyActions,
     corrections,
     historicalRecord: resolvedHistoricalRecord,
     stripDates: getCalendarStripDates(selectedDate),
@@ -127,22 +138,36 @@ async function getCalendarDailyActionsForDate(
   supabase: RpcClient,
   authenticatedUserId: string,
   localDate: string,
+  today: string,
 ): Promise<CalendarDailyAction[]> {
+  if (localDate >= today) {
+    const materialized = await callCalendarRpc(
+      supabase,
+      "materialize_routine_action_occurrences",
+      { p_local_date: localDate },
+    );
+    if (materialized.error) throw new Error(materialized.error.message);
+  }
+
   const { data, error } = await supabase
-    .from("daily_plans")
-    .select("status, approved_at, daily_actions(*)")
+    .from("daily_actions")
+    .select("*, daily_plans!daily_actions_plan_owner_fkey(status, approved_at)")
     .eq("user_id", authenticatedUserId)
-    .eq("local_date", localDate)
-    .maybeSingle();
+    .or(`local_date.eq.${localDate},due_local_date.eq.${localDate}`)
+    .neq("status", "removed")
+    .order("sort_order");
 
   if (error) throw new Error(error.message);
 
-  return getAcceptedCalendarDailyActions(
-    data as {
-      status: string;
-      approved_at: string | null;
-      daily_actions: CalendarDailyAction[];
-    } | null,
+  const projected = (data ?? []).map((action) => ({
+    ...action,
+    calendar_projection:
+      action.local_date === localDate ? "occurrence" as const : "due" as const,
+  })) as CalendarDailyActionWithPlan[];
+
+  return getVisibleCalendarDailyActions(
+    projected,
+    today,
   );
 }
 

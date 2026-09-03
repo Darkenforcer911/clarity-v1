@@ -670,21 +670,25 @@ export type Database = {
           completion_recorded_at: string | null
           completion_time_unknown: boolean
           created_at: string
-          daily_plan_id: string
+          daily_plan_id: string | null
           definition_of_done: string
           details: string | null
+          due_local_date: string | null
+          due_local_time: string | null
           estimated_minutes: number
           goal_id: string | null
           id: string
           life_area_id: string | null
           linked_context_kind: string | null
           linked_context_label: string | null
+          local_date: string
           ongoing_context_decision: string | null
           ongoing_context_suggestion: string | null
           original_input: string | null
           project_id: string | null
           recurrence_days: number[]
           recurrence_pattern: string
+          reminder_offsets_minutes: number[]
           relationship_source:
             | Database["public"]["Enums"]["life_model_provenance"]
             | null
@@ -713,21 +717,25 @@ export type Database = {
           completion_recorded_at?: string | null
           completion_time_unknown?: boolean
           created_at?: string
-          daily_plan_id: string
+          daily_plan_id?: string | null
           definition_of_done: string
           details?: string | null
+          due_local_date?: string | null
+          due_local_time?: string | null
           estimated_minutes: number
           goal_id?: string | null
           id: string
           life_area_id?: string | null
           linked_context_kind?: string | null
           linked_context_label?: string | null
+          local_date: string
           ongoing_context_decision?: string | null
           ongoing_context_suggestion?: string | null
           original_input?: string | null
           project_id?: string | null
           recurrence_days?: number[]
           recurrence_pattern?: string
+          reminder_offsets_minutes?: number[]
           relationship_source?:
             | Database["public"]["Enums"]["life_model_provenance"]
             | null
@@ -756,21 +764,25 @@ export type Database = {
           completion_recorded_at?: string | null
           completion_time_unknown?: boolean
           created_at?: string
-          daily_plan_id?: string
+          daily_plan_id?: string | null
           definition_of_done?: string
           details?: string | null
+          due_local_date?: string | null
+          due_local_time?: string | null
           estimated_minutes?: number
           goal_id?: string | null
           id?: string
           life_area_id?: string | null
           linked_context_kind?: string | null
           linked_context_label?: string | null
+          local_date?: string
           ongoing_context_decision?: string | null
           ongoing_context_suggestion?: string | null
           original_input?: string | null
           project_id?: string | null
           recurrence_days?: number[]
           recurrence_pattern?: string
+          reminder_offsets_minutes?: number[]
           relationship_source?:
             | Database["public"]["Enums"]["life_model_provenance"]
             | null
@@ -1552,8 +1564,9 @@ export type Database = {
       notification_deliveries: {
         Row: {
           attempt_count: number
-          calendar_commitment_id: string
+          calendar_commitment_id: string | null
           created_at: string
+          daily_action_id: string | null
           id: string
           last_error_code: string | null
           lease_expires_at: string | null
@@ -1569,8 +1582,9 @@ export type Database = {
         }
         Insert: {
           attempt_count?: number
-          calendar_commitment_id: string
+          calendar_commitment_id?: string | null
           created_at?: string
+          daily_action_id?: string | null
           id?: string
           last_error_code?: string | null
           lease_expires_at?: string | null
@@ -1586,8 +1600,9 @@ export type Database = {
         }
         Update: {
           attempt_count?: number
-          calendar_commitment_id?: string
+          calendar_commitment_id?: string | null
           created_at?: string
+          daily_action_id?: string | null
           id?: string
           last_error_code?: string | null
           lease_expires_at?: string | null
@@ -1602,6 +1617,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "notification_deliveries_action_owner_fk"
+            columns: ["daily_action_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "daily_actions"
+            referencedColumns: ["id", "user_id"]
+          },
           {
             foreignKeyName: "notification_deliveries_commitment_owner_fk"
             columns: ["calendar_commitment_id", "user_id"]
@@ -1994,16 +2016,21 @@ export type Database = {
           cadence_count: number | null
           created_at: string
           created_via: Database["public"]["Enums"]["life_model_provenance"]
+          details: string | null
+          due_local_time: string | null
+          due_offset_days: number | null
           ended_at: string | null
           estimated_minutes: number
           goal_id: string | null
           id: string
-          life_area_id: string
+          life_area_id: string | null
           preferred_time: string | null
+          reminder_offsets_minutes: number[]
           project_id: string | null
           skip_policy: Database["public"]["Enums"]["routine_skip_policy"]
           source_proposal_id: string | null
           status: Database["public"]["Enums"]["routine_status"]
+          start_on: string
           title: string
           updated_at: string
           user_id: string
@@ -2014,16 +2041,21 @@ export type Database = {
           cadence_count?: number | null
           created_at?: string
           created_via?: Database["public"]["Enums"]["life_model_provenance"]
+          details?: string | null
+          due_local_time?: string | null
+          due_offset_days?: number | null
           ended_at?: string | null
           estimated_minutes: number
           goal_id?: string | null
           id?: string
-          life_area_id: string
+          life_area_id?: string | null
           preferred_time?: string | null
+          reminder_offsets_minutes?: number[]
           project_id?: string | null
           skip_policy?: Database["public"]["Enums"]["routine_skip_policy"]
           source_proposal_id?: string | null
           status?: Database["public"]["Enums"]["routine_status"]
+          start_on: string
           title: string
           updated_at?: string
           user_id: string
@@ -2034,16 +2066,21 @@ export type Database = {
           cadence_count?: number | null
           created_at?: string
           created_via?: Database["public"]["Enums"]["life_model_provenance"]
+          details?: string | null
+          due_local_time?: string | null
+          due_offset_days?: number | null
           ended_at?: string | null
           estimated_minutes?: number
           goal_id?: string | null
           id?: string
-          life_area_id?: string
+          life_area_id?: string | null
           preferred_time?: string | null
+          reminder_offsets_minutes?: number[]
           project_id?: string | null
           skip_policy?: Database["public"]["Enums"]["routine_skip_policy"]
           source_proposal_id?: string | null
           status?: Database["public"]["Enums"]["routine_status"]
+          start_on?: string
           title?: string
           updated_at?: string
           user_id?: string
@@ -2129,6 +2166,27 @@ export type Database = {
           p_suggested_method?: string
           p_title: string
           p_why_it_exists?: string
+        }
+        Returns: string
+      }
+      create_action_occurrence_v1: {
+        Args: {
+          p_completed?: boolean
+          p_completion_evidence_only?: boolean
+          p_daily_plan_id?: string
+          p_details?: string
+          p_due_local_date?: string
+          p_due_local_time?: string
+          p_duration_minutes: number
+          p_local_date: string
+          p_linked_context_kind?: string
+          p_linked_context_label?: string
+          p_ongoing_context_suggestion?: string
+          p_recurrence_days?: number[]
+          p_recurrence_pattern?: string
+          p_reminder_offsets_minutes?: number[]
+          p_title: string
+          p_when_time?: string
         }
         Returns: string
       }
@@ -2238,8 +2296,8 @@ export type Database = {
       }
       create_completed_plan_evidence: {
         Args: {
-          p_actual_minutes?: number
-          p_completed_time?: string
+          p_actual_minutes?: number | null
+          p_completed_time?: string | null
           p_daily_plan_id: string
           p_details?: string
           p_title: string
@@ -2417,6 +2475,14 @@ export type Database = {
       materialize_notification_deliveries: {
         Args: { p_now?: string }
         Returns: number
+      }
+      materialize_routine_action_occurrences: {
+        Args: { p_local_date: string }
+        Returns: number
+      }
+      remove_action_occurrence_v1: {
+        Args: { p_daily_action_id: string }
+        Returns: undefined
       }
       reconcile_previous_day: {
         Args: {
@@ -2824,6 +2890,36 @@ export type Database = {
           p_suggested_method: string
           p_title: string
           p_why_it_exists: string
+        }
+        Returns: undefined
+      }
+      update_action_occurrence_v1: {
+        Args: {
+          p_daily_action_id: string
+          p_details?: string | null
+          p_due_local_date?: string | null
+          p_due_local_time?: string | null
+          p_duration_minutes: number
+          p_reminder_offsets_minutes?: number[]
+          p_recurrence_days?: number[]
+          p_recurrence_pattern?: string
+          p_title: string
+          p_when_time?: string
+        }
+        Returns: undefined
+      }
+      update_completed_action_occurrence_v1: {
+        Args: {
+          p_actual_minutes?: number
+          p_completed_time?: string
+          p_daily_action_id: string
+          p_details?: string
+          p_due_local_date?: string
+          p_due_local_time?: string
+          p_recurrence_days?: number[]
+          p_recurrence_pattern?: string
+          p_reminder_offsets_minutes?: number[]
+          p_title: string
         }
         Returns: undefined
       }

@@ -49,6 +49,7 @@ import { HistoricalOutcomeCorrectionEditor } from "./historical-outcome-correcti
 import { PendingButton } from "./pending-button";
 import { SwipeToRemove } from "./swipe-to-remove";
 import { CalendarDailyActions } from "./calendar-daily-actions";
+import { AddActionForm } from "./add-action-form";
 import type { CalendarDailyAction } from "@/lib/clarity/calendar-daily-actions";
 
 export function CalendarAgenda({
@@ -77,6 +78,7 @@ export function CalendarAgenda({
   const router = useRouter();
   const [now, setNow] = useState(() => new Date(initialNow));
   const [addOpen, setAddOpen] = useState(false);
+  const [addKind, setAddKind] = useState<"action" | "commitment" | null>(null);
   const [openId, setOpenId] = useState<string | null>(() =>
     resolveCalendarCommitmentSelection(initialCommitmentId, commitments),
   );
@@ -93,6 +95,7 @@ export function CalendarAgenda({
   const deadlines = sorted.filter((item) => item.commitment_type === "deadline");
   const closeForm = useCallback(() => {
     setAddOpen(false);
+    setAddKind(null);
     setEditingId(null);
   }, []);
   const handleSaved = useCallback(() => {
@@ -328,7 +331,20 @@ export function CalendarAgenda({
         />
       )}
 
-      {!isPast && (addOpen ? (
+      {!isPast && addOpen && addKind === "action" && (
+        <AddActionForm
+          localDate={selectedDate}
+          timezone={timezone}
+          destination="calendar"
+          open
+          hideTrigger
+          onOpenChange={(open) => {
+            if (!open) closeForm();
+          }}
+        />
+      )}
+
+      {!isPast && addOpen && addKind === "commitment" && (
         <CalendarCommitmentForm
           selectedDate={selectedDate}
           timezone={timezone}
@@ -336,7 +352,34 @@ export function CalendarAgenda({
           onCancel={closeForm}
           onSaved={handleSaved}
         />
-      ) : (
+      )}
+
+      {!isPast && addOpen && addKind === null && (
+        <div className="grid gap-3 rounded-2xl border border-border bg-card p-4">
+          <p className="text-sm font-semibold">What are you adding?</p>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setAddKind("action")}
+            className="h-12 justify-start rounded-xl"
+          >
+            Action
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setAddKind("commitment")}
+            className="h-12 justify-start rounded-xl"
+          >
+            Event or deadline
+          </Button>
+          <Button type="button" variant="ghost" onClick={closeForm}>
+            Cancel
+          </Button>
+        </div>
+      )}
+
+      {!isPast && !addOpen && (
         <Button
           type="button"
           variant="outline"
@@ -344,13 +387,14 @@ export function CalendarAgenda({
           onClick={() => {
             setEditingId(null);
             setAddOpen(true);
+            setAddKind(null);
           }}
           className="h-12 w-full rounded-xl text-base"
         >
           <Plus />
-          Add commitment
+          Add
         </Button>
-      ))}
+      )}
     </section>
   );
 }

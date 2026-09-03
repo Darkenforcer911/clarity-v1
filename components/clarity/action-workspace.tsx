@@ -5,10 +5,13 @@ import {
   History,
   MoreHorizontal,
   NotebookPen,
+  Pencil,
   Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useActionState, useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
+import { updateActionAction } from "@/app/(app)/today/action-workspace-actions";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -16,15 +19,23 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { ActionNote, DailyAction } from "@/lib/clarity/daily-loop-queries";
+import type {
+  ActionLifeContext,
+  ActionNote,
+  DailyAction,
+} from "@/lib/clarity/daily-loop-queries";
+import { initialDailyLoopActionState } from "@/lib/clarity/action-state";
+import { ActionFields } from "./action-fields";
 import { ChangeActionTimeForm } from "./change-action-time-form";
 import { ActionUpdateHistory } from "./action-update-history";
 import { CorrectCompletionTimeForm } from "./correct-completion-time-form";
 import { LogActionUpdate } from "./log-action-note";
 import { RemoveActionPanel } from "./remove-action-panel";
+import { PendingButton } from "./pending-button";
 
 type OpenPanel =
   | "time"
+  | "edit"
   | "completion-time"
   | "log"
   | "updates"
@@ -37,13 +48,24 @@ export function ActionWorkspace({
   timezone,
   scheduledTimeInput,
   completionTimeInput,
+  localDate,
+  routine,
+  returnHref,
+  activeToday,
+  editable,
 }: {
   action: DailyAction;
   updates: ActionNote[];
   timezone: string;
   scheduledTimeInput: string;
   completionTimeInput: string;
+  localDate: string;
+  routine: ActionLifeContext["routine"];
+  returnHref: string;
+  activeToday: boolean;
+  editable: boolean;
 }) {
+  const router = useRouter();
   const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [deletedUpdateIds, setDeletedUpdateIds] = useState<
@@ -109,13 +131,24 @@ export function ActionWorkspace({
             align="end"
             className="w-48 rounded-xl border-border bg-card p-2"
           >
-            <DropdownMenuItem
-              onSelect={() => openWorkspacePanel("time")}
-              className="min-h-11 cursor-pointer rounded-lg"
-            >
-              <Clock3 />
-              Change time
-            </DropdownMenuItem>
+            {editable && (
+              <>
+                <DropdownMenuItem
+                  onSelect={() => openWorkspacePanel("edit")}
+                  className="min-h-11 cursor-pointer rounded-lg"
+                >
+                  <Pencil />
+                  Edit action
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => openWorkspacePanel("time")}
+                  className="min-h-11 cursor-pointer rounded-lg"
+                >
+                  <Clock3 />
+                  Change time
+                </DropdownMenuItem>
+              </>
+            )}
             {action.status === "completed" && (
               <DropdownMenuItem
                 onSelect={() => openWorkspacePanel("completion-time")}
@@ -125,13 +158,15 @@ export function ActionWorkspace({
                 Correct completion time
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem
-              onSelect={() => openWorkspacePanel("log")}
-              className="min-h-11 cursor-pointer rounded-lg"
-            >
-              <NotebookPen />
-              Log update
-            </DropdownMenuItem>
+            {activeToday && (
+              <DropdownMenuItem
+                onSelect={() => openWorkspacePanel("log")}
+                className="min-h-11 cursor-pointer rounded-lg"
+              >
+                <NotebookPen />
+                Log update
+              </DropdownMenuItem>
+            )}
             {visibleUpdates.length > 0 && (
               <DropdownMenuItem
                 onSelect={() => openWorkspacePanel("updates")}
@@ -154,10 +189,21 @@ export function ActionWorkspace({
         </p>
       )}
 
-      {openPanel === "time" && (
+      {openPanel === "time" && editable && (
         <ChangeActionTimeForm
           action={action}
           scheduledTimeInput={scheduledTimeInput}
+          onClose={() => setOpenPanel(null)}
+          onSaved={handleTimeSaved}
+        />
+      )}
+      {openPanel === "edit" && editable && (
+        <ActionEditForm
+          action={action}
+          localDate={localDate}
+          timezone={timezone}
+          scheduledTimeInput={scheduledTimeInput}
+          routine={routine}
           onClose={() => setOpenPanel(null)}
           onSaved={handleTimeSaved}
         />
@@ -172,7 +218,7 @@ export function ActionWorkspace({
             onSaved={handleCompletionTimeSaved}
           />
         )}
-      {openPanel === "log" && (
+      {openPanel === "log" && activeToday && (
         <LogActionUpdate
           actionId={action.id}
           onClose={() => setOpenPanel(null)}
@@ -187,13 +233,20 @@ export function ActionWorkspace({
           onDeleted={handleUpdateDeleted}
         />
       )}
-      {openPanel === "remove" && action.status === "active" && (
+      {openPanel === "remove" &&
+        (action.status === "active" || action.status === "proposed") && (
         <RemoveActionPanel
           actionId={action.id}
+          occurrenceOnly={action.status === "proposed"}
           onClose={() => setOpenPanel(null)}
+          onRemoved={() => {
+            router.push(returnHref);
+            router.refresh();
+          }}
         />
       )}
-      {action.status === "active" && openPanel !== "remove" && (
+      {(action.status === "active" || action.status === "proposed") &&
+        openPanel !== "remove" && (
         <Button
           type="button"
           variant="ghost"
@@ -201,9 +254,79 @@ export function ActionWorkspace({
           className="h-10 w-auto justify-start rounded-lg px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
         >
           <Trash2 />
-          Remove from today
+          {action.status === "active" ? "Remove from today" : "Remove Action"}
         </Button>
       )}
     </div>
+  );
+}
+
+function ActionEditForm({
+  action,
+  localDate,
+  timezone,
+  scheduledTimeInput,
+  routine,
+  onClose,
+  onSaved,
+}: {
+  action: DailyAction;
+  localDate: string;
+  timezone: string;
+  scheduledTimeInput: string;
+  routine: ActionLifeContext["routine"];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [state, formAction] = useActionState(
+    updateActionAction,
+    initialDailyLoopActionState,
+  );
+
+  useEffect(() => {
+    if (state.updateSucceededAt) onSaved();
+  }, [onSaved, state.updateSucceededAt]);
+
+  return (
+    <form
+      action={formAction}
+      className="space-y-5 rounded-2xl border border-border bg-card p-4"
+    >
+      <input type="hidden" name="actionId" value={action.id} />
+      <ActionFields
+        state={state}
+        simple
+        hideGeneratedDetails
+        localDate={localDate}
+        timezone={timezone}
+        initialValues={{
+          title: action.title,
+          estimatedMinutes: action.estimated_minutes,
+          scheduledTime: scheduledTimeInput,
+          details: action.details ?? "",
+          dueLocalDate: action.due_local_date ?? "",
+          dueLocalTime: action.due_local_time?.slice(0, 5) ?? "",
+          reminderOffsets: action.reminder_offsets_minutes,
+          recurrencePattern: routine?.cadence ?? "none",
+          recurrenceDays: routine?.weekdays ?? [],
+          whyItExists: action.why_it_exists,
+          definitionOfDone: action.definition_of_done,
+          suggestedMethod: action.suggested_method,
+        }}
+      />
+      {state.error && (
+        <p role="alert" className="text-sm text-destructive">
+          {state.error}
+        </p>
+      )}
+      <div className="grid grid-cols-2 gap-3">
+        <Button type="button" variant="outline" onClick={onClose}>
+          Cancel
+        </Button>
+        <PendingButton type="submit" pendingLabel="Saving…">
+          Save
+        </PendingButton>
+      </div>
+    </form>
   );
 }

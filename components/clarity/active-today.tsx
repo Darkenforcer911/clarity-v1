@@ -611,7 +611,13 @@ export function ActiveToday({
         </details>
       )}
 
-      {!isClosing && <AddActionForm planId={plan.id} />}
+      {!isClosing && (
+        <AddActionForm
+          planId={plan.id}
+          localDate={plan.local_date}
+          timezone={profile.timezone}
+        />
+      )}
 
       <div className="border-t border-border pt-7">
         {isClosing ? (

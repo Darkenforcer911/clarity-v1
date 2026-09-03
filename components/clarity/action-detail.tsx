@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { formatReminderSummary } from "@/lib/clarity/calendar-commitment-form-ui";
 import type {
   ActionLifeContext,
   ActionNote,
@@ -23,6 +24,7 @@ import {
   formatFullLocalDate,
   formatScheduledTime,
   formatWeekday,
+  getLocalDate,
 } from "@/lib/clarity/date-time";
 import { formatDuration } from "@/lib/clarity/duration";
 import { ActionWorkspace } from "./action-workspace";
@@ -40,7 +42,7 @@ export function ActionDetail({
   backHref = "/today",
 }: {
   action: DailyAction;
-  plan: DailyPlan;
+  plan: DailyPlan | null;
   profile: Profile;
   lifeContext: ActionLifeContext;
   updates: ActionNote[];
@@ -78,11 +80,27 @@ export function ActionDetail({
     : "";
   const linkedContext = extractLinkedContext(action.why_it_exists);
   const meaningfulWhy =
-    !linkedContext && isMeaningfulWhy(action.why_it_exists, plan.focus)
+    !linkedContext && isMeaningfulWhy(action.why_it_exists, plan?.focus ?? null)
       ? action.why_it_exists
       : null;
   const usefulDone = isUsefulGeneratedDetail(action.definition_of_done);
   const usefulMethod = isUsefulGeneratedDetail(action.suggested_method);
+  const activeToday =
+    plan?.status === "active" &&
+    action.local_date === getLocalDate(profile.timezone) &&
+    ["active", "completed"].includes(action.status);
+  const editable =
+    action.status === "active" ||
+    (action.status === "proposed" &&
+      action.local_date >= getLocalDate(profile.timezone));
+  const recurrence = recurrenceCopy(lifeContext.routine);
+  const displayedDuration = completed
+    ? action.actual_minutes
+      ? formatDuration(action.actual_minutes)
+      : null
+    : action.estimated_minutes > 0
+      ? formatDuration(action.estimated_minutes)
+      : null;
 
   return (
     <section className="space-y-6">
@@ -107,14 +125,22 @@ export function ActionDetail({
         </h1>
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <Clock3 className="size-4" />
-          <span>{scheduledTime ? `At ${scheduledTime}` : "Anytime today"}</span>
-          <span aria-hidden="true">·</span>
-          <span>{formatDuration(action.estimated_minutes)}</span>
-          {action.recurrence_pattern !== "none" && (
+          <span>
+            {scheduledTime
+              ? `At ${scheduledTime}`
+              : `Anytime ${formatWeekday(action.local_date)}`}
+          </span>
+          {displayedDuration && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span>{displayedDuration}</span>
+            </>
+          )}
+          {recurrence && (
             <>
               <span aria-hidden="true">·</span>
               <Repeat2 className="size-4" />
-              <span>{recurrenceCopy(action)}</span>
+              <span>{recurrence}</span>
             </>
           )}
         </div>
@@ -125,7 +151,7 @@ export function ActionDetail({
         )}
         {completed && action.completion_time_unknown && (
           <p className="text-xs text-muted-foreground">
-            Completed {formatWeekday(plan.local_date)} · Time not recorded
+            Completed {formatWeekday(action.local_date)} · Time not recorded
           </p>
         )}
       </div>
@@ -143,6 +169,27 @@ export function ActionDetail({
       )}
 
       <ActionLifeRelationships lifeContext={lifeContext} />
+
+      {(action.due_local_date || action.reminder_offsets_minutes.length > 0) && (
+        <dl className="grid gap-2 rounded-2xl border border-border bg-card p-4 text-sm">
+          {action.due_local_date && (
+            <div className="flex items-baseline justify-between gap-4">
+              <dt className="text-muted-foreground">Due</dt>
+              <dd className="text-right font-medium">
+                {formatActionDue(action.due_local_date, action.due_local_time)}
+              </dd>
+            </div>
+          )}
+          {action.reminder_offsets_minutes.length > 0 && (
+            <div className="flex items-baseline justify-between gap-4">
+              <dt className="text-muted-foreground">Reminder</dt>
+              <dd className="text-right font-medium">
+                {formatReminderSummary(action.reminder_offsets_minutes)}
+              </dd>
+            </div>
+          )}
+        </dl>
+      )}
 
       {linkedContext && (
         <div className="flex items-start gap-3 rounded-2xl bg-secondary p-4">
@@ -166,12 +213,33 @@ export function ActionDetail({
           />
         )}
 
-      {!readOnly && (
+      {activeToday && (
         <ActionCompletionControl
           actionId={action.id}
           completed={completed}
           completionTime={completionTime}
         />
+      )}
+
+      <Button
+        asChild
+        variant="outline"
+        size="lg"
+        className="h-12 w-full rounded-xl text-base"
+      >
+        <Link href={buildActionClarityHref(action.id)}>
+          <MessageCircle className="size-5 text-primary" />
+          Ask Clarity
+        </Link>
+      </Button>
+
+      {action.details && (
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <p className="text-sm font-semibold">Details</p>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+            {action.details}
+          </p>
+        </div>
       )}
 
       <div className="rounded-2xl bg-card p-5">
@@ -200,28 +268,26 @@ export function ActionDetail({
         </dl>
       </div>
 
-      <Button asChild variant="outline" size="lg" className="h-12 w-full rounded-xl text-base">
-        <Link href={buildActionClarityHref(action.id)}>
-          <MessageCircle className="size-5 text-primary" />
-          Ask Clarity
-        </Link>
-      </Button>
-
       {readOnly ? (
         <HistoricalActionRecord
           action={action}
           updates={updates}
           timezone={profile.timezone}
         />
-      ) : (
+      ) : editable || activeToday ? (
         <ActionWorkspace
           action={action}
           updates={updates}
           timezone={profile.timezone}
           scheduledTimeInput={scheduledTimeInput}
           completionTimeInput={completionTimeInput}
+          localDate={action.local_date}
+          routine={lifeContext.routine}
+          returnHref={backHref}
+          activeToday={activeToday}
+          editable={editable}
         />
-      )}
+      ) : null}
     </section>
   );
 }
@@ -234,9 +300,6 @@ function ActionLifeRelationships({
   const relationships = [
     lifeContext.project
       ? { label: "Project", title: lifeContext.project.title }
-      : null,
-    lifeContext.routine
-      ? { label: "Routine", title: lifeContext.routine.title }
       : null,
     lifeContext.goal
       ? { label: "Goal", title: lifeContext.goal.title }
@@ -300,21 +363,29 @@ function HistoricalActionRecord({
   );
 }
 
-function recurrenceCopy(action: DailyAction) {
-  if (action.recurrence_pattern === "daily") {
+function recurrenceCopy(routine: ActionLifeContext["routine"]) {
+  if (routine?.cadence === "daily") {
     return "Daily";
   }
 
-  if (action.recurrence_pattern === "weekly") {
+  if (routine?.cadence === "weekly") {
     return "Weekly";
   }
 
-  if (action.recurrence_pattern === "certain_days") {
+  if (routine?.cadence === "certain_days") {
     const labels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    return action.recurrence_days.map((day) => labels[day]).join(", ");
+    return routine.weekdays.map((day) => labels[day]).join(", ");
   }
 
   return "";
+}
+
+function formatActionDue(localDate: string, localTime: string | null) {
+  const date = formatFullLocalDate(localDate);
+  if (!localTime) return date;
+  const [hourText, minute] = localTime.slice(0, 5).split(":");
+  const hour = Number(hourText);
+  return `${date} · ${hour % 12 || 12}:${minute} ${hour < 12 ? "am" : "pm"}`;
 }
 
 function extractLinkedContext(value: string) {

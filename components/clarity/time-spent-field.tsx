@@ -19,11 +19,13 @@ export function TimeSpentField({
   onChange,
   plannedMinutes,
   label = "How long?",
+  hideHeading = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   plannedMinutes?: number;
   label?: string;
+  hideHeading?: boolean;
 }) {
   const [custom, setCustom] = useState(
     () =>
@@ -34,12 +36,16 @@ export function TimeSpentField({
 
   return (
     <fieldset className="space-y-2">
-      <legend className="text-sm font-medium">{label}</legend>
-      <p className="text-xs text-muted-foreground">
-        {plannedMinutes
-          ? `Planned ${formatDuration(plannedMinutes)} · Actual time is optional`
-          : "Actual time is optional"}
-      </p>
+      <legend className={hideHeading ? "sr-only" : "text-sm font-medium"}>
+        {label}
+      </legend>
+      {!hideHeading && (
+        <p className="text-xs text-muted-foreground">
+          {plannedMinutes
+            ? `Planned ${formatDuration(plannedMinutes)} · Actual time is optional`
+            : "Actual time is optional"}
+        </p>
+      )}
       <div className="flex flex-wrap gap-2">
         {choices.map((choice) => (
           <button

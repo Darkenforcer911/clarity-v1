@@ -4,7 +4,6 @@ import { Check, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   useActionState,
   useEffect,
-  useRef,
   useState,
   useTransition,
 } from "react";
@@ -15,23 +14,22 @@ import {
   updateCompletedPlanEvidenceAction,
 } from "@/app/(app)/today/reconciliation-actions";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import type { DailyAction } from "@/lib/clarity/daily-loop-queries";
 import { formatScheduledTime } from "@/lib/clarity/date-time";
 import { formatDuration } from "@/lib/clarity/duration";
 import { initialProposedReconciliationActionState } from "@/lib/clarity/proposed-reconciliation-state";
-import { DetailsControl } from "./details-control";
+import { ActionFields } from "./action-fields";
 import { PendingButton } from "./pending-button";
 import { SwipeToRemove } from "./swipe-to-remove";
-import { TimeSelector } from "./time-selector";
-import { TimeSpentField } from "./time-spent-field";
 
 export function SoFarToday({
   planId,
+  localDate,
   timezone,
   completedActions,
 }: {
   planId: string;
+  localDate: string;
   timezone: string;
   completedActions: DailyAction[];
 }) {
@@ -53,6 +51,8 @@ export function SoFarToday({
       {adding && (
         <CompletedEvidenceForm
           planId={planId}
+          localDate={localDate}
+          timezone={timezone}
           onCancel={() => setAdding(false)}
           onSaved={() => setAdding(false)}
         />
@@ -77,31 +77,25 @@ export function SoFarToday({
 
 function CompletedEvidenceForm({
   planId,
+  localDate,
+  timezone,
   onCancel,
   onSaved,
 }: {
   planId: string;
+  localDate: string;
+  timezone: string;
   onCancel: () => void;
   onSaved: () => void;
 }) {
-  const [completedTime, setCompletedTime] = useState("");
-  const [actualMinutes, setActualMinutes] = useState("");
-  const [details, setDetails] = useState("");
-  const [detailsExpanded, setDetailsExpanded] = useState(false);
   const [state, action] = useActionState(
     createCompletedPlanEvidenceAction,
     initialProposedReconciliationActionState,
   );
-  const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     if (!state.savedAt) return;
-    formRef.current?.reset();
     const frame = window.requestAnimationFrame(() => {
-      setCompletedTime("");
-      setActualMinutes("");
-      setDetails("");
-      setDetailsExpanded(false);
       onSaved();
     });
     return () => window.cancelAnimationFrame(frame);
@@ -109,39 +103,17 @@ function CompletedEvidenceForm({
 
   return (
     <form
-      ref={formRef}
       action={action}
       data-reconciliation-form
       className="min-w-0 space-y-4 rounded-2xl border border-border bg-card p-4"
     >
       <input type="hidden" name="planId" value={planId} />
-      <label className="block space-y-2 text-sm font-medium">
-        <span>What did you complete?</span>
-        <Input name="title" required maxLength={200} autoFocus />
-      </label>
-
-      <TimeSelector
-        name="completedTime"
-        label="When"
-        summary={formatTimeSummary(completedTime)}
-        value={completedTime}
-        onChange={setCompletedTime}
-        onRemove={completedTime ? () => setCompletedTime("") : undefined}
-      />
-      <input type="hidden" name="actualMinutes" value={actualMinutes} />
-      <TimeSpentField
-        label="Actual duration"
-        value={actualMinutes}
-        onChange={setActualMinutes}
-      />
-      <DetailsControl
-        name="details"
-        value={details}
-        onChange={setDetails}
-        maxLength={2000}
-        placeholder="Add useful context"
-        expanded={detailsExpanded}
-        onExpandedChange={setDetailsExpanded}
+      <ActionFields
+        mode="completed"
+        simple
+        state={{}}
+        localDate={localDate}
+        timezone={timezone}
       />
 
       {state.error && <InlineError message={state.error} />}
@@ -262,14 +234,7 @@ function EditCompletedEvidenceForm({
   timezone: string;
   onClose: () => void;
 }) {
-  const [completedTime, setCompletedTime] = useState(() =>
-    formatTimeInput(action.completed_at, timezone),
-  );
-  const [actualMinutes, setActualMinutes] = useState(
-    action.actual_minutes?.toString() ?? "",
-  );
-  const [details, setDetails] = useState(action.details ?? "");
-  const [detailsExpanded, setDetailsExpanded] = useState(false);
+  const completedTime = formatTimeInput(action.completed_at, timezone);
   const [state, formAction] = useActionState(
     updateCompletedPlanEvidenceAction,
     initialProposedReconciliationActionState,
@@ -283,32 +248,23 @@ function EditCompletedEvidenceForm({
     <div className="space-y-4 rounded-2xl border border-border bg-card p-4">
       <form action={formAction} data-reconciliation-form className="space-y-4">
         <input type="hidden" name="actionId" value={action.id} />
-        <label className="block space-y-2 text-sm font-medium">
-          <span>What did you complete?</span>
-          <Input name="title" required maxLength={200} defaultValue={action.title} />
-        </label>
-        <TimeSelector
-          name="completedTime"
-          label="When"
-          summary={formatTimeSummary(completedTime)}
-          value={completedTime}
-          onChange={setCompletedTime}
-          onRemove={completedTime ? () => setCompletedTime("") : undefined}
-        />
-        <input type="hidden" name="actualMinutes" value={actualMinutes} />
-        <TimeSpentField
-          label="Actual duration"
-          value={actualMinutes}
-          onChange={setActualMinutes}
-        />
-        <DetailsControl
-          name="details"
-          value={details}
-          onChange={setDetails}
-          maxLength={2000}
-          placeholder="Add useful context"
-          expanded={detailsExpanded}
-          onExpandedChange={setDetailsExpanded}
+        <ActionFields
+          mode="completed"
+          simple
+          state={{}}
+          localDate={action.local_date}
+          timezone={timezone}
+          initialValues={{
+            title: action.title,
+            completedTime,
+            actualMinutes: action.actual_minutes,
+            dueLocalDate: action.due_local_date ?? "",
+            dueLocalTime: action.due_local_time?.slice(0, 5) ?? "",
+            recurrencePattern: action.routine?.cadence ?? "none",
+            recurrenceDays: action.routine?.weekdays ?? [],
+            reminderOffsets: action.routine?.reminder_offsets_minutes ?? [],
+            details: action.details ?? "",
+          }}
         />
         {state.error && <InlineError message={state.error} />}
         <div className="grid grid-cols-2 gap-3">
@@ -351,13 +307,6 @@ function formatTimeInput(value: string | null, timezone: string) {
     minute: "2-digit",
     hourCycle: "h23",
   }).format(new Date(value));
-}
-
-function formatTimeSummary(value: string) {
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return "Anytime";
-  const [hourText, minute] = value.split(":");
-  const hour = Number(hourText);
-  return `${hour % 12 || 12}:${minute} ${hour < 12 ? "am" : "pm"}`;
 }
 
 function formatCompletedEvidenceSummary(

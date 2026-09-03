@@ -174,15 +174,18 @@ function AttachedActionContext({
   );
   const meta = [
     scheduledTime ? `At ${scheduledTime}` : "Anytime",
-    formatDuration(context.action.estimated_minutes),
+    context.action.status === "completed"
+      ? context.action.actual_minutes
+        ? formatDuration(context.action.actual_minutes)
+        : null
+      : context.action.estimated_minutes > 0
+        ? formatDuration(context.action.estimated_minutes)
+        : null,
     formatActionStatus(context.action.status),
-  ];
+  ].filter((value): value is string => Boolean(value));
   const relationships = [
     context.lifeContext.project
       ? `Project: ${context.lifeContext.project.title}`
-      : null,
-    context.lifeContext.routine
-      ? `Routine: ${context.lifeContext.routine.title}`
       : null,
     context.lifeContext.goal ? `Goal: ${context.lifeContext.goal.title}` : null,
   ].filter((value): value is string => Boolean(value));

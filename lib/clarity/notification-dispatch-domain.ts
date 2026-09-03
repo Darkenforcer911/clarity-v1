@@ -18,20 +18,33 @@ export const reminderOffsetMinutesSchema = z.number().int().nonnegative();
 
 export type NotificationCommitmentType = "event" | "deadline";
 
-export type ClaimedNotificationDelivery = {
+type ClaimedNotificationDeliveryBase = {
   deliveryId: string;
   attemptCount: number;
   endpoint: string;
   p256dhKey: string;
   authKey: string;
-  commitmentId: string;
-  commitmentType: NotificationCommitmentType;
   title: string;
   occurrenceDate: string;
   reminderOffsetMinutes: number;
   scheduledFor: string;
   usefulUntil: string;
 };
+
+export type ClaimedNotificationDelivery =
+  | (ClaimedNotificationDeliveryBase & {
+      targetType: "calendar";
+      commitmentId: string;
+      commitmentType: NotificationCommitmentType;
+      actionId: null;
+    })
+  | (ClaimedNotificationDeliveryBase & {
+      targetType: "action";
+      commitmentId: null;
+      commitmentType: null;
+      actionId: string;
+      actionReminderAnchor: "when" | "due";
+    });
 
 export type NotificationPayload = {
   title: string;
@@ -65,6 +78,28 @@ export function isNotificationOccurrenceEligible(input: {
 export function buildNotificationPayload(
   delivery: ClaimedNotificationDelivery,
 ): NotificationPayload {
+  if (delivery.targetType === "action") {
+    return {
+      title: delivery.title,
+      body:
+        delivery.reminderOffsetMinutes === 0
+          ? delivery.actionReminderAnchor === "due"
+            ? "Due now"
+            : "It's time"
+          : formatActionNotificationBody(
+              delivery.reminderOffsetMinutes,
+              delivery.actionReminderAnchor,
+            ),
+      tag: [
+        "action",
+        delivery.actionId,
+        delivery.occurrenceDate,
+        delivery.reminderOffsetMinutes,
+      ].join(":"),
+      targetUrl: `/today/actions/${encodeURIComponent(delivery.actionId)}?from=calendar&date=${encodeURIComponent(delivery.occurrenceDate)}`,
+    };
+  }
+
   return {
     title: delivery.title,
     body: formatNotificationBody(
@@ -79,6 +114,23 @@ export function buildNotificationPayload(
     ].join(":"),
     targetUrl: `/calendar?date=${encodeURIComponent(delivery.occurrenceDate)}&commitment=${encodeURIComponent(delivery.commitmentId)}`,
   };
+}
+
+function formatActionNotificationBody(
+  offsetMinutes: number,
+  anchor: "when" | "due",
+) {
+  const verb = anchor === "due" ? "Due" : "Starts";
+  if (offsetMinutes === 1440) return `${verb} tomorrow`;
+  if (offsetMinutes % 1440 === 0) {
+    const days = offsetMinutes / 1440;
+    return `${verb} in ${days} ${days === 1 ? "day" : "days"}`;
+  }
+  if (offsetMinutes % 60 === 0) {
+    const hours = offsetMinutes / 60;
+    return `${verb} in ${hours} ${hours === 1 ? "hour" : "hours"}`;
+  }
+  return `${verb} in ${offsetMinutes} minutes`;
 }
 
 export function formatNotificationBody(

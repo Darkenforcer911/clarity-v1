@@ -72,7 +72,10 @@ export function parseDayCorrectionForm(formData: FormData):
   }
 
   let duration: number | null = null;
-  if (value.correctionType === "historical_event") {
+  if (
+    value.correctionType === "historical_event" ||
+    value.correctionType === "completed_item"
+  ) {
     const hours = value.durationHours || "0";
     const minutes = value.durationMinutes || "0";
     if (!/^\d+$/.test(hours) || !/^\d+$/.test(minutes)) {
@@ -96,10 +99,7 @@ export function parseDayCorrectionForm(formData: FormData):
       title: value.title,
       occurredTime,
       durationMinutes: duration,
-      details:
-        value.correctionType === "historical_event"
-          ? value.details || null
-          : null,
+      details: value.details || null,
     },
   };
 }

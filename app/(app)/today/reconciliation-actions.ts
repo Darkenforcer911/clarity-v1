@@ -49,6 +49,11 @@ export async function createCompletedPlanEvidenceAction(
       title: formData.get("title"),
       completedTime: formData.get("completedTime") ?? "",
       actualMinutes: formData.get("actualMinutes") ?? "",
+      dueLocalDate: formData.get("dueLocalDate") ?? "",
+      dueLocalTime: formData.get("dueLocalTime") ?? "",
+      recurrencePattern: formData.get("recurrencePattern") ?? "none",
+      recurrenceDays: formData.getAll("recurrenceDays"),
+      reminderOffsets: formData.getAll("reminderOffsets"),
       details: formData.get("details") ?? "",
     });
     await createCompletedPlanEvidence({ planId, ...input });
@@ -69,6 +74,11 @@ export async function updateCompletedPlanEvidenceAction(
       title: formData.get("title"),
       completedTime: formData.get("completedTime") ?? "",
       actualMinutes: formData.get("actualMinutes") ?? "",
+      dueLocalDate: formData.get("dueLocalDate") ?? "",
+      dueLocalTime: formData.get("dueLocalTime") ?? "",
+      recurrencePattern: formData.get("recurrencePattern") ?? "none",
+      recurrenceDays: formData.getAll("recurrenceDays"),
+      reminderOffsets: formData.getAll("reminderOffsets"),
       details: formData.get("details") ?? "",
     });
     await updateCompletedPlanEvidence({ actionId, ...input });

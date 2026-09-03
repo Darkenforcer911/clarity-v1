@@ -29,6 +29,16 @@ export type DailyAction = Tables<"daily_actions"> & {
   completion_time_unknown: boolean;
   completion_evidence_only: boolean;
   reschedule_count: number;
+  routine?: Pick<
+    Tables<"routines">,
+    | "id"
+    | "title"
+    | "cadence"
+    | "weekdays"
+    | "due_offset_days"
+    | "due_local_time"
+    | "reminder_offsets_minutes"
+  > | null;
 };
 export type DayRecord = Tables<"day_records">;
 export type Profile = Tables<"profiles">;
@@ -37,7 +47,16 @@ export type ActionAssistantMessage = Tables<"action_assistant_messages">;
 export type ActionLifeContext = {
   goal: Pick<Tables<"goals">, "id" | "title"> | null;
   project: Pick<Tables<"projects">, "id" | "title"> | null;
-  routine: Pick<Tables<"routines">, "id" | "title"> | null;
+  routine: Pick<
+    Tables<"routines">,
+    | "id"
+    | "title"
+    | "cadence"
+    | "weekdays"
+    | "due_offset_days"
+    | "due_local_time"
+    | "reminder_offsets_minutes"
+  > | null;
 };
 export type CarriedAction = DailyAction & {
   sourceLocalDate: string;
@@ -158,7 +177,9 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
     Promise.all([
       supabase
         .from("daily_plans")
-        .select("*, daily_actions(*), day_records(*)")
+        .select(
+          "*, daily_actions(*, routine:routines!daily_actions_routine_owner_fkey(id, title, cadence, weekdays, due_offset_days, due_local_time, reminder_offsets_minutes)), day_records(*)",
+        )
         .eq("user_id", user.id)
         .eq("local_date", localDate)
         .maybeSingle(),
@@ -171,7 +192,9 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
         .order("sort_order"),
       supabase
         .from("daily_plans")
-        .select("*, daily_actions(*), day_records(*)")
+        .select(
+          "*, daily_actions(*, routine:routines!daily_actions_routine_owner_fkey(id, title, cadence, weekdays, due_offset_days, due_local_time, reminder_offsets_minutes)), day_records(*)",
+        )
         .eq("user_id", user.id)
         .lt("local_date", localDate)
         .order("local_date", { ascending: false })
@@ -196,7 +219,9 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
   const rescheduledActions = rescheduledResult.data as DailyAction[];
   const sourcePlanIds = [
     ...new Set(
-      rescheduledActions.map((action) => action.daily_plan_id),
+      rescheduledActions
+        .map((action) => action.daily_plan_id)
+        .filter((planId): planId is string => Boolean(planId)),
     ),
   ];
   const sourcePlansResult =
@@ -218,7 +243,9 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
     sourcePlansResult.data.map((plan) => [plan.id, plan.local_date]),
   );
   const carriedActions = rescheduledActions.map((action) => {
-    const sourceLocalDate = sourceDates.get(action.daily_plan_id);
+    const sourceLocalDate = action.daily_plan_id
+      ? sourceDates.get(action.daily_plan_id)
+      : undefined;
 
     if (!sourceLocalDate) {
       throw new Error("Carried action source plan not found.");
@@ -434,7 +461,7 @@ export async function getActionWorkspaceData(actionId: string) {
         supabase
           .from("daily_actions")
           .select(
-            "*, daily_plans!daily_actions_plan_owner_fkey(*), goal:goals!daily_actions_goal_owner_fkey(id, title), project:projects!daily_actions_project_owner_fkey(id, title), routine:routines!daily_actions_routine_owner_fkey(id, title)",
+            "*, daily_plans!daily_actions_plan_owner_fkey(*), goal:goals!daily_actions_goal_owner_fkey(id, title), project:projects!daily_actions_project_owner_fkey(id, title), routine:routines!daily_actions_routine_owner_fkey(id, title, cadence, weekdays, due_offset_days, due_local_time, reminder_offsets_minutes)",
           )
           .eq("id", actionId)
           .eq("user_id", user.id)
@@ -485,15 +512,11 @@ export async function getActionWorkspaceData(actionId: string) {
     ...action
   } = actionWithPlan;
 
-  if (!plan) {
-    throw new Error("Daily plan not found.");
-  }
-
   const result = {
     user,
     profile: profileResult.data,
     action: action as DailyAction,
-    plan: plan as DailyPlan,
+    plan: (plan ?? null) as DailyPlan | null,
     lifeContext: {
       goal,
       project,

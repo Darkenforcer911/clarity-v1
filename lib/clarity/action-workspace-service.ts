@@ -22,6 +22,7 @@ import {
 import {
   getActionWorkspaceData,
   getAuthenticatedUserAndProfile,
+  type DailyPlan,
 } from "./daily-loop-queries";
 import {
   encodeTaskAssistantResponse,
@@ -89,7 +90,7 @@ export class ActionWorkspaceService {
   }
 
   async addAction(
-    planId: string,
+    planId: string | null,
     rawInput: AddActionInput,
     options: {
       helpRequested?: boolean;
@@ -99,20 +100,28 @@ export class ActionWorkspaceService {
     const input = addActionSchema.parse(rawInput);
     const { supabase, user, profile } =
       await getAuthenticatedUserAndProfile();
-    const { data: plan, error: planError } = await supabase
-      .from("daily_plans")
-      .select("*")
-      .eq("id", planId)
-      .eq("user_id", user.id)
-      .single();
+    const planResult = planId
+      ? await supabase
+          .from("daily_plans")
+          .select("*")
+          .eq("id", planId)
+          .eq("user_id", user.id)
+          .single()
+      : { data: null, error: null };
+    const plan = planResult.data;
+    const requestedLocalDate = plan?.local_date ?? input.localDate;
 
-    if (planError || !plan) {
+    if (planResult.error || (planId && !plan)) {
       throw new ActionWorkspaceServiceError(
-        planError?.message ?? "Daily plan not found.",
+        planResult.error?.message ?? "Daily plan not found.",
       );
     }
 
-    if (plan.local_date !== getLocalDate(profile.timezone)) {
+    if (!requestedLocalDate) {
+      throw new ActionWorkspaceServiceError("Choose when this Action belongs.");
+    }
+
+    if (plan && plan.local_date !== getLocalDate(profile.timezone)) {
       throw new ActionWorkspaceServiceError(
         "Today has changed. Return to Today before adding an action.",
       );
@@ -123,7 +132,7 @@ export class ActionWorkspaceService {
       clarificationQuestion: input.clarificationQuestion,
       clarificationAnswer: input.clarificationAnswer,
       context: input.context,
-      planFocus: plan.focus,
+      planFocus: plan?.focus ?? null,
       helpRequested: options.helpRequested,
     });
 
@@ -158,7 +167,10 @@ export class ActionWorkspaceService {
     };
     const timing = resolveNewActionTiming(
       actionableInput,
-      plan,
+      {
+        local_date: requestedLocalDate,
+        aiming_to_sleep_at: plan?.aiming_to_sleep_at ?? null,
+      },
       profile.timezone,
       options.timeDecision,
     );
@@ -206,24 +218,26 @@ export class ActionWorkspaceService {
         .map((row) => row.ongoing_context_suggestion)
         .filter((value): value is string => Boolean(value)),
     });
-    const enrichment = enrichAddedAction(actionableInput, plan.focus);
-    const { data: actionId, error } = await supabase.rpc("add_daily_action", {
-      p_daily_plan_id: plan.id,
+    const occurrenceDate = timing.startOn ?? requestedLocalDate;
+    const dueLocalDate =
+      actionableInput.dueLocalDate &&
+      actionableInput.recurrencePattern !== "none" &&
+      occurrenceDate !== requestedLocalDate
+        ? addLocalDays(
+            actionableInput.dueLocalDate,
+            localDayDistance(requestedLocalDate, occurrenceDate),
+          )
+        : actionableInput.dueLocalDate;
+    const { data: actionId, error } = await supabase.rpc("create_action_occurrence_v1", {
+      p_local_date: occurrenceDate,
+      ...(plan ? { p_daily_plan_id: plan.id } : {}),
       p_title: actionableInput.title,
-      p_action_type: actionableInput.actionType,
-      p_estimated_minutes: actionableInput.estimatedMinutes,
-      ...(timing.scheduledTime
-        ? {
-            p_scheduled_time: timing.scheduledTime,
-          }
-        : {}),
-      ...(timing.startOn ? { p_start_on: timing.startOn } : {}),
-      p_why_it_exists: enrichment.whyItExists,
-      p_definition_of_done: enrichment.definitionOfDone,
-      p_suggested_method: enrichment.suggestedMethod,
-      p_original_input: input.title,
-      p_clarification_question: input.clarificationQuestion || undefined,
-      p_clarification_answer: input.clarificationAnswer || undefined,
+      p_duration_minutes: actionableInput.estimatedMinutes,
+      p_when_time: actionableInput.scheduledTime || undefined,
+      p_due_local_date: dueLocalDate || undefined,
+      p_due_local_time: actionableInput.dueLocalTime || undefined,
+      p_reminder_offsets_minutes: actionableInput.reminderOffsets,
+      p_details: actionableInput.details || undefined,
       p_recurrence_pattern: input.recurrencePattern,
       p_recurrence_days: input.recurrenceDays,
       p_linked_context_label: contextLink.relationship?.label,
@@ -236,7 +250,8 @@ export class ActionWorkspaceService {
 
     return {
       outcome: "saved" as const,
-      planStatus: plan.status,
+      planStatus: plan?.status ?? "proposed",
+      localDate: occurrenceDate,
       actionId,
       ongoingContextSuggestion: contextLink.ongoingSuggestion,
     };
@@ -259,18 +274,18 @@ export class ActionWorkspaceService {
     const input = editActionSchema.parse(rawInput);
     const data = await this.getAction(actionId);
     const { supabase } = await getAuthenticatedUserAndProfile();
-    const { error } = await callPendingActionWorkspaceRpc(
-      supabase,
-      "update_daily_action",
-      {
-        p_daily_action_id: data.action.id,
-        ...rpcActionFields(
-          input,
-          data.plan.local_date,
-          data.profile.timezone,
-        ),
-      },
-    );
+    const { error } = await supabase.rpc("update_action_occurrence_v1", {
+      p_daily_action_id: data.action.id,
+      p_title: input.title,
+      p_duration_minutes: input.estimatedMinutes,
+      p_when_time: input.scheduledTime || undefined,
+      p_due_local_date: input.dueLocalDate || undefined,
+      p_due_local_time: input.dueLocalTime || undefined,
+      p_reminder_offsets_minutes: input.reminderOffsets,
+      p_details: input.details || undefined,
+      p_recurrence_pattern: input.recurrencePattern,
+      p_recurrence_days: input.recurrenceDays,
+    });
 
     ensureRpcSucceeded(error);
   }
@@ -281,7 +296,7 @@ export class ActionWorkspaceService {
   ) {
     const data = await this.getAction(actionId);
     if (
-      data.plan.status !== "proposed" ||
+      (data.plan !== null && data.plan.status !== "proposed") ||
       data.action.status !== "proposed"
     ) {
       throw new ActionWorkspaceServiceError(
@@ -312,7 +327,7 @@ export class ActionWorkspaceService {
   ) {
     const data = await this.getAction(actionId);
 
-    if (data.plan.local_date !== getLocalDate(data.profile.timezone)) {
+    if (data.action.local_date !== getLocalDate(data.profile.timezone)) {
       throw new ActionWorkspaceServiceError(
         "Today has changed. Return to Today before changing this action.",
       );
@@ -320,7 +335,7 @@ export class ActionWorkspaceService {
 
     if (input.actionType === "fixed" && input.scheduledTime) {
       const proposedTime = localDateTimeToIso(
-        data.plan.local_date,
+        data.action.local_date,
         input.scheduledTime,
         data.profile.timezone,
       );
@@ -346,6 +361,12 @@ export class ActionWorkspaceService {
       actionType: input.actionType,
       estimatedMinutes: input.estimatedMinutes,
       scheduledTime: input.scheduledTime,
+      dueLocalDate: data.action.due_local_date ?? "",
+      dueLocalTime: data.action.due_local_time?.slice(0, 5) ?? "",
+      reminderOffsets: data.action.reminder_offsets_minutes,
+      recurrencePattern: recurrencePatternFor(data.lifeContext.routine),
+      recurrenceDays: data.lifeContext.routine?.weekdays ?? [],
+      details: data.action.details ?? "",
       whyItExists: data.action.why_it_exists,
       definitionOfDone: data.action.definition_of_done,
       suggestedMethod: data.action.suggested_method,
@@ -358,10 +379,11 @@ export class ActionWorkspaceService {
   ) {
     const input = completionTimeCorrectionSchema.parse(rawInput);
     const data = await this.getAction(actionId);
+    const plan = requireActionPlan(data.plan);
 
     if (
-      data.plan.status !== "active" ||
-      data.plan.local_date !== getLocalDate(data.profile.timezone) ||
+      plan.status !== "active" ||
+      data.action.local_date !== getLocalDate(data.profile.timezone) ||
       data.action.status !== "completed"
     ) {
       throw new ActionWorkspaceServiceError(
@@ -373,7 +395,7 @@ export class ActionWorkspaceService {
 
     if (!input.timeUnknown && input.completionTime) {
       completedAt = localDateTimeToIso(
-        data.plan.local_date,
+        data.action.local_date,
         input.completionTime,
         data.profile.timezone,
       );
@@ -442,6 +464,12 @@ export class ActionWorkspaceService {
       );
     }
 
+    if (!action.daily_plan_id) {
+      throw new ActionWorkspaceServiceError(
+        "This Action is not part of a proposed plan.",
+      );
+    }
+
     const { data: plan, error: planError } = await supabase
       .from("daily_plans")
       .select("status")
@@ -485,9 +513,10 @@ export class ActionWorkspaceService {
 
   async completeProposedAction(actionId: string) {
     const data = await this.getAction(actionId);
+    const plan = requireActionPlan(data.plan);
 
     if (
-      data.plan.status !== "proposed" ||
+      plan.status !== "proposed" ||
       data.action.status !== "proposed" ||
       data.action.action_type !== "fixed" ||
       !data.action.scheduled_time
@@ -509,9 +538,10 @@ export class ActionWorkspaceService {
 
   async makeProposedActionEasier(actionId: string) {
     const data = await this.getAction(actionId);
+    const plan = requireActionPlan(data.plan);
 
     if (
-      data.plan.status !== "proposed" ||
+      plan.status !== "proposed" ||
       data.action.status !== "proposed"
     ) {
       throw new ActionWorkspaceServiceError(
@@ -547,10 +577,11 @@ export class ActionWorkspaceService {
 
   async moveProposedActionToTomorrow(actionId: string) {
     const data = await this.getAction(actionId);
+    const plan = requireActionPlan(data.plan);
     const { supabase } = await getAuthenticatedUserAndProfile();
     const { error } = await supabase.rpc("reschedule_proposed_action", {
       p_daily_action_id: data.action.id,
-      p_target_date: addLocalDays(data.plan.local_date, 1),
+      p_target_date: addLocalDays(plan.local_date, 1),
     });
 
     ensureRpcSucceeded(error);
@@ -559,15 +590,16 @@ export class ActionWorkspaceService {
   async adaptAction(actionId: string, rawInput: AdaptActionInput) {
     const input = adaptActionSchema.parse(rawInput);
     const data = await this.getAction(actionId);
+    const plan = requireActionPlan(data.plan);
     let targetDate: string | null = null;
 
     if (input.outcome === "tomorrow") {
-      targetDate = addLocalDays(data.plan.local_date, 1);
+      targetDate = addLocalDays(plan.local_date, 1);
     } else if (input.outcome === "choose_date") {
       targetDate = input.targetDate ?? null;
     }
 
-    if (targetDate && targetDate <= data.plan.local_date) {
+    if (targetDate && targetDate <= plan.local_date) {
       throw new ActionWorkspaceServiceError("Choose a future date.");
     }
 
@@ -579,7 +611,7 @@ export class ActionWorkspaceService {
         p_daily_action_id: data.action.id,
         ...rpcActionFields(
           input,
-          data.plan.local_date,
+          plan.local_date,
           data.profile.timezone,
         ),
         p_outcome:
@@ -634,6 +666,15 @@ export class ActionWorkspaceService {
     ensureRpcSucceeded(error);
   }
 
+  async removeOccurrence(actionId: string) {
+    const { supabase } = await getAuthenticatedUserAndProfile();
+    const { error } = await supabase.rpc("remove_action_occurrence_v1", {
+      p_daily_action_id: actionId,
+    });
+
+    ensureRpcSucceeded(error);
+  }
+
   async restoreToToday(actionId: string) {
     const { supabase } = await getAuthenticatedUserAndProfile();
     const { error } = await callPendingActionWorkspaceRpc(
@@ -648,9 +689,10 @@ export class ActionWorkspaceService {
   async askClarity(actionId: string, question: string) {
     const parsed = taskAssistantQuestionSchema.parse({ actionId, question });
     const data = await this.getAction(parsed.actionId);
+    const plan = requireActionPlan(data.plan);
     const response = await this.taskAssistant.respond({
       action: data.action,
-      plan: data.plan,
+      plan,
       question: parsed.question,
       notes: data.notes.map((note) => note.note),
     });
@@ -670,6 +712,7 @@ export class ActionWorkspaceService {
 
   async applyAssistantRevision(actionId: string, messageId: string) {
     const data = await this.getAction(actionId);
+    const plan = requireActionPlan(data.plan);
     const message = data.messages.find(
       (candidate) =>
         candidate.id === messageId && candidate.role === "assistant",
@@ -710,7 +753,7 @@ export class ActionWorkspaceService {
           p_daily_action_id: data.action.id,
           ...rpcActionFields(
             revisionInput,
-            data.plan.local_date,
+            plan.local_date,
             data.profile.timezone,
           ),
         },
@@ -914,6 +957,24 @@ function sleepTimeForTargetDate(
   );
 }
 
+function requireActionPlan(plan: DailyPlan | null): DailyPlan {
+  if (!plan) {
+    throw new ActionWorkspaceServiceError(
+      "This Action is not part of a Daily Plan.",
+    );
+  }
+  return plan;
+}
+
+function recurrencePatternFor(
+  routine: {
+    cadence: "daily" | "weekly" | "times_per_week" | "certain_days";
+  } | null,
+) {
+  if (!routine || routine.cadence === "times_per_week") return "none" as const;
+  return routine.cadence;
+}
+
 function rpcActionFields(
   input: EditActionInput,
   localDate: string,
@@ -953,21 +1014,11 @@ function localTimeFor(value: string, timezone: string) {
   }).format(new Date(value));
 }
 
-function enrichAddedAction(input: AddActionInput, focus: string | null) {
-  const linkedContext = input.context.trim();
-  const focusCopy = focus?.trim() || input.title;
-  const timing =
-    input.actionType === "fixed" && input.scheduledTime
-      ? `At ${input.scheduledTime},`
-      : "In a clear working block today,";
-
-  return {
-    whyItExists: linkedContext
-      ? `Context: ${linkedContext}`
-      : `Supports today’s focus: ${focusCopy}.`,
-    definitionOfDone: `${input.title} is finished and the result is saved or recorded.`,
-    suggestedMethod: `${timing} start with the smallest concrete step, work for up to ${input.estimatedMinutes} minutes, then check the result against the action title. Keep it aligned with today’s focus: ${focusCopy}.`,
-  };
+function localDayDistance(from: string, to: string) {
+  return Math.round(
+    (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) /
+      86_400_000,
+  );
 }
 
 export const actionWorkspaceService = new ActionWorkspaceService();

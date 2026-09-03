@@ -50,19 +50,23 @@ async function ActionDetailContent({
   }
 
   const activeAction =
-    data.plan.status === "active" &&
+    data.plan?.status === "active" &&
     actionWorkspaceService.isCurrentLocalPlan(
-      data.plan.local_date,
+      data.action.local_date,
       data.profile.timezone,
     ) &&
     ["active", "completed"].includes(data.action.status);
   const historicalAction =
-    data.plan.status === "closed" &&
+    data.plan?.status === "closed" &&
     ["completed", "rescheduled", "dropped"].includes(
       data.action.status,
     );
+  const editableDatedAction =
+    data.action.local_date >= getLocalDate(data.profile.timezone) &&
+    data.action.status === "proposed" &&
+    (data.plan === null || data.plan.status === "proposed");
 
-  if (!activeAction && !historicalAction) {
+  if (!activeAction && !historicalAction && !editableDatedAction) {
     redirect("/today");
   }
 
@@ -85,7 +89,7 @@ async function ActionDetailContent({
           ? `/calendar?date=${calendarDate}`
           : activeAction
           ? "/today/active"
-          : historicalAction && data.plan.local_date === currentLocalDate
+          : historicalAction && data.action.local_date === currentLocalDate
             ? "/today/summary"
             : "/today"
       }
