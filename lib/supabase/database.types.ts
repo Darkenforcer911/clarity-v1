@@ -661,6 +661,7 @@ export type Database = {
       daily_actions: {
         Row: {
           action_type: string
+          actual_minutes: number | null
           approved_at: string | null
           clarification_answer: string | null
           clarification_question: string | null
@@ -671,6 +672,7 @@ export type Database = {
           created_at: string
           daily_plan_id: string
           definition_of_done: string
+          details: string | null
           estimated_minutes: number
           goal_id: string | null
           id: string
@@ -702,6 +704,7 @@ export type Database = {
         }
         Insert: {
           action_type: string
+          actual_minutes?: number | null
           approved_at?: string | null
           clarification_answer?: string | null
           clarification_question?: string | null
@@ -712,6 +715,7 @@ export type Database = {
           created_at?: string
           daily_plan_id: string
           definition_of_done: string
+          details?: string | null
           estimated_minutes: number
           goal_id?: string | null
           id: string
@@ -743,6 +747,7 @@ export type Database = {
         }
         Update: {
           action_type?: string
+          actual_minutes?: number | null
           approved_at?: string | null
           clarification_answer?: string | null
           clarification_question?: string | null
@@ -753,6 +758,7 @@ export type Database = {
           created_at?: string
           daily_plan_id?: string
           definition_of_done?: string
+          details?: string | null
           estimated_minutes?: number
           goal_id?: string | null
           id?: string
@@ -2232,8 +2238,10 @@ export type Database = {
       }
       create_completed_plan_evidence: {
         Args: {
+          p_actual_minutes?: number
           p_completed_time?: string
           p_daily_plan_id: string
+          p_details?: string
           p_title: string
         }
         Returns: string
@@ -2787,8 +2795,10 @@ export type Database = {
       }
       update_completed_plan_evidence: {
         Args: {
+          p_actual_minutes?: number
           p_completed_time?: string
           p_daily_action_id: string
+          p_details?: string
           p_title: string
         }
         Returns: undefined

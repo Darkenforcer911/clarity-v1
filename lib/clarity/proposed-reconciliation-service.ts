@@ -23,12 +23,16 @@ export async function createCompletedPlanEvidence(input: {
   planId: string;
   title: string;
   completedTime: string | null;
+  actualMinutes: number | null;
+  details: string | null;
 }) {
   const { supabase } = await getAuthenticatedUserAndProfile();
   await callPendingRpc(supabase, "create_completed_plan_evidence", {
     p_daily_plan_id: input.planId,
     p_title: input.title,
     p_completed_time: input.completedTime,
+    p_actual_minutes: input.actualMinutes,
+    p_details: input.details,
   });
 }
 
@@ -36,12 +40,16 @@ export async function updateCompletedPlanEvidence(input: {
   actionId: string;
   title: string;
   completedTime: string | null;
+  actualMinutes: number | null;
+  details: string | null;
 }) {
   const { supabase } = await getAuthenticatedUserAndProfile();
   await callPendingRpc(supabase, "update_completed_plan_evidence", {
     p_daily_action_id: input.actionId,
     p_title: input.title,
     p_completed_time: input.completedTime,
+    p_actual_minutes: input.actualMinutes,
+    p_details: input.details,
   });
 }
 

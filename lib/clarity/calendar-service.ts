@@ -58,6 +58,10 @@ export type CalendarHistoricalRecord = {
   notes: string | null;
   actionOutcomeRevisions: HistoricalActionOutcomeRevision[];
   actionResolutionNotes: Record<string, string>;
+  completedEvidence: Record<
+    string,
+    { actualMinutes: number | null; details: string | null }
+  >;
 };
 
 export async function getCalendarPageData(requestedDate?: string) {
@@ -83,6 +87,21 @@ export async function getCalendarPageData(requestedDate?: string) {
           dailyActions.flatMap((action) =>
             action.resolution_note
               ? [[action.id, action.resolution_note]]
+              : [],
+          ),
+        ),
+        completedEvidence: Object.fromEntries(
+          dailyActions.flatMap((action) =>
+            action.completion_evidence_only
+              ? [
+                  [
+                    action.id,
+                    {
+                      actualMinutes: action.actual_minutes,
+                      details: action.details,
+                    },
+                  ],
+                ]
               : [],
           ),
         ),
@@ -385,6 +404,7 @@ async function getHistoricalRecord(
       revisionsResult.data,
     ),
     actionResolutionNotes: {},
+    completedEvidence: {},
   };
 }
 

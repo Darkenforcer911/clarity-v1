@@ -83,23 +83,27 @@ export function HistoricalDayActivity({
         {summary.completedCount} completed · {summary.totalCount} planned
       </p>
       <div className="space-y-2 rounded-2xl border border-border bg-card p-4">
-        {summary.completedActions.map((item) => (
-          <HistoricalActionRow
-            key={item.id}
-            actionId={item.id}
-            icon={<CheckCircle2 />}
-            title={item.title}
-            label={formatCompletedLabel(
-              item.completedAt,
-              timezone,
-              item.approximateMinutes,
-            )}
-            currentOutcome="completed"
-            completedAt={item.completedAt}
-            timezone={timezone}
-            localDate={localDate}
-          />
-        ))}
+        {summary.completedActions.map((item) => {
+          const evidence = record.completedEvidence[item.id];
+          return (
+            <HistoricalActionRow
+              key={item.id}
+              actionId={item.id}
+              icon={<CheckCircle2 />}
+              title={item.title}
+              label={formatCompletedLabel(
+                item.completedAt,
+                timezone,
+                evidence?.actualMinutes ?? item.approximateMinutes,
+              )}
+              detail={evidence?.details}
+              currentOutcome="completed"
+              completedAt={item.completedAt}
+              timezone={timezone}
+              localDate={localDate}
+            />
+          );
+        })}
         {progressed.map((item) => (
           <HistoricalActionRow key={item.id} actionId={item.id} icon={<History />} title={item.title} label={item.approximateMinutes ? `Some progress · ${formatDuration(item.approximateMinutes)}` : "Some progress"} detail={item.progressNote} currentOutcome="other" timezone={timezone} localDate={localDate} />
         ))}

@@ -8,6 +8,9 @@ export type CalendarDailyAction = {
   estimated_minutes: number;
   scheduled_time: string | null;
   completed_at: string | null;
+  completion_evidence_only: boolean;
+  actual_minutes: number | null;
+  details: string | null;
   rescheduled_for: string | null;
   resolution_note: string | null;
   sort_order: number;

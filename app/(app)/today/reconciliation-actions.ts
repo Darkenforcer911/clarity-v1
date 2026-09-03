@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import type { ProposedReconciliationActionState } from "@/lib/clarity/proposed-reconciliation-state";
+import { completedPlanEvidenceInputSchema } from "@/lib/clarity/completed-plan-evidence";
 import {
   completeProposedAction,
   createCompletedPlanEvidence,
@@ -17,13 +18,6 @@ import { calendarEventOutcomes } from "@/lib/clarity/calendar-commitments";
 const timeSchema = z
   .string()
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Choose a valid time.");
-
-const completedItemSchema = z.object({
-  title: z.string().trim().min(1, "Describe what you completed.").max(200),
-  completedTime: z.union([timeSchema, z.literal("")]).transform((value) =>
-    value === "" ? null : value,
-  ),
-});
 
 const calendarOutcomeSchema = z
   .object({
@@ -51,9 +45,11 @@ export async function createCompletedPlanEvidenceAction(
 ): Promise<ProposedReconciliationActionState> {
   try {
     const planId = z.string().uuid().parse(formData.get("planId"));
-    const input = completedItemSchema.parse({
+    const input = completedPlanEvidenceInputSchema.parse({
       title: formData.get("title"),
       completedTime: formData.get("completedTime") ?? "",
+      actualMinutes: formData.get("actualMinutes") ?? "",
+      details: formData.get("details") ?? "",
     });
     await createCompletedPlanEvidence({ planId, ...input });
     revalidatePlan();
@@ -69,9 +65,11 @@ export async function updateCompletedPlanEvidenceAction(
 ): Promise<ProposedReconciliationActionState> {
   try {
     const actionId = z.string().uuid().parse(formData.get("actionId"));
-    const input = completedItemSchema.parse({
+    const input = completedPlanEvidenceInputSchema.parse({
       title: formData.get("title"),
       completedTime: formData.get("completedTime") ?? "",
+      actualMinutes: formData.get("actualMinutes") ?? "",
+      details: formData.get("details") ?? "",
     });
     await updateCompletedPlanEvidence({ actionId, ...input });
     revalidatePlan();
