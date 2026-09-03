@@ -15,6 +15,7 @@ import {
 import {
   formatDuration,
 } from "@/lib/clarity/duration";
+import { formatCommitmentTime } from "@/lib/clarity/calendar-rules";
 import { resolveSecondarySettingExpansion } from "@/lib/clarity/secondary-setting-accordion";
 import { CalendarReminderField } from "./calendar-reminder-field";
 import { DetailsControl } from "./details-control";
@@ -23,7 +24,7 @@ import {
   SecondarySettingDisclosure,
   SecondarySettingStack,
 } from "./secondary-setting-disclosure";
-import { OptionalTimeSelector } from "./time-selector";
+import { OptionalTimeSelector, TimeSelector } from "./time-selector";
 import { TimeSpentField } from "./time-spent-field";
 
 export type ActionFieldValues = {
@@ -470,7 +471,10 @@ function ActionDueField({
   onExpandedChange: (expanded: boolean) => void;
 }) {
   const summary = dueLocalDate
-    ? [formatActionDueDate(dueLocalDate), dueLocalTime ? formatActionTime(dueLocalTime) : null]
+    ? [
+        formatActionDueDate(dueLocalDate),
+        dueLocalTime ? formatCommitmentTime(dueLocalTime) : null,
+      ]
         .filter(Boolean)
         .join(" · ")
     : "Not set";
@@ -501,18 +505,16 @@ function ActionDueField({
             />
           </label>
           {dueLocalDate && (
-            <label className="block w-full min-w-0 max-w-full space-y-2 overflow-hidden">
-              <span className="text-xs font-medium text-muted-foreground">
-                Optional time
-              </span>
-              <Input
-                type="time"
-                name="dueLocalTime"
-                value={dueLocalTime}
-                onChange={(event) => onTimeChange(event.currentTarget.value)}
-                className="h-12 w-full min-w-0 max-w-full rounded-xl [inline-size:100%] [max-inline-size:100%] [min-inline-size:0]"
-              />
-            </label>
+            <TimeSelector
+              name="dueLocalTime"
+              label="Time"
+              value={dueLocalTime}
+              onChange={onTimeChange}
+              summary={formatCommitmentTime(dueLocalTime) ?? "No time"}
+              onRemove={
+                dueLocalTime ? () => onTimeChange("") : undefined
+              }
+            />
           )}
         </div>
         {dueLocalDate && (
@@ -531,12 +533,6 @@ function ActionDueField({
       </SecondarySettingDisclosure>
     </fieldset>
   );
-}
-
-function formatActionTime(value: string) {
-  const [hourText, minute] = value.split(":");
-  const hour = Number(hourText);
-  return `${hour % 12 || 12}:${minute} ${hour < 12 ? "am" : "pm"}`;
 }
 
 function formatActionDueDate(value: string) {
