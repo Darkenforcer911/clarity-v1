@@ -42,3 +42,10 @@ export function resolveActionRecurrencePrimaryChoice(
 ) {
   return choice === "custom" ? "certain_days" : choice;
 }
+
+export function getActionRecurrenceDaysForSubmission(
+  pattern: string,
+  selectedDays: readonly number[],
+) {
+  return pattern === "certain_days" ? [...selectedDays] : [];
+}

@@ -9,6 +9,7 @@ import type { DailyLoopActionState } from "@/lib/clarity/action-state";
 import { resolveActionTimingFromOptionalTime } from "@/lib/clarity/action-time-field";
 import {
   formatActionRecurrenceSummary,
+  getActionRecurrenceDaysForSubmission,
   getActionRecurrencePrimaryChoice,
   resolveActionRecurrencePrimaryChoice,
 } from "@/lib/clarity/action-recurrence";
@@ -651,6 +652,10 @@ function RecurrenceFields({
 }) {
   const [selectedDays, setSelectedDays] = useState(initialDays);
   const summary = formatActionRecurrenceSummary(pattern, selectedDays);
+  const submittedDays = getActionRecurrenceDaysForSubmission(
+    pattern,
+    selectedDays,
+  );
 
   function toggleDay(day: number) {
     setSelectedDays((current) =>
@@ -663,14 +668,19 @@ function RecurrenceFields({
   return (
     <div className="min-w-0">
       <input type="hidden" name="recurrencePattern" value={pattern} />
+      {submittedDays.map((day) => (
+        <input key={day} type="hidden" name="recurrenceDays" value={day} />
+      ))}
       <RecurrenceControl
         expanded={expanded}
         summary={summary}
         value={getActionRecurrencePrimaryChoice(pattern)}
         onExpandedChange={onExpandedChange}
-        onChange={(choice) =>
-          onPatternChange(resolveActionRecurrencePrimaryChoice(choice))
-        }
+        onChange={(choice) => {
+          const nextPattern = resolveActionRecurrencePrimaryChoice(choice);
+          if (nextPattern !== "certain_days") setSelectedDays([]);
+          onPatternChange(nextPattern);
+        }}
       >
         <div className="space-y-2">
           <p className="text-sm text-muted-foreground">Repeat on</p>
@@ -690,8 +700,6 @@ function RecurrenceFields({
                   >
                     <input
                       type="checkbox"
-                      name="recurrenceDays"
-                      value={day.value}
                       checked={selected}
                       onChange={() => toggleDay(day.value)}
                       className="sr-only"
