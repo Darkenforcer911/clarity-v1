@@ -266,7 +266,10 @@ export async function updateActionAction(
     const actionId = z.string().uuid().parse(formData.get("actionId"));
     const input = editActionSchema.parse(editableActionFields(formData));
     await actionWorkspaceService.updateAction(actionId, input);
+    revalidatePath("/today");
     revalidatePath("/today/plan");
+    revalidatePath("/today/active");
+    revalidatePath("/calendar");
     revalidatePath(`/today/actions/${actionId}`);
     return {
       error: null,
@@ -527,8 +530,24 @@ export async function removeActionOccurrenceAction(
     const actionId = z.string().uuid().parse(formData.get("actionId"));
     await actionWorkspaceService.removeOccurrence(actionId);
     revalidateActiveActionPaths(actionId);
-    revalidatePath("/calendar");
     return { success: true, error: null, actionId };
+  } catch {
+    return {
+      success: false,
+      error: "Couldn’t remove this Action. Try again.",
+      actionId: null,
+    };
+  }
+}
+
+export async function removeActionOccurrenceInlineAction(
+  actionId: string,
+): Promise<ActiveActionMutationResult> {
+  try {
+    const parsedActionId = z.string().uuid().parse(actionId);
+    await actionWorkspaceService.removeOccurrence(parsedActionId);
+    revalidateActiveActionPaths(parsedActionId);
+    return { success: true, error: null, actionId: parsedActionId };
   } catch {
     return {
       success: false,
@@ -562,6 +581,7 @@ export async function restoreActionToTodayAction(
 function revalidateActiveActionPaths(actionId: string) {
   revalidatePath("/today");
   revalidatePath("/today/active");
+  revalidatePath("/calendar");
   revalidatePath(`/today/actions/${actionId}`);
 }
 

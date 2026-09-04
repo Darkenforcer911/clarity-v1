@@ -77,13 +77,22 @@ export async function deleteCalendarCommitmentAction(
   previous: CalendarActionState,
   formData: FormData,
 ): Promise<CalendarActionState> {
+  let commitmentId: string | null = null;
   try {
-    const commitmentId = z.string().uuid().parse(formData.get("commitmentId"));
+    commitmentId = z.string().uuid().parse(formData.get("commitmentId"));
     await deleteCalendarCommitment(commitmentId);
     revalidateCalendar();
     return { error: null, saved: true, version: previous.version + 1 };
   } catch (error) {
-    return actionError(error, previous);
+    console.error("Failed to delete Calendar commitment", {
+      commitmentId,
+      error,
+    });
+    return {
+      error: "Couldn’t remove this event. Try again.",
+      saved: false,
+      version: previous.version + 1,
+    };
   }
 }
 

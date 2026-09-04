@@ -166,6 +166,18 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
   const { supabase, user, profile } = await getAuthenticatedUserAndProfile();
   const localDate = getLocalDate(profile.timezone);
   const yesterdayDate = addLocalDays(localDate, -1);
+  const materializationResult = await timer.measure(
+    "current_action_occurrences",
+    () =>
+      callUntypedRpc(supabase, "materialize_routine_action_occurrences", {
+        p_local_date: localDate,
+      }),
+  );
+
+  if (materializationResult.error) {
+    throw new Error(materializationResult.error.message);
+  }
+
   const [
     planResult,
     rescheduledResult,

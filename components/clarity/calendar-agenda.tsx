@@ -14,7 +14,6 @@ import { useActionState, useCallback, useEffect, useState } from "react";
 import {
   cancelCalendarCommitmentAction,
   correctCalendarEventOccurrenceOutcomeAction,
-  deleteCalendarCommitmentAction,
   skipCalendarEventOccurrenceAction,
 } from "@/app/(app)/calendar/actions";
 import { initialCalendarActionState } from "@/lib/clarity/calendar-action-state";
@@ -40,6 +39,7 @@ import {
   resolveCalendarCommitmentSelection,
 } from "@/lib/clarity/calendar-rules";
 import { CalendarCommitmentForm } from "./calendar-commitment-form";
+import { CalendarCommitmentDeleteControl } from "./calendar-commitment-delete-control";
 import { useAppShellEditorState } from "./app-shell-editor-context";
 import {
   CalendarCorrections,
@@ -516,26 +516,41 @@ function CommitmentRow({
     commitment.occurrence_date === today &&
     commitment.status === "scheduled" &&
     !commitment.reconciliation_outcome;
+  const canSwipeRemove =
+    !readOnly &&
+    commitment.status === "scheduled" &&
+    !commitment.reconciliation_outcome &&
+    (!recurringEvent || canSkipThisOccurrence);
   const [deletionPending, setDeletionPending] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [deletionError, setDeletionError] = useState<string | null>(null);
+  const [deleteConfirming, setDeleteConfirming] = useState(false);
 
   async function handleDelete() {
     if (deletionPending) return;
+
+    if (!canSkipThisOccurrence) {
+      setDeletionError(null);
+      setDeleteConfirming(true);
+      onSwipeOpenChange(false);
+      if (!open) onOpen();
+      return;
+    }
 
     setDeletionPending(true);
     setDeletionError(null);
     const formData = new FormData();
     formData.set("commitmentId", commitment.id);
+    formData.set("occurrenceDate", commitment.occurrence_date);
 
     try {
-      const result = await deleteCalendarCommitmentAction(
+      const result = await skipCalendarEventOccurrenceAction(
         initialCalendarActionState,
         formData,
       );
       if (!result.saved) {
         setDeletionError(
-          result.error ?? "Couldn’t delete the commitment. Try again.",
+          result.error ?? "Couldn’t skip this occurrence. Try again.",
         );
         onSwipeOpenChange(false);
         return;
@@ -550,7 +565,7 @@ function CommitmentRow({
         onSaved();
       }, delay);
     } catch {
-      setDeletionError("Couldn’t delete the commitment. Try again.");
+      setDeletionError("Couldn’t skip this occurrence. Try again.");
       onSwipeOpenChange(false);
     } finally {
       setDeletionPending(false);
@@ -566,10 +581,10 @@ function CommitmentRow({
       onRemove={handleDelete}
       removalPending={deletionPending}
       removing={removing}
-      enabled={!readOnly}
+      enabled={canSwipeRemove}
       accessibilityContext="from Calendar"
-      actionLabel="Delete"
-      pendingLabel="Deleting…"
+      actionLabel={canSkipThisOccurrence ? "Skip today" : "Delete"}
+      pendingLabel={canSkipThisOccurrence ? "Skipping…" : "Deleting…"}
     >
       <article className="min-w-0 rounded-2xl border border-border bg-card">
         <button
@@ -632,6 +647,14 @@ function CommitmentRow({
                   commitment={commitment}
                   onSaved={onSaved}
                 />
+                {commitment.recurrence === "none" && (
+                  <CalendarCommitmentDeleteControl
+                    commitment={commitment}
+                    confirming={deleteConfirming}
+                    onConfirmingChange={setDeleteConfirming}
+                    onSaved={onSaved}
+                  />
+                )}
               </div>
             )}
             {commitment.commitment_type === "event" &&
@@ -648,6 +671,14 @@ function CommitmentRow({
                   currentDay={!readOnly}
                 />
               )}
+            {readOnly && commitment.recurrence === "none" && (
+              <CalendarCommitmentDeleteControl
+                commitment={commitment}
+                confirming={deleteConfirming}
+                onConfirmingChange={setDeleteConfirming}
+                onSaved={onSaved}
+              />
+            )}
           </div>
         )}
       </article>

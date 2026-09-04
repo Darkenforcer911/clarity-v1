@@ -343,19 +343,6 @@ export function ProposedActionCard({
                     <Pencil />
                     Edit action
                   </Button>
-                  {!timePassed && !completing && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() => {
-                        setEditing(false);
-                        setCompleting(true);
-                      }}
-                      className="h-10 w-auto justify-start rounded-lg px-2 text-muted-foreground"
-                    >
-                      <Check /> Already done
-                    </Button>
-                  )}
                   {!completing && (
                     <Button
                       type="button"

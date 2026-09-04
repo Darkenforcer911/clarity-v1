@@ -75,8 +75,7 @@ export function getVisibleCalendarDailyActions(
       return (
         action.local_date >= today &&
         action.daily_plans.status === "proposed" &&
-        action.status === "proposed" &&
-        (Boolean(action.original_input) || Boolean(action.source_routine_id))
+        action.status === "proposed"
       );
     })
     .map(({ daily_plans, ...action }) => {
