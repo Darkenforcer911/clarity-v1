@@ -2,7 +2,6 @@
 
 import {
   ArrowRight,
-  Check,
   ChevronDown,
   Pencil,
   Trash2,
@@ -393,21 +392,15 @@ function ProposedActionCompactCard({
         />
       ) : (
         <>
-          <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-            <Check className="size-4" />
-          </span>
           <span className="min-w-0 flex-1">
             <span className="block font-semibold leading-6">{action.title}</span>
             <span className="mt-2 block text-sm text-muted-foreground">
               {formatDuration(action.estimated_minutes)}
             </span>
           </span>
-          <span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-            Kept
-            <ChevronDown
-              className={`size-4 transition-transform duration-200 motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`}
-            />
-          </span>
+          <ChevronDown
+            className={`mt-1 size-4 shrink-0 text-muted-foreground transition-transform duration-200 motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`}
+          />
         </>
       )}
     </>

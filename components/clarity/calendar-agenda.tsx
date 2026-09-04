@@ -13,7 +13,6 @@ import { useActionState, useCallback, useEffect, useState } from "react";
 
 import {
   cancelCalendarCommitmentAction,
-  correctCalendarEventOccurrenceOutcomeAction,
   skipCalendarEventOccurrenceAction,
 } from "@/app/(app)/calendar/actions";
 import { initialCalendarActionState } from "@/lib/clarity/calendar-action-state";
@@ -40,17 +39,16 @@ import {
 } from "@/lib/clarity/calendar-rules";
 import { CalendarCommitmentForm } from "./calendar-commitment-form";
 import { CalendarCommitmentDeleteControl } from "./calendar-commitment-delete-control";
-import { useAppShellEditorState } from "./app-shell-editor-context";
 import {
   CalendarCorrections,
   HistoricalDayActivity,
 } from "./calendar-history";
-import { HistoricalOutcomeCorrectionEditor } from "./historical-outcome-correction-editor";
 import { PendingButton } from "./pending-button";
 import { SwipeToRemove } from "./swipe-to-remove";
 import { CalendarDailyActions } from "./calendar-daily-actions";
 import { AddActionForm } from "./add-action-form";
 import type { CalendarDailyAction } from "@/lib/clarity/calendar-daily-actions";
+import { CalendarOccurrenceOutcomeControl } from "./calendar-occurrence-outcome-control";
 
 export function CalendarAgenda({
   selectedDate,
@@ -623,6 +621,16 @@ function CommitmentRow({
                 {commitment.details}
               </p>
             )}
+            {!readOnly &&
+              commitment.commitment_type === "event" &&
+              commitment.occurrence_date === today && (
+                <CalendarOccurrenceOutcomeControl
+                  commitment={commitment}
+                  timezone={timezone}
+                  onSaved={onSaved}
+                  currentDay
+                />
+              )}
             {!readOnly && (
               <div className="space-y-2">
                 {commitment.status === "scheduled" && (
@@ -657,18 +665,12 @@ function CommitmentRow({
                 )}
               </div>
             )}
-            {commitment.commitment_type === "event" &&
-              (readOnly ||
-                (commitment.occurrence_date === today &&
-                  (timingState === "time_passed" ||
-                    isRecordedCalendarOutcome(
-                      commitment.reconciliation_outcome,
-                    )))) && (
-                <CorrectCalendarOutcomeControl
+            {readOnly && commitment.commitment_type === "event" && (
+                <CalendarOccurrenceOutcomeControl
                   commitment={commitment}
                   timezone={timezone}
                   onSaved={onSaved}
-                  currentDay={!readOnly}
+                  currentDay={false}
                 />
               )}
             {readOnly && commitment.recurrence === "none" && (
@@ -754,125 +756,6 @@ function SkipCalendarEventOccurrenceControl({
       )}
     </div>
   );
-}
-
-function CorrectCalendarOutcomeControl({
-  commitment,
-  timezone,
-  onSaved,
-  currentDay,
-}: {
-  commitment: CalendarCommitment;
-  timezone: string;
-  onSaved: () => void;
-  currentDay: boolean;
-}) {
-  const [editing, setEditing] = useState(currentDay);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const initialOutcome:
-    "attended" | "missed" | "cancelled" | "not_recorded"
-  =
-    commitment.reconciliation_outcome === "attended" ||
-      commitment.reconciliation_outcome === "missed" ||
-      commitment.reconciliation_outcome === "cancelled"
-      ? commitment.reconciliation_outcome
-      : "not_recorded";
-  useAppShellEditorState(editing);
-  async function submitCorrection(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (submitting) return;
-    setSubmitting(true);
-    setError(null);
-    const result = await correctCalendarEventOccurrenceOutcomeAction(
-      initialCalendarActionState,
-      new FormData(event.currentTarget),
-    );
-    setSubmitting(false);
-    if (!result.saved) {
-      setError(result.error ?? "Couldn’t correct this outcome. Try again.");
-      return;
-    }
-    setEditing(false);
-    onSaved();
-  }
-
-  if (!editing) {
-    return (
-      <Button
-        type="button"
-        variant="ghost"
-        onClick={() => setEditing(true)}
-        className="h-11 w-full text-muted-foreground"
-      >
-        {currentDay ? "Update status" : "Correct outcome"}
-      </Button>
-    );
-  }
-
-  return (
-    <HistoricalOutcomeCorrectionEditor
-      title={currentDay ? "Update status" : "Correct outcome"}
-      submitLabel={currentDay ? "Save" : "Confirm correction"}
-      submittingLabel={currentDay ? "Saving…" : "Correcting…"}
-      hiddenFields={
-        <>
-          <input type="hidden" name="commitmentId" value={commitment.id} />
-          <input
-            type="hidden"
-            name="occurrenceDate"
-            value={commitment.occurrence_date}
-          />
-        </>
-      }
-      options={[
-        ["attended", "Completed"],
-        ["missed", "Missed"],
-        ["cancelled", "Cancelled"],
-      ] as const}
-      initialOutcome={initialOutcome}
-      completedOutcome="attended"
-      initialCompletionTime={
-        initialOutcome === "attended" && commitment.completed_at
-          ? formatTimestampAsLocalTime(commitment.completed_at, timezone)
-          : ""
-      }
-      initialNote={commitment.outcome_note ?? ""}
-      noteMaxLength={1000}
-      noteAvailable={(value) => value !== "not_recorded"}
-      supportingCopy={
-        currentDay
-          ? "This updates only today’s occurrence. The recurring commitment stays unchanged."
-          : "This corrects only this occurrence. The recurring commitment stays unchanged."
-      }
-      submitting={submitting}
-      error={error}
-      onCancel={() => setEditing(false)}
-      onSubmit={submitCorrection}
-    />
-  );
-}
-
-function isRecordedCalendarOutcome(
-  outcome: CalendarCommitment["reconciliation_outcome"],
-) {
-  return (
-    outcome === "attended" ||
-    outcome === "missed" ||
-    outcome === "cancelled"
-  );
-}
-
-function formatTimestampAsLocalTime(timestamp: string, timezone: string) {
-  const parts = new Intl.DateTimeFormat("en-AU", {
-    timeZone: timezone,
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date(timestamp));
-  const hour = parts.find((part) => part.type === "hour")?.value ?? "00";
-  const minute = parts.find((part) => part.type === "minute")?.value ?? "00";
-  return `${hour}:${minute}`;
 }
 
 function CommitmentMutationControls({
