@@ -52,6 +52,7 @@ import { ProposedActionReorderControl } from "./proposed-action-reorder-control"
 import { DailyCommitments } from "./daily-commitments";
 import type { CalendarCommitment } from "@/lib/clarity/calendar-commitments";
 import { partitionShapeTodayItems } from "@/lib/clarity/shape-today-items";
+import { resolveShapeTodaySwipeItem } from "@/lib/clarity/shape-today-swipe";
 import { SoFarToday } from "./so-far-today";
 import { SwipeToRemove } from "./swipe-to-remove";
 
@@ -86,7 +87,7 @@ export function ProposedPlan({
   const [addActionOpen, setAddActionOpen] = useState(false);
   const [keepDayOpen, setKeepDayOpen] = useState(false);
   const [now, setNow] = useState(initialNow);
-  const [swipedActionId, setSwipedActionId] = useState<string | null>(null);
+  const [swipedItemKey, setSwipedItemKey] = useState<string | null>(null);
   const [locallyRemovedActionIds, setLocallyRemovedActionIds] = useState<
     ReadonlySet<string>
   >(() => new Set());
@@ -328,24 +329,24 @@ export function ProposedPlan({
   }, []);
 
   useEffect(() => {
-    if (!swipedActionId) return;
+    if (!swipedItemKey) return;
 
     const closeOnOutsidePress = (event: PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Element)) {
-        setSwipedActionId(null);
+        setSwipedItemKey(null);
         return;
       }
 
       const swipedCard = target.closest<HTMLElement>("[data-swipe-action-id]");
-      if (swipedCard?.dataset.swipeActionId !== swipedActionId) {
-        setSwipedActionId(null);
+      if (swipedCard?.dataset.swipeActionId !== swipedItemKey) {
+        setSwipedItemKey(null);
       }
     };
 
     document.addEventListener("pointerdown", closeOnOutsidePress);
     return () => document.removeEventListener("pointerdown", closeOnOutsidePress);
-  }, [swipedActionId]);
+  }, [swipedItemKey]);
 
   useEffect(() => {
     const previousCount = previousRemainingCountRef.current;
@@ -367,7 +368,7 @@ export function ProposedPlan({
 
   const handleActionToggle = useCallback((actionId: string) => {
     if (reorderMode) return;
-    setSwipedActionId(null);
+    setSwipedItemKey(null);
     const actionKey = `action:${actionId}`;
     setExpandedItemKey((currentItemKey) => {
       const nextItemKey = currentItemKey === actionKey ? null : actionKey;
@@ -375,6 +376,20 @@ export function ProposedPlan({
       return nextItemKey;
     });
   }, [reorderMode]);
+
+  const handleExpandedItemChange = useCallback((itemKey: string | null) => {
+    setSwipedItemKey(null);
+    setExpandedItemKey(itemKey);
+  }, []);
+
+  const handleSwipeOpenChange = useCallback(
+    (itemKey: string, open: boolean) => {
+      setSwipedItemKey((currentItemKey) =>
+        resolveShapeTodaySwipeItem(currentItemKey, itemKey, open),
+      );
+    },
+    [],
+  );
 
   const handleActionCollapse = useCallback((actionId: string) => {
     const actionKey = `action:${actionId}`;
@@ -424,7 +439,7 @@ export function ProposedPlan({
   function enterReorderMode() {
     flushSync(() => {
       setExpandedItemKey(null);
-      setSwipedActionId(null);
+      setSwipedItemKey(null);
       setOrderingError(null);
       setReorderRevision((current) => current + 1);
       setReorderMode(true);
@@ -434,7 +449,7 @@ export function ProposedPlan({
   function exitReorderMode() {
     if (draggingActionId || orderingPending) return;
     setExpandedItemKey(null);
-    setSwipedActionId(null);
+    setSwipedItemKey(null);
     setReorderRevision((current) => current + 1);
     setReorderMode(false);
   }
@@ -523,7 +538,7 @@ export function ProposedPlan({
     draggedRowOffsetRef.current = 0;
     flushSync(() => {
       setExpandedItemKey(null);
-      setSwipedActionId(null);
+      setSwipedItemKey(null);
       setOrderingError(null);
       setDraggingActionId(actionId);
     });
@@ -697,7 +712,7 @@ export function ProposedPlan({
     await restoreRemovedProposedActionsAction(formData);
     setKeepDayOpen(false);
     setExpandedItemKey(null);
-    setSwipedActionId(null);
+    setSwipedItemKey(null);
     setLocallyRemovedActionIds(new Set());
     setRemovalNoticeActionId(null);
     setLastRemovedAction(null);
@@ -718,7 +733,7 @@ export function ProposedPlan({
     });
 
     if (!result.success) {
-      setSwipedActionId(null);
+      setSwipedItemKey(null);
       setRemovalError(result.error ?? "Couldn’t remove the action. Try again.");
       return;
     }
@@ -727,7 +742,7 @@ export function ProposedPlan({
       current === `action:${actionId}` ? null : current,
     );
     setRemovingActionIds((current) => new Set(current).add(actionId));
-    setSwipedActionId(null);
+    setSwipedItemKey(null);
     const delay = window.matchMedia("(prefers-reduced-motion: reduce)").matches
       ? 0
       : 190;
@@ -834,17 +849,23 @@ export function ProposedPlan({
   }, [expandedActionId]);
 
   function renderTimedAction(action: DailyAction) {
+    const swipeItemKey = `action:${action.id}`;
+
     return (
       <SwipeToRemove
-        itemId={action.id}
+        itemId={swipeItemKey}
         itemTitle={action.title}
-        open={swipedActionId === action.id}
-        onOpenChange={(open) => setSwipedActionId(open ? action.id : null)}
+        open={swipedItemKey === swipeItemKey}
+        onOpenChange={(open) =>
+          handleSwipeOpenChange(swipeItemKey, open)
+        }
         onRemove={() => removeAction(action.id)}
         removalPending={pendingRemovalIds.has(action.id)}
         removing={removingActionIds.has(action.id)}
         enabled={!reorderMode}
         accessibilityContext="from the proposed plan"
+        actionLabel={action.source_routine_id ? "Skip today" : "Remove"}
+        pendingLabel={action.source_routine_id ? "Skipping…" : "Removing…"}
       >
         <div data-fixed-daily-action-id={action.id}>
           <ProposedActionCard
@@ -941,7 +962,9 @@ export function ProposedPlan({
           timezone={profile.timezone}
           now={new Date(now)}
           expandedItemKey={expandedItemKey}
-          onExpandedItemChange={setExpandedItemKey}
+          onExpandedItemChange={handleExpandedItemChange}
+          openSwipeItemKey={swipedItemKey}
+          onOpenSwipeItemChange={handleSwipeOpenChange}
         />
 
         <DailyCommitments
@@ -952,7 +975,9 @@ export function ProposedPlan({
           timezone={profile.timezone}
           now={new Date(now)}
           expandedItemKey={expandedItemKey}
-          onExpandedItemChange={setExpandedItemKey}
+          onExpandedItemChange={handleExpandedItemChange}
+          openSwipeItemKey={swipedItemKey}
+          onOpenSwipeItemChange={handleSwipeOpenChange}
         />
 
         <SoFarToday
@@ -989,6 +1014,7 @@ export function ProposedPlan({
               {flexibleRemainingActions.map((action, actionIndex) => {
                 const movable = reorderMode && action.scheduled_time === null;
                 const dragging = draggingActionId === action.id;
+                const swipeItemKey = `action:${action.id}`;
                 return (
                   <div
                     key={action.id}
@@ -1011,17 +1037,23 @@ export function ProposedPlan({
                     }`}
                   >
                     <SwipeToRemove
-                      itemId={action.id}
+                      itemId={swipeItemKey}
                       itemTitle={action.title}
-                      open={swipedActionId === action.id}
+                      open={swipedItemKey === swipeItemKey}
                       onOpenChange={(open) =>
-                        setSwipedActionId(open ? action.id : null)
+                        handleSwipeOpenChange(swipeItemKey, open)
                       }
                       onRemove={() => removeAction(action.id)}
                       removalPending={pendingRemovalIds.has(action.id)}
                       removing={removingActionIds.has(action.id)}
                       enabled={!reorderMode}
                       accessibilityContext="from the proposed plan"
+                      actionLabel={
+                        action.source_routine_id ? "Skip today" : "Remove"
+                      }
+                      pendingLabel={
+                        action.source_routine_id ? "Skipping…" : "Removing…"
+                      }
                     >
                       <ProposedActionCard
                         key={`${action.id}:${reorderRevision}`}

@@ -47,6 +47,8 @@ export function DailyCommitments({
   now,
   expandedItemKey,
   onExpandedItemChange,
+  openSwipeItemKey,
+  onOpenSwipeItemChange,
 }: {
   heading: string;
   commitments: CalendarCommitment[];
@@ -57,6 +59,8 @@ export function DailyCommitments({
   now: Date;
   expandedItemKey?: string | null;
   onExpandedItemChange?: (itemKey: string | null) => void;
+  openSwipeItemKey?: string | null;
+  onOpenSwipeItemChange?: (itemKey: string, open: boolean) => void;
 }) {
   const items = orderLaterTodayItems({
     actions,
@@ -97,6 +101,21 @@ export function DailyCommitments({
                       )
                   : undefined
               }
+              swipeItemKey={`commitment:${item.value.id}`}
+              swipeOpen={
+                openSwipeItemKey === undefined
+                  ? undefined
+                  : openSwipeItemKey === `commitment:${item.value.id}`
+              }
+              onSwipeOpenChange={
+                onOpenSwipeItemChange
+                  ? (open) =>
+                      onOpenSwipeItemChange(
+                        `commitment:${item.value.id}`,
+                        open,
+                      )
+                  : undefined
+              }
             />
           ),
         )}
@@ -112,6 +131,9 @@ export function DailyCommitmentCard({
   needsOutcome = false,
   expanded: controlledExpanded,
   onExpandedChange,
+  swipeItemKey,
+  swipeOpen: controlledSwipeOpen,
+  onSwipeOpenChange,
 }: {
   commitment: CalendarCommitment;
   timezone: string;
@@ -119,10 +141,13 @@ export function DailyCommitmentCard({
   needsOutcome?: boolean;
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
+  swipeItemKey?: string;
+  swipeOpen?: boolean;
+  onSwipeOpenChange?: (open: boolean) => void;
 }) {
   const router = useRouter();
   const [internalExpanded, setInternalExpanded] = useState(false);
-  const [swipeOpen, setSwipeOpen] = useState(false);
+  const [internalSwipeOpen, setInternalSwipeOpen] = useState(false);
   const [removalPending, setRemovalPending] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [removalError, setRemovalError] = useState<string | null>(null);
@@ -130,6 +155,8 @@ export function DailyCommitmentCard({
   const [moreOpen, setMoreOpen] = useState(false);
   const expanded = controlledExpanded ?? internalExpanded;
   const setExpanded = onExpandedChange ?? setInternalExpanded;
+  const swipeOpen = controlledSwipeOpen ?? internalSwipeOpen;
+  const setSwipeOpen = onSwipeOpenChange ?? setInternalSwipeOpen;
   const timing = getCommitmentTimingState(commitment, timezone, now);
   const recurrence = formatCommitmentRecurrence(commitment);
   const recurringEvent =
@@ -169,6 +196,7 @@ export function DailyCommitmentCard({
 
   function toggleExpanded() {
     setMoreOpen(false);
+    setSwipeOpen(false);
     setExpanded(!expanded);
   }
 
@@ -378,7 +406,7 @@ export function DailyCommitmentCard({
 
   return (
     <SwipeToRemove
-      itemId={commitment.id}
+      itemId={swipeItemKey ?? commitment.id}
       itemTitle={commitment.title}
       open={swipeOpen}
       onOpenChange={setSwipeOpen}
