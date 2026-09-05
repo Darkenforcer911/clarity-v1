@@ -381,13 +381,20 @@ export class ActionWorkspaceService {
     const data = await this.getAction(actionId);
     const plan = requireActionPlan(data.plan);
 
+    const correctableCurrentPlan =
+      plan.status === "active" ||
+      (plan.status === "proposed" &&
+        plan.approved_at === null &&
+        data.action.approved_at === null);
+
     if (
-      plan.status !== "active" ||
+      !correctableCurrentPlan ||
       data.action.local_date !== getLocalDate(data.profile.timezone) ||
-      data.action.status !== "completed"
+      data.action.status !== "completed" ||
+      data.action.completion_evidence_only
     ) {
       throw new ActionWorkspaceServiceError(
-        "Completion time can only be corrected for a completed action in Active Today.",
+        "Completion time can only be corrected for a completed Action today.",
       );
     }
 
@@ -518,11 +525,10 @@ export class ActionWorkspaceService {
     if (
       plan.status !== "proposed" ||
       data.action.status !== "proposed" ||
-      data.action.action_type !== "fixed" ||
-      !data.action.scheduled_time
+      data.action.completion_evidence_only
     ) {
       throw new ActionWorkspaceServiceError(
-        "Only a passed specific-time action in a proposed plan can be completed.",
+        "Only an unfinished action in the current proposed plan can be completed.",
       );
     }
 

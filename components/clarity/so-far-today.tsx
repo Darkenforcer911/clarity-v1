@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, Pencil, Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
 import {
   useActionState,
   useEffect,
@@ -187,7 +188,16 @@ function CompletedEvidenceRow({
     </article>
   );
 
-  if (!action.completion_evidence_only) return row;
+  if (!action.completion_evidence_only) {
+    return (
+      <Link
+        href={`/today/actions/${action.id}`}
+        className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {row}
+      </Link>
+    );
+  }
 
   return (
     <SwipeToRemove
@@ -313,7 +323,7 @@ function formatCompletedEvidenceSummary(
   completionTime: string | null,
   actualMinutes: number | null,
 ) {
-  const parts = [completionTime ? `Completed ${completionTime}` : "Completed"];
+  const parts = [completionTime ? `Done · ${completionTime}` : "Done"];
   if (actualMinutes) parts.push(formatDuration(actualMinutes));
   return parts.join(" · ");
 }

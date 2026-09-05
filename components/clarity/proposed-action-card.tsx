@@ -44,6 +44,7 @@ export function ProposedActionCard({
   planLocalDate,
   currentLocalDate,
   timezone,
+  currentTimeInput,
 }: {
   action: DailyAction;
   scheduledTime: string | null;
@@ -58,10 +59,9 @@ export function ProposedActionCard({
   planLocalDate: string;
   currentLocalDate: string;
   timezone: string;
+  currentTimeInput: string;
 }) {
   const [editing, setEditing] = useState(false);
-  const [completing, setCompleting] = useState(false);
-  const [showCompletionTime, setShowCompletionTime] = useState(false);
   const [showUpdateConfirmation, setShowUpdateConfirmation] = useState(false);
   const cardRef = useRef<HTMLElement>(null);
   const [state, formAction] = useActionState(
@@ -118,6 +118,10 @@ export function ProposedActionCard({
       window.clearTimeout(timer);
     };
   }, [action.id, onCollapse, state.updateSucceededAt]);
+
+  useEffect(() => {
+    if (completionState.savedAt) onCollapse(action.id);
+  }, [action.id, completionState.savedAt, onCollapse]);
 
   return (
     <article
@@ -230,92 +234,6 @@ export function ProposedActionCard({
               </form>
             ) : (
               <>
-                {timePassed && (
-                  <div className="mb-5 space-y-3 rounded-xl border border-border bg-card p-4">
-                    <p className="text-sm leading-6 text-secondary-foreground">
-                      This scheduled time has already passed.
-                    </p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          setShowUpdateConfirmation(false);
-                          setCompleting(false);
-                          setEditing(true);
-                        }}
-                        className="h-11 rounded-xl"
-                      >
-                        Change time
-                      </Button>
-                      <Button
-                        type="button"
-                        onClick={() => {
-                          setEditing(false);
-                          setCompleting(true);
-                        }}
-                        className="h-11 w-full rounded-xl"
-                      >
-                        Already done
-                      </Button>
-                    </div>
-                  </div>
-                )}
-                {completing && (
-                  <form
-                    action={completionAction}
-                    data-reconciliation-form
-                    className="mb-5 space-y-4 rounded-xl border border-border bg-card p-4"
-                  >
-                    <input type="hidden" name="actionId" value={action.id} />
-                    <p className="font-medium">Mark as already done?</p>
-                    {!showCompletionTime ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={() => setShowCompletionTime(true)}
-                        className="h-10 w-auto px-2 text-muted-foreground"
-                      >
-                        + Add time
-                      </Button>
-                    ) : (
-                      <label className="block min-w-0 space-y-2 text-sm font-medium">
-                        <span>Completion time</span>
-                        <input
-                          type="time"
-                          name="completedTime"
-                          defaultValue={timePassed ? scheduledTimeInput : ""}
-                          className="flex h-11 min-w-0 w-full max-w-full rounded-xl border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none [box-sizing:border-box] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                        />
-                      </label>
-                    )}
-                    {completionState.error && (
-                      <p role="alert" className="text-sm text-foreground">
-                        {completionState.error}
-                      </p>
-                    )}
-                    <div className="grid grid-cols-2 gap-3">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          setCompleting(false);
-                          setShowCompletionTime(false);
-                        }}
-                        className="h-11 rounded-xl"
-                      >
-                        Cancel
-                      </Button>
-                      <PendingButton
-                        type="submit"
-                        pendingLabel="Completing…"
-                        className="h-11 rounded-xl"
-                      >
-                        Confirm
-                      </PendingButton>
-                    </div>
-                  </form>
-                )}
                 {userEnteredDetails && (
                   <dl className="text-sm">
                     <Detail label="Details" value={userEnteredDetails} />
@@ -329,29 +247,49 @@ export function ProposedActionCard({
                       : ""
                   }`}
                 >
+                  <form action={completionAction} data-reconciliation-form>
+                    <input type="hidden" name="actionId" value={action.id} />
+                    <input
+                      type="hidden"
+                      name="completedTime"
+                      value={currentTimeInput}
+                    />
+                    <PendingButton
+                      type="submit"
+                      pendingLabel="Completing…"
+                      className="h-11 w-full rounded-xl"
+                    >
+                      Done
+                    </PendingButton>
+                  </form>
+                  {completionState.error && (
+                    <p role="alert" className="text-sm text-destructive">
+                      {completionState.error}
+                    </p>
+                  )}
                   <Button
                     type="button"
                     variant="outline"
                     onClick={() => {
                       setShowUpdateConfirmation(false);
-                      setCompleting(false);
                       setEditing(true);
                     }}
                     className="h-11 w-full rounded-xl"
                   >
                     <Pencil />
-                    Edit action
+                    Edit
                   </Button>
-                  {!completing && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() => onRemove(action.id)}
-                      className="h-10 w-auto justify-start rounded-lg px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    >
-                      <Trash2 /> Remove from plan
-                    </Button>
-                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => onRemove(action.id)}
+                    className="h-10 w-auto justify-start rounded-lg px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <Trash2 />
+                    {action.source_routine_id
+                      ? "Skip today"
+                      : "Remove from today"}
+                  </Button>
                 </div>
               </>
             )}

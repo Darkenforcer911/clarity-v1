@@ -38,6 +38,9 @@ export function partitionShapeTodayItems<
       !commitment.reconciliation_outcome &&
       getShapeTodayCommitmentTime(commitment) !== null,
   );
+  const resolvedCommitments = commitments.filter(
+    (commitment) => Boolean(commitment.reconciliation_outcome),
+  );
 
   return {
     earlierActions: actions.filter(
@@ -66,6 +69,7 @@ export function partitionShapeTodayItems<
     earlierCommitments: unresolvedCommitments.filter((commitment) =>
       hasCommitmentTimePassed(commitment, timezone, now),
     ),
+    resolvedCommitments,
     fixedCommitments: unresolvedCommitments.filter(
       (commitment) => !hasCommitmentTimePassed(commitment, timezone, now),
     ),

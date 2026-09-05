@@ -82,7 +82,7 @@ export function ProposedPlan({
   initialNow,
   commitments,
 }: ProposedPlanProps) {
-  const [expandedActionId, setExpandedActionId] = useState<string | null>(null);
+  const [expandedItemKey, setExpandedItemKey] = useState<string | null>(null);
   const [addActionOpen, setAddActionOpen] = useState(false);
   const [keepDayOpen, setKeepDayOpen] = useState(false);
   const [now, setNow] = useState(initialNow);
@@ -139,6 +139,9 @@ export function ProposedPlan({
     profile.timezone,
     new Date(now),
   );
+  const expandedActionId = expandedItemKey?.startsWith("action:")
+    ? expandedItemKey.slice("action:".length)
+    : null;
   const completedActions = actions.filter(
     (action) => action.status === "completed",
   );
@@ -184,19 +187,18 @@ export function ProposedPlan({
   const {
     earlierActions,
     earlierCommitments,
+    resolvedCommitments,
     fixedActions,
     fixedCommitments,
     flexibleActions: flexibleRemainingActions,
   } = shapeTodayItems;
   const passedActionIds = new Set(earlierActions.map((action) => action.id));
   const hasPassedActions = passedActionIds.size > 0;
-  const completedEvidenceActions = completedActions.filter(
-    (action) => action.completion_evidence_only,
-  );
   const hasSoFarToday =
     completedActions.length > 0 ||
     earlierActions.length > 0 ||
-    earlierCommitments.length > 0;
+    earlierCommitments.length > 0 ||
+    resolvedCommitments.length > 0;
   const totalMinutes = remainingActions.reduce(
     (total, action) => total + action.estimated_minutes,
     0,
@@ -366,16 +368,18 @@ export function ProposedPlan({
   const handleActionToggle = useCallback((actionId: string) => {
     if (reorderMode) return;
     setSwipedActionId(null);
-    setExpandedActionId((currentActionId) => {
-      const nextActionId = currentActionId === actionId ? null : actionId;
-      scrollTargetActionIdRef.current = nextActionId;
-      return nextActionId;
+    const actionKey = `action:${actionId}`;
+    setExpandedItemKey((currentItemKey) => {
+      const nextItemKey = currentItemKey === actionKey ? null : actionKey;
+      scrollTargetActionIdRef.current = nextItemKey ? actionId : null;
+      return nextItemKey;
     });
   }, [reorderMode]);
 
   const handleActionCollapse = useCallback((actionId: string) => {
-    setExpandedActionId((currentActionId) =>
-      currentActionId === actionId ? null : currentActionId,
+    const actionKey = `action:${actionId}`;
+    setExpandedItemKey((currentItemKey) =>
+      currentItemKey === actionKey ? null : currentItemKey,
     );
   }, []);
 
@@ -419,7 +423,7 @@ export function ProposedPlan({
 
   function enterReorderMode() {
     flushSync(() => {
-      setExpandedActionId(null);
+      setExpandedItemKey(null);
       setSwipedActionId(null);
       setOrderingError(null);
       setReorderRevision((current) => current + 1);
@@ -429,7 +433,7 @@ export function ProposedPlan({
 
   function exitReorderMode() {
     if (draggingActionId || orderingPending) return;
-    setExpandedActionId(null);
+    setExpandedItemKey(null);
     setSwipedActionId(null);
     setReorderRevision((current) => current + 1);
     setReorderMode(false);
@@ -518,7 +522,7 @@ export function ProposedPlan({
     dragPointerYRef.current = pointerY;
     draggedRowOffsetRef.current = 0;
     flushSync(() => {
-      setExpandedActionId(null);
+      setExpandedItemKey(null);
       setSwipedActionId(null);
       setOrderingError(null);
       setDraggingActionId(actionId);
@@ -638,7 +642,7 @@ export function ProposedPlan({
     dragPointerYRef.current = null;
     dragGrabOffsetYRef.current = 0;
     draggedRowOffsetRef.current = 0;
-    setExpandedActionId(null);
+    setExpandedItemKey(null);
     setDraggingActionId(null);
     setReorderRevision((current) => current + 1);
   }
@@ -692,7 +696,7 @@ export function ProposedPlan({
   async function handleRestoreRemovedActions(formData: FormData) {
     await restoreRemovedProposedActionsAction(formData);
     setKeepDayOpen(false);
-    setExpandedActionId(null);
+    setExpandedItemKey(null);
     setSwipedActionId(null);
     setLocallyRemovedActionIds(new Set());
     setRemovalNoticeActionId(null);
@@ -719,7 +723,9 @@ export function ProposedPlan({
       return;
     }
 
-    setExpandedActionId((current) => (current === actionId ? null : current));
+    setExpandedItemKey((current) =>
+      current === `action:${actionId}` ? null : current,
+    );
     setRemovingActionIds((current) => new Set(current).add(actionId));
     setSwipedActionId(null);
     const delay = window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -763,7 +769,7 @@ export function ProposedPlan({
     }
     setRemovalNoticeActionId(null);
     setLastRemovedAction(null);
-    setExpandedActionId(null);
+    setExpandedItemKey(null);
     router.refresh();
   }
 
@@ -861,6 +867,7 @@ export function ProposedPlan({
             planLocalDate={plan.local_date}
             currentLocalDate={currentLocalDate}
             timezone={profile.timezone}
+            currentTimeInput={formatTimeInput(now, profile.timezone)}
           />
         </div>
       </SwipeToRemove>
@@ -927,12 +934,14 @@ export function ProposedPlan({
 
         <DailyCommitments
           heading="Earlier today"
-          commitments={earlierCommitments}
+          commitments={[...earlierCommitments, ...resolvedCommitments]}
           actions={earlierActions}
           renderAction={renderTimedAction}
           needsOutcome
           timezone={profile.timezone}
           now={new Date(now)}
+          expandedItemKey={expandedItemKey}
+          onExpandedItemChange={setExpandedItemKey}
         />
 
         <DailyCommitments
@@ -942,13 +951,15 @@ export function ProposedPlan({
           renderAction={renderTimedAction}
           timezone={profile.timezone}
           now={new Date(now)}
+          expandedItemKey={expandedItemKey}
+          onExpandedItemChange={setExpandedItemKey}
         />
 
         <SoFarToday
           planId={plan.id}
           localDate={plan.local_date}
           timezone={profile.timezone}
-          completedActions={completedEvidenceActions}
+          completedActions={completedActions}
         />
 
         {flexibleRemainingActions.length > 0 && (
@@ -1060,6 +1071,7 @@ export function ProposedPlan({
                         planLocalDate={plan.local_date}
                         currentLocalDate={currentLocalDate}
                         timezone={profile.timezone}
+                        currentTimeInput={formatTimeInput(now, profile.timezone)}
                       />
                     </SwipeToRemove>
                   </div>

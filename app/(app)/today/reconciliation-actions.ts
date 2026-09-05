@@ -138,6 +138,8 @@ export async function recordCalendarEventOutcomeAction(
 function revalidatePlan() {
   revalidatePath("/today");
   revalidatePath("/today/plan");
+  revalidatePath("/today/active");
+  revalidatePath("/calendar");
 }
 
 function actionError(error: unknown): ProposedReconciliationActionState {

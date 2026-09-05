@@ -314,6 +314,9 @@ export async function correctCompletionTimeAction(
 
     await actionWorkspaceService.correctCompletionTime(actionId, input);
     revalidatePath("/today");
+    revalidatePath("/today/plan");
+    revalidatePath("/today/active");
+    revalidatePath("/calendar");
     revalidatePath(`/today/actions/${actionId}`);
     return { error: null, success: "Completion time updated." };
   } catch (error) {
