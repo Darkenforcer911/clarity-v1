@@ -14,121 +14,22 @@ import {
   formatCalendarActionOutcome,
   formatCalendarActionDue,
   formatCalendarActionTimeRange,
-  partitionCalendarDailyActions,
   type CalendarDailyAction,
 } from "@/lib/clarity/calendar-daily-actions";
 import { formatDuration } from "@/lib/clarity/duration";
 import { SwipeToRemove } from "./swipe-to-remove";
 
-export function CalendarDailyActions({
-  actions,
-  localDate,
-  today,
-  timezone,
-}: {
-  actions: CalendarDailyAction[];
-  localDate: string;
-  today: string;
-  timezone: string;
-}) {
-  const [swipedActionId, setSwipedActionId] = useState<string | null>(null);
-  const { due, timed, untimed } = partitionCalendarDailyActions(actions);
-
-  if (actions.length === 0) return null;
-
-  return (
-    <>
-      <CalendarActionSection
-        title="Scheduled actions"
-        actions={timed}
-        localDate={localDate}
-        today={today}
-        timezone={timezone}
-        timed
-        swipedActionId={swipedActionId}
-        onSwipedActionChange={setSwipedActionId}
-      />
-      <CalendarActionSection
-        title="Due"
-        actions={due}
-        localDate={localDate}
-        today={today}
-        timezone={timezone}
-        due
-        swipedActionId={swipedActionId}
-        onSwipedActionChange={setSwipedActionId}
-      />
-      <CalendarActionSection
-        title="Actions"
-        actions={untimed}
-        localDate={localDate}
-        today={today}
-        timezone={timezone}
-        swipedActionId={swipedActionId}
-        onSwipedActionChange={setSwipedActionId}
-      />
-    </>
-  );
-}
-
-function CalendarActionSection({
-  title,
-  actions,
-  localDate,
-  today,
-  timezone,
-  timed = false,
-  due = false,
-  swipedActionId,
-  onSwipedActionChange,
-}: {
-  title: string;
-  actions: CalendarDailyAction[];
-  localDate: string;
-  today: string;
-  timezone: string;
-  timed?: boolean;
-  due?: boolean;
-  swipedActionId: string | null;
-  onSwipedActionChange: (actionId: string | null) => void;
-}) {
-  if (actions.length === 0) return null;
-
-  return (
-    <section className="space-y-3">
-      <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-        {title}
-      </h2>
-      <div className="space-y-3">
-        {actions.map((action) => (
-          <CalendarActionRow
-            key={action.id}
-            action={action}
-            localDate={localDate}
-            today={today}
-            timezone={timezone}
-            timed={timed}
-            due={due}
-            swipeOpen={swipedActionId === action.id}
-            onSwipeOpenChange={(open) =>
-              onSwipedActionChange(open ? action.id : null)
-            }
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function CalendarActionRow({
+export function CalendarActionRow({
   action,
   localDate,
   today,
   timezone,
   timed,
   due,
+  swipeItemKey,
   swipeOpen,
   onSwipeOpenChange,
+  onOpenWorkspace,
 }: {
   action: CalendarDailyAction;
   localDate: string;
@@ -136,8 +37,10 @@ function CalendarActionRow({
   timezone: string;
   timed: boolean;
   due: boolean;
+  swipeItemKey: string;
   swipeOpen: boolean;
   onSwipeOpenChange: (open: boolean) => void;
+  onOpenWorkspace: () => void;
 }) {
   const router = useRouter();
   const [removalPending, setRemovalPending] = useState(false);
@@ -186,12 +89,13 @@ function CalendarActionRow({
   );
 
   const surface = opensWorkspace ? (
-      <Link
-        href={`/today/actions/${action.id}?from=calendar&date=${localDate}`}
-        className="flex min-h-14 w-full items-start gap-3 rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        {content}
-      </Link>
+    <Link
+      href={`/today/actions/${action.id}?from=calendar&date=${localDate}`}
+      onClick={onOpenWorkspace}
+      className="flex min-h-14 w-full items-start gap-3 rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {content}
+    </Link>
   ) : (
     <article className="flex min-h-14 w-full items-start gap-3 rounded-2xl border border-border bg-card p-4">
       {content}
@@ -229,7 +133,7 @@ function CalendarActionRow({
 
   return (
     <SwipeToRemove
-      itemId={action.id}
+      itemId={swipeItemKey}
       itemTitle={action.title}
       open={swipeOpen}
       onOpenChange={onSwipeOpenChange}
@@ -238,13 +142,8 @@ function CalendarActionRow({
       removing={removing}
       enabled
       accessibilityContext="from Calendar"
-      actionLabel={
-        action.local_date === today
-          ? "Remove today"
-          : action.source_routine_id
-            ? "Remove occurrence"
-            : "Remove"
-      }
+      actionLabel={action.source_routine_id ? "Skip today" : "Remove today"}
+      pendingLabel={action.source_routine_id ? "Skipping…" : "Removing…"}
     >
       <div className="min-w-0">
         {surface}

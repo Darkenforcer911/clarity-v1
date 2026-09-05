@@ -59,6 +59,7 @@ type CalendarSecondarySection =
 export function CalendarCommitmentForm({
   selectedDate,
   commitment,
+  initialType,
   onCancel,
   onSaved,
   timezone,
@@ -66,6 +67,7 @@ export function CalendarCommitmentForm({
 }: {
   selectedDate: string;
   commitment?: CalendarCommitment;
+  initialType?: "event" | "deadline";
   onCancel: () => void;
   onSaved: () => void;
   timezone: string;
@@ -79,9 +81,9 @@ export function CalendarCommitmentForm({
     initialCalendarActionState,
   );
   const [type, setType] = useState<"event" | "deadline">(
-    commitment?.commitment_type ?? "event",
+    commitment?.commitment_type ?? initialType ?? "event",
   );
-  const [kindOpen, setKindOpen] = useState(!commitment);
+  const [kindOpen, setKindOpen] = useState(!commitment && !initialType);
   const [noExactTime, setNoExactTime] = useState(
     commitment?.commitment_type === "deadline" &&
       !commitment.deadline_due_time,
@@ -247,7 +249,11 @@ export function CalendarCommitmentForm({
     ? "Update recurring commitment"
     : commitment
       ? "Edit commitment"
-      : "Add commitment";
+      : initialType === "deadline"
+        ? "Add standalone deadline"
+        : initialType === "event"
+          ? "Add event"
+          : "Add commitment";
   const formSubtitle = isRecurringCommitment
     ? "Changes apply to the whole recurring commitment."
     : commitment

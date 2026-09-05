@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  MoreHorizontal,
   Plus,
 } from "lucide-react";
 import Link from "next/link";
@@ -45,10 +46,23 @@ import {
 } from "./calendar-history";
 import { PendingButton } from "./pending-button";
 import { SwipeToRemove } from "./swipe-to-remove";
-import { CalendarDailyActions } from "./calendar-daily-actions";
+import { CalendarActionRow } from "./calendar-daily-actions";
 import { AddActionForm } from "./add-action-form";
-import type { CalendarDailyAction } from "@/lib/clarity/calendar-daily-actions";
+import {
+  partitionCalendarDailyActions,
+  type CalendarDailyAction,
+} from "@/lib/clarity/calendar-daily-actions";
 import { CalendarOccurrenceOutcomeControl } from "./calendar-occurrence-outcome-control";
+import {
+  orderLaterTodayItems,
+  type LaterTodayItem,
+} from "@/lib/clarity/today-display-order";
+import { resolveShapeTodaySwipeItem } from "@/lib/clarity/shape-today-swipe";
+
+type CalendarDayItem = LaterTodayItem<
+  CalendarDailyAction,
+  CalendarCommitment
+>;
 
 export function CalendarAgenda({
   selectedDate,
@@ -76,13 +90,13 @@ export function CalendarAgenda({
   const router = useRouter();
   const [now, setNow] = useState(() => new Date(initialNow));
   const [addOpen, setAddOpen] = useState(false);
-  const [addKind, setAddKind] = useState<"action" | "commitment" | null>(null);
+  const [addKind, setAddKind] = useState<
+    "action" | "event" | "deadline" | null
+  >(null);
   const [openId, setOpenId] = useState<string | null>(() =>
     resolveCalendarCommitmentSelection(initialCommitmentId, commitments),
   );
-  const [swipedCommitmentId, setSwipedCommitmentId] = useState<string | null>(
-    null,
-  );
+  const [openSwipeItemKey, setOpenSwipeItemKey] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [jumpOpen, setJumpOpen] = useState(false);
   const [jumpDate, setJumpDate] = useState(selectedDate);
@@ -91,10 +105,35 @@ export function CalendarAgenda({
   const sorted = sortCalendarCommitments(commitments);
   const events = sorted.filter((item) => item.commitment_type === "event");
   const deadlines = sorted.filter((item) => item.commitment_type === "deadline");
+  const {
+    due: dueActions,
+    timed: timedActions,
+    untimed: anytimeActions,
+  } = partitionCalendarDailyActions(dailyActions);
+  const scheduleItems = orderLaterTodayItems({
+    actions: timedActions,
+    commitments: events,
+    timezone,
+  });
+  const anytimeItems = anytimeActions.map((value) => ({
+    kind: "action" as const,
+    value,
+  }));
+  const dueItems: CalendarDayItem[] = [
+    ...dueActions.map((value) => ({
+      kind: "action" as const,
+      value,
+    })),
+    ...deadlines.map((value) => ({
+      kind: "commitment" as const,
+      value,
+    })),
+  ];
   const closeForm = useCallback(() => {
     setAddOpen(false);
     setAddKind(null);
     setEditingId(null);
+    setOpenSwipeItemKey(null);
   }, []);
   const handleSaved = useCallback(() => {
     closeForm();
@@ -122,24 +161,33 @@ export function CalendarAgenda({
   }, []);
 
   useEffect(() => {
-    if (!swipedCommitmentId) return;
+    if (!openSwipeItemKey) return;
 
     const closeOnOutsidePress = (event: PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Element)) {
-        setSwipedCommitmentId(null);
+        setOpenSwipeItemKey(null);
         return;
       }
 
       const swipedCard = target.closest<HTMLElement>("[data-swipe-action-id]");
-      if (swipedCard?.dataset.swipeActionId !== swipedCommitmentId) {
-        setSwipedCommitmentId(null);
+      if (swipedCard?.dataset.swipeActionId !== openSwipeItemKey) {
+        setOpenSwipeItemKey(null);
       }
     };
 
     document.addEventListener("pointerdown", closeOnOutsidePress);
     return () => document.removeEventListener("pointerdown", closeOnOutsidePress);
-  }, [swipedCommitmentId]);
+  }, [openSwipeItemKey]);
+
+  const handleSwipeOpenChange = useCallback(
+    (itemKey: string, open: boolean) => {
+      setOpenSwipeItemKey((currentItemKey) =>
+        resolveShapeTodaySwipeItem(currentItemKey, itemKey, open),
+      );
+    },
+    [],
+  );
 
   return (
     <section className="min-w-0 space-y-6">
@@ -158,7 +206,10 @@ export function CalendarAgenda({
       <div className="space-y-3">
         <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_auto_2.75rem] items-center gap-1">
           <Button asChild variant="ghost" size="icon" aria-label="Previous week">
-            <Link href={`/calendar?date=${addLocalDays(selectedDate, -7)}`}>
+            <Link
+              href={`/calendar?date=${addLocalDays(selectedDate, -7)}`}
+              onClick={() => setOpenSwipeItemKey(null)}
+            >
               <ChevronLeft />
             </Link>
           </Button>
@@ -171,10 +222,18 @@ export function CalendarAgenda({
             <span className="truncate">{formatMonthYear(selectedDate)}</span>
           </Button>
           <Button asChild variant="outline" className="h-10 rounded-xl">
-            <Link href={`/calendar?date=${today}`}>Today</Link>
+            <Link
+              href={`/calendar?date=${today}`}
+              onClick={() => setOpenSwipeItemKey(null)}
+            >
+              Today
+            </Link>
           </Button>
           <Button asChild variant="ghost" size="icon" aria-label="Next week">
-            <Link href={`/calendar?date=${addLocalDays(selectedDate, 7)}`}>
+            <Link
+              href={`/calendar?date=${addLocalDays(selectedDate, 7)}`}
+              onClick={() => setOpenSwipeItemKey(null)}
+            >
               <ChevronRight />
             </Link>
           </Button>
@@ -185,6 +244,7 @@ export function CalendarAgenda({
             className="flex min-w-0 items-end gap-2 rounded-xl border border-border bg-card p-3"
             onSubmit={(event) => {
               event.preventDefault();
+              setOpenSwipeItemKey(null);
               router.push(`/calendar?date=${jumpDate}`);
               setJumpOpen(false);
             }}
@@ -213,6 +273,7 @@ export function CalendarAgenda({
               <Link
                 key={date}
                 href={`/calendar?date=${date}`}
+                onClick={() => setOpenSwipeItemKey(null)}
                 aria-current={selected ? "date" : undefined}
                 className={`calendar-date-chip flex min-h-14 min-w-0 flex-col items-center justify-center rounded-xl border text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   selected
@@ -238,58 +299,83 @@ export function CalendarAgenda({
         />
       )}
 
-      <CalendarDailyActions
-        actions={dailyActions}
-        localDate={selectedDate}
+      <CalendarDaySection
+        title="Schedule"
+        items={scheduleItems}
+        actionPresentation="timed"
+        selectedDate={selectedDate}
         today={today}
         timezone={timezone}
+        now={now}
+        openId={openId}
+        editingId={editingId}
+        openSwipeItemKey={openSwipeItemKey}
+        onOpenCommitment={(id) => {
+          setOpenSwipeItemKey(null);
+          setOpenId((current) => (current === id ? null : id));
+        }}
+        onOpenAction={() => setOpenSwipeItemKey(null)}
+        onSwipeOpenChange={handleSwipeOpenChange}
+        onEdit={(id) => {
+          setOpenSwipeItemKey(null);
+          setEditingId(id);
+        }}
+        onSaved={handleSaved}
+        onCancelEdit={() => setEditingId(null)}
+        readOnly={isPast}
       />
 
-      {events.length > 0 && (
-        <AgendaSection
-          title="Events"
-          commitments={events}
-          selectedDate={selectedDate}
-          today={today}
-          timezone={timezone}
-          now={now}
-          openId={openId}
-          editingId={editingId}
-          swipedCommitmentId={swipedCommitmentId}
-          onOpen={(id) => {
-            setSwipedCommitmentId(null);
-            setOpenId((current) => (current === id ? null : id));
-          }}
-          onSwipeOpenChange={(id) => setSwipedCommitmentId(id)}
-          onEdit={setEditingId}
-          onSaved={handleSaved}
-          onCancelEdit={() => setEditingId(null)}
-          readOnly={isPast}
-        />
-      )}
+      <CalendarDaySection
+        title="Anytime"
+        items={anytimeItems}
+        actionPresentation="untimed"
+        selectedDate={selectedDate}
+        today={today}
+        timezone={timezone}
+        now={now}
+        openId={openId}
+        editingId={editingId}
+        openSwipeItemKey={openSwipeItemKey}
+        onOpenCommitment={(id) => {
+          setOpenSwipeItemKey(null);
+          setOpenId((current) => (current === id ? null : id));
+        }}
+        onOpenAction={() => setOpenSwipeItemKey(null)}
+        onSwipeOpenChange={handleSwipeOpenChange}
+        onEdit={(id) => {
+          setOpenSwipeItemKey(null);
+          setEditingId(id);
+        }}
+        onSaved={handleSaved}
+        onCancelEdit={() => setEditingId(null)}
+        readOnly={isPast}
+      />
 
-      {deadlines.length > 0 && (
-        <AgendaSection
-          title="Deadlines"
-          commitments={deadlines}
-          selectedDate={selectedDate}
-          today={today}
-          timezone={timezone}
-          now={now}
-          openId={openId}
-          editingId={editingId}
-          swipedCommitmentId={swipedCommitmentId}
-          onOpen={(id) => {
-            setSwipedCommitmentId(null);
-            setOpenId((current) => (current === id ? null : id));
-          }}
-          onSwipeOpenChange={(id) => setSwipedCommitmentId(id)}
-          onEdit={setEditingId}
-          onSaved={handleSaved}
-          onCancelEdit={() => setEditingId(null)}
-          readOnly={isPast}
-        />
-      )}
+      <CalendarDaySection
+        title="Due"
+        items={dueItems}
+        actionPresentation="due"
+        selectedDate={selectedDate}
+        today={today}
+        timezone={timezone}
+        now={now}
+        openId={openId}
+        editingId={editingId}
+        openSwipeItemKey={openSwipeItemKey}
+        onOpenCommitment={(id) => {
+          setOpenSwipeItemKey(null);
+          setOpenId((current) => (current === id ? null : id));
+        }}
+        onOpenAction={() => setOpenSwipeItemKey(null)}
+        onSwipeOpenChange={handleSwipeOpenChange}
+        onEdit={(id) => {
+          setOpenSwipeItemKey(null);
+          setEditingId(id);
+        }}
+        onSaved={handleSaved}
+        onCancelEdit={() => setEditingId(null)}
+        readOnly={isPast}
+      />
 
       {!isPast &&
         events.length === 0 &&
@@ -342,34 +428,37 @@ export function CalendarAgenda({
         />
       )}
 
-      {!isPast && addOpen && addKind === "commitment" && (
-        <CalendarCommitmentForm
-          selectedDate={selectedDate}
-          timezone={timezone}
-          now={now}
-          onCancel={closeForm}
-          onSaved={handleSaved}
-        />
-      )}
+      {!isPast &&
+        addOpen &&
+        (addKind === "event" || addKind === "deadline") && (
+          <CalendarCommitmentForm
+            selectedDate={selectedDate}
+            timezone={timezone}
+            now={now}
+            initialType={addKind}
+            onCancel={closeForm}
+            onSaved={handleSaved}
+          />
+        )}
 
       {!isPast && addOpen && addKind === null && (
         <div className="grid gap-3 rounded-2xl border border-border bg-card p-4">
-          <p className="text-sm font-semibold">What are you adding?</p>
+          <p className="text-sm font-semibold">Add another kind</p>
           <Button
             type="button"
             variant="outline"
-            onClick={() => setAddKind("action")}
+            onClick={() => setAddKind("event")}
             className="h-12 justify-start rounded-xl"
           >
-            Action
+            Add event
           </Button>
           <Button
             type="button"
             variant="outline"
-            onClick={() => setAddKind("commitment")}
+            onClick={() => setAddKind("deadline")}
             className="h-12 justify-start rounded-xl"
           >
-            Event or deadline
+            Add standalone deadline
           </Button>
           <Button type="button" variant="ghost" onClick={closeForm}>
             Cancel
@@ -378,36 +467,55 @@ export function CalendarAgenda({
       )}
 
       {!isPast && !addOpen && (
-        <Button
-          type="button"
-          variant="outline"
-          size="lg"
-          onClick={() => {
-            setEditingId(null);
-            setAddOpen(true);
-            setAddKind(null);
-          }}
-          className="h-12 w-full rounded-xl text-base"
-        >
-          <Plus />
-          Add
-        </Button>
+        <div className="space-y-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            onClick={() => {
+              setOpenSwipeItemKey(null);
+              setEditingId(null);
+              setAddOpen(true);
+              setAddKind("action");
+            }}
+            className="h-12 w-full rounded-xl text-base"
+          >
+            <Plus />
+            Add
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              setOpenSwipeItemKey(null);
+              setEditingId(null);
+              setAddOpen(true);
+              setAddKind(null);
+            }}
+            className="h-10 w-full text-sm text-muted-foreground"
+          >
+            <MoreHorizontal />
+            More
+          </Button>
+        </div>
       )}
     </section>
   );
 }
 
-function AgendaSection({
+function CalendarDaySection({
   title,
-  commitments,
+  items,
+  actionPresentation,
   selectedDate,
   today,
   timezone,
   now,
   openId,
   editingId,
-  swipedCommitmentId,
-  onOpen,
+  openSwipeItemKey,
+  onOpenCommitment,
+  onOpenAction,
   onSwipeOpenChange,
   onEdit,
   onSaved,
@@ -415,31 +523,58 @@ function AgendaSection({
   readOnly,
 }: {
   title: string;
-  commitments: CalendarCommitment[];
+  items: CalendarDayItem[];
+  actionPresentation: "timed" | "untimed" | "due";
   selectedDate: string;
   today: string;
   timezone: string;
   now: Date;
   openId: string | null;
   editingId: string | null;
-  swipedCommitmentId: string | null;
-  onOpen: (id: string) => void;
-  onSwipeOpenChange: (id: string | null) => void;
+  openSwipeItemKey: string | null;
+  onOpenCommitment: (id: string) => void;
+  onOpenAction: () => void;
+  onSwipeOpenChange: (itemKey: string, open: boolean) => void;
   onEdit: (id: string | null) => void;
   onSaved: () => void;
   onCancelEdit: () => void;
   readOnly: boolean;
 }) {
+  if (items.length === 0) return null;
+
   return (
     <div className="space-y-3">
       <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-muted-foreground">
         {title}
       </h2>
       <div className="space-y-3">
-        {commitments.map((commitment) =>
-          !readOnly && editingId === commitment.id ? (
+        {items.map((item) => {
+          if (item.kind === "action") {
+            const action = item.value;
+            const itemKey = `action:${action.id}:${action.calendar_projection ?? "occurrence"}`;
+
+            return (
+              <CalendarActionRow
+                key={itemKey}
+                action={action}
+                localDate={selectedDate}
+                today={today}
+                timezone={timezone}
+                timed={actionPresentation === "timed"}
+                due={actionPresentation === "due"}
+                swipeItemKey={itemKey}
+                swipeOpen={openSwipeItemKey === itemKey}
+                onSwipeOpenChange={(open) => onSwipeOpenChange(itemKey, open)}
+                onOpenWorkspace={onOpenAction}
+              />
+            );
+          }
+
+          const commitment = item.value;
+          const itemKey = `commitment:${commitment.id}:${commitment.occurrence_date}`;
+          return !readOnly && editingId === commitment.id ? (
             <CalendarCommitmentForm
-              key={commitment.id}
+              key={itemKey}
               selectedDate={selectedDate}
               timezone={timezone}
               now={now}
@@ -449,23 +584,24 @@ function AgendaSection({
             />
           ) : (
             <CommitmentRow
-              key={commitment.id}
+              key={itemKey}
               commitment={commitment}
               today={today}
               timezone={timezone}
               now={now}
               open={openId === commitment.id}
-              swipeOpen={swipedCommitmentId === commitment.id}
-              onOpen={() => onOpen(commitment.id)}
+              swipeItemKey={itemKey}
+              swipeOpen={openSwipeItemKey === itemKey}
+              onOpen={() => onOpenCommitment(commitment.id)}
               onSwipeOpenChange={(open) =>
-                onSwipeOpenChange(open ? commitment.id : null)
+                onSwipeOpenChange(itemKey, open)
               }
               onEdit={() => onEdit(commitment.id)}
               onSaved={onSaved}
               readOnly={readOnly}
             />
-          ),
-        )}
+          );
+        })}
       </div>
     </div>
   );
@@ -477,6 +613,7 @@ function CommitmentRow({
   timezone,
   now,
   open,
+  swipeItemKey,
   swipeOpen,
   onOpen,
   onSwipeOpenChange,
@@ -489,6 +626,7 @@ function CommitmentRow({
   timezone: string;
   now: Date;
   open: boolean;
+  swipeItemKey: string;
   swipeOpen: boolean;
   onOpen: () => void;
   onSwipeOpenChange: (open: boolean) => void;
@@ -572,7 +710,7 @@ function CommitmentRow({
 
   return (
     <SwipeToRemove
-      itemId={commitment.id}
+      itemId={swipeItemKey}
       itemTitle={commitment.title}
       open={swipeOpen}
       onOpenChange={onSwipeOpenChange}
