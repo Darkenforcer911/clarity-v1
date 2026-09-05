@@ -39,7 +39,7 @@ export function ActionCompletionControl({
         setError(
           nextCompleted
             ? "Couldn’t complete the action. Try again."
-            : "Couldn’t mark the action incomplete. Try again.",
+            : "Couldn’t undo done. Try again.",
         );
       } finally {
         setPending(false);
@@ -80,12 +80,12 @@ export function ActionCompletionControl({
         onClick={() => setConfirmingIncomplete(true)}
       >
         <Circle />
-        Mark incomplete
+        Undo done
       </Button>
 
       {confirmingIncomplete && (
         <section className="rounded-2xl border border-border bg-card p-4">
-          <p className="font-semibold">Mark this action incomplete?</p>
+          <p className="font-semibold">Undo done?</p>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
             {completionTime
               ? `Its completion time of ${completionTime} will be removed.`
@@ -98,7 +98,7 @@ export function ActionCompletionControl({
               className="h-11 rounded-xl"
               onClick={() => setConfirmingIncomplete(false)}
             >
-              Keep completed
+              Keep done
             </Button>
             <Button
                 type="button"
@@ -109,7 +109,7 @@ export function ActionCompletionControl({
                 }}
                 className="h-11 w-full rounded-xl"
               >
-                {pending ? "Marking incomplete…" : "Mark incomplete"}
+                {pending ? "Undoing…" : "Undo done"}
               </Button>
           </div>
         </section>

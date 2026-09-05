@@ -75,6 +75,9 @@ export async function setActionCompletionAction(formData: FormData) {
 
   await dailyLoopService.setActionCompletion(actionId, completed);
   revalidatePath("/today");
+  revalidatePath("/today/plan");
+  revalidatePath("/today/active");
+  revalidatePath("/calendar");
   revalidatePath(`/today/actions/${actionId}`);
 }
 
@@ -84,6 +87,9 @@ export async function markActionIncompleteAction(formData: FormData) {
 
   await dailyLoopService.setActionCompletion(actionId, false);
   revalidatePath("/today");
+  revalidatePath("/today/plan");
+  revalidatePath("/today/active");
+  revalidatePath("/calendar");
   revalidatePath(`/today/actions/${actionId}`);
   redirect(returnToDetail ? `/today/actions/${actionId}` : "/today");
 }

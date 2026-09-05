@@ -57,7 +57,7 @@ export function TimeSelector({
   onRemove,
   error,
 }: {
-  name: string;
+  name?: string;
   label: string;
   hideLabel?: boolean;
   value: string;

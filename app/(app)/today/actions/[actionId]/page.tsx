@@ -65,8 +65,19 @@ async function ActionDetailContent({
     data.action.local_date >= getLocalDate(data.profile.timezone) &&
     data.action.status === "proposed" &&
     (data.plan === null || data.plan.status === "proposed");
+  const completedCurrentProposalAction =
+    data.plan?.status === "proposed" &&
+    data.action.local_date === getLocalDate(data.profile.timezone) &&
+    data.action.status === "completed" &&
+    !data.action.completion_evidence_only &&
+    data.action.approved_at === null;
 
-  if (!activeAction && !historicalAction && !editableDatedAction) {
+  if (
+    !activeAction &&
+    !historicalAction &&
+    !editableDatedAction &&
+    !completedCurrentProposalAction
+  ) {
     redirect("/today");
   }
 

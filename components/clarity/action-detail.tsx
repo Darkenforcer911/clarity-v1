@@ -89,6 +89,12 @@ export function ActionDetail({
     plan?.status === "active" &&
     action.local_date === getLocalDate(profile.timezone) &&
     ["active", "completed"].includes(action.status);
+  const completedCurrentProposalAction =
+    plan?.status === "proposed" &&
+    action.local_date === getLocalDate(profile.timezone) &&
+    action.status === "completed" &&
+    !action.completion_evidence_only &&
+    action.approved_at === null;
   const editable =
     action.status === "active" ||
     (action.status === "proposed" &&
@@ -213,7 +219,7 @@ export function ActionDetail({
           />
         )}
 
-      {activeToday && (
+      {(activeToday || completedCurrentProposalAction) && (
         <ActionCompletionControl
           actionId={action.id}
           completed={completed}

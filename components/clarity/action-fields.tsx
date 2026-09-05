@@ -483,6 +483,8 @@ function ActionDueField({
   return (
     <fieldset className="m-0 w-full min-w-0 max-w-full border-0 p-0">
       <legend className="sr-only">Due</legend>
+      <input type="hidden" name="dueLocalDate" value={dueLocalDate} />
+      <input type="hidden" name="dueLocalTime" value={dueLocalTime} />
       <SecondarySettingDisclosure
         icon={CalendarClock}
         label="Due"
@@ -495,7 +497,6 @@ function ActionDueField({
             <span className="text-xs font-medium text-muted-foreground">Date</span>
             <Input
               type="date"
-              name="dueLocalDate"
               value={dueLocalDate}
               onChange={(event) => {
                 const value = event.currentTarget.value;
@@ -507,7 +508,6 @@ function ActionDueField({
           </label>
           {dueLocalDate && (
             <TimeSelector
-              name="dueLocalTime"
               label="Time"
               value={dueLocalTime}
               onChange={onTimeChange}
