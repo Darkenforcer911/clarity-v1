@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Clock3,
   History,
   NotebookPen,
   Pencil,
@@ -21,7 +20,6 @@ import { initialDailyLoopActionState } from "@/lib/clarity/action-state";
 import { ActionFields } from "./action-fields";
 import { ActionRepeatSeriesControls } from "./action-repeat-series-controls";
 import { ActionUpdateHistory } from "./action-update-history";
-import { CorrectCompletionTimeForm } from "./correct-completion-time-form";
 import { LogActionUpdate } from "./log-action-note";
 import { RemoveActionPanel } from "./remove-action-panel";
 import { PendingButton } from "./pending-button";
@@ -32,7 +30,6 @@ import {
 
 type OpenPanel =
   | "edit"
-  | "completion-time"
   | "log"
   | "updates"
   | "remove"
@@ -43,7 +40,6 @@ export function ActionWorkspace({
   updates,
   timezone,
   scheduledTimeInput,
-  completionTimeInput,
   localDate,
   routine,
   returnHref,
@@ -54,7 +50,6 @@ export function ActionWorkspace({
   updates: ActionNote[];
   timezone: string;
   scheduledTimeInput: string;
-  completionTimeInput: string;
   localDate: string;
   routine: ActionLifeContext["routine"];
   returnHref: string;
@@ -82,11 +77,6 @@ export function ActionWorkspace({
     setStatusMessage("Changes saved.");
   }, []);
 
-  const handleCompletionTimeSaved = useCallback(() => {
-    setOpenPanel(null);
-    setStatusMessage("Completion time updated.");
-  }, []);
-
   const handleUpdateDeleted = useCallback(
     (updateId: string) => {
       setDeletedUpdateIds((current) => new Set(current).add(updateId));
@@ -112,7 +102,7 @@ export function ActionWorkspace({
   const removable = action.status === "active" || action.status === "proposed";
   const recurring = routine?.status === "active";
   const hasMore =
-    recurring || action.status === "completed" || activeToday || visibleUpdates.length > 0;
+    recurring || activeToday || visibleUpdates.length > 0;
 
   return (
     <div className="space-y-3">
@@ -161,16 +151,6 @@ export function ActionWorkspace({
           onSaved={handleTimeSaved}
         />
       )}
-      {openPanel === "completion-time" &&
-        action.status === "completed" && (
-          <CorrectCompletionTimeForm
-            actionId={action.id}
-            completionTimeInput={completionTimeInput}
-            completionTimeUnknown={action.completion_time_unknown}
-            onClose={() => setOpenPanel(null)}
-            onSaved={handleCompletionTimeSaved}
-          />
-        )}
       {openPanel === "log" && activeToday && (
         <LogActionUpdate
           actionId={action.id}
@@ -216,17 +196,6 @@ export function ActionWorkspace({
                   router.refresh();
                 }}
               />
-            )}
-            {action.status === "completed" && (
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => openWorkspacePanel("completion-time")}
-                className="h-10 w-full"
-              >
-                <Clock3 />
-                Correct completion time
-              </Button>
             )}
             {activeToday && (
               <Button

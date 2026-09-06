@@ -1,10 +1,10 @@
 "use client";
 
-import { Clock3, X } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { formatCommitmentTime } from "@/lib/clarity/calendar-rules";
+import { TimeSelector } from "./time-selector";
 
 export type CompletionTimeDraft = {
   completionTime: string;
@@ -20,7 +20,7 @@ export function CompletionTimeEditor({
   initialCompletionTime,
   initialTimeUnknown,
   allowedDateLabel,
-  heading = "Correct completion time",
+  heading = "Completion time",
   embedded = false,
   onSave,
   onCancel,
@@ -71,47 +71,31 @@ export function CompletionTimeEditor({
   }
 
   return (
-    <section className={embedded ? "space-y-4" : "rounded-2xl bg-card p-4"}>
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="font-semibold">{heading}</h2>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={onCancel}
-          aria-label="Close completion time correction"
-          className="rounded-xl"
-        >
-          <X />
-        </Button>
-      </div>
+    <section
+      data-completion-time-editor
+      className={`w-full min-w-0 max-w-full space-y-3 ${embedded ? "" : "rounded-xl bg-secondary p-3"}`}
+    >
+      <p className="text-sm font-semibold">
+        {allowedDateLabel ? `Completion time on ${allowedDateLabel}` : heading}
+      </p>
 
-      <div className="space-y-4">
-        <label className="block space-y-2">
-          <span className="text-sm font-medium">
-            {allowedDateLabel
-              ? `Exact local time on ${allowedDateLabel}`
-              : "Completion time"}
-          </span>
-          <Input
-            type="time"
-            value={completionTime}
-            onChange={(event) => {
-              setCompletionTime(event.currentTarget.value);
-              setTimeUnknown(false);
-              setError(null);
-              setFieldError(null);
-            }}
-            required={!timeUnknown}
-            disabled={timeUnknown || saving}
-            className="h-11 rounded-xl"
-          />
-          {fieldError && (
-            <span className="block text-sm text-[var(--clarity-completed)]">
-              {fieldError}
-            </span>
-          )}
-        </label>
+      <div className="min-w-0 space-y-3">
+        <TimeSelector
+          label="Completion time"
+          value={timeUnknown ? "" : completionTime}
+          summary={
+            timeUnknown
+              ? "Select time"
+              : formatCommitmentTime(completionTime) ?? "Select time"
+          }
+          onChange={(value) => {
+            setCompletionTime(value);
+            setTimeUnknown(false);
+            setError(null);
+            setFieldError(null);
+          }}
+          error={fieldError ?? undefined}
+        />
 
         <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl px-1 text-sm font-medium">
           <input
@@ -120,6 +104,7 @@ export function CompletionTimeEditor({
             disabled={saving}
             onChange={(event) => {
               setTimeUnknown(event.currentTarget.checked);
+              if (event.currentTarget.checked) setCompletionTime("");
               setError(null);
               setFieldError(null);
             }}
@@ -137,7 +122,7 @@ export function CompletionTimeEditor({
           </p>
         )}
 
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid min-w-0 grid-cols-2 gap-2">
           <Button
             type="button"
             variant="outline"
@@ -153,7 +138,6 @@ export function CompletionTimeEditor({
             disabled={saving}
             className="h-11 rounded-xl"
           >
-            <Clock3 />
             {saving ? "Saving…" : "Save"}
           </Button>
         </div>

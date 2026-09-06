@@ -28,6 +28,7 @@ import {
 import { formatDuration } from "@/lib/clarity/duration";
 import { ActionWorkspace } from "./action-workspace";
 import { ActionCompletionControl } from "./action-completion-control";
+import { CorrectCompletionTimeForm } from "./correct-completion-time-form";
 import { HistoricalActionUpdates } from "./action-update-history";
 import { OngoingContextPrompt } from "./ongoing-context-prompt";
 import { DayItemWorkspaceShell } from "./day-item-workspace-shell";
@@ -78,6 +79,8 @@ export function ActionDetail({
         hourCycle: "h23",
       }).format(new Date(action.completed_at))
     : "";
+  const completionTimeUnknown =
+    action.completion_time_unknown || completedAt === null;
   const currentLocalDate = getLocalDate(profile.timezone);
   const linkedContext = extractLinkedContext(action.why_it_exists);
   const meaningfulWhy =
@@ -151,15 +154,20 @@ export function ActionDetail({
             </>
           )}
         </div>
-        {completedAt && (
-          <p className="text-xs text-muted-foreground">
-            Completed {completedAt}
-          </p>
-        )}
-        {completed && action.completion_time_unknown && (
-          <p className="text-xs text-muted-foreground">
-            Completed {formatWeekday(action.local_date)} · Time not recorded
-          </p>
+        {completed && (
+          <CorrectCompletionTimeForm
+            actionId={action.id}
+            completionSummary={
+              !completionTimeUnknown && completedAt
+                ? `Completed ${completedAt}`
+                : `Completed ${formatShortLocalDate(action.local_date)}`
+            }
+            completionTimeInput={completionTimeInput}
+            completionTimeUnknown={completionTimeUnknown}
+            editable={
+              !readOnly && (activeToday || completedCurrentProposalAction)
+            }
+          />
         )}
       </div>
 
@@ -202,7 +210,6 @@ export function ActionDetail({
               updates={updates}
               timezone={profile.timezone}
               scheduledTimeInput={scheduledTimeInput}
-              completionTimeInput={completionTimeInput}
               localDate={action.local_date}
               routine={lifeContext.routine}
               returnHref={backHref}
@@ -391,6 +398,15 @@ function formatActionDue(localDate: string, localTime: string | null) {
   const [hourText, minute] = localTime.slice(0, 5).split(":");
   const hour = Number(hourText);
   return `${date} · ${hour % 12 || 12}:${minute} ${hour < 12 ? "am" : "pm"}`;
+}
+
+function formatShortLocalDate(localDate: string) {
+  const [year, month, day] = localDate.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, day)));
 }
 
 function extractLinkedContext(value: string) {
