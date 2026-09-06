@@ -483,14 +483,39 @@ type ActiveActionMutationResult = {
   actionId: string | null;
 };
 
+function parseActionRemovalReturn(formData: FormData) {
+  const requested = z.string().parse(formData.get("returnTo"));
+
+  if (requested === "/today" || requested === "/today/active") {
+    return requested;
+  }
+
+  const calendarMatch = requested.match(
+    /^\/calendar\?date=(\d{4}-\d{2}-\d{2})$/,
+  );
+  if (calendarMatch && z.iso.date().safeParse(calendarMatch[1]).success) {
+    return `/calendar?date=${calendarMatch[1]}`;
+  }
+
+  throw new Error("Invalid Action return destination.");
+}
+
+function actionRemovalDestination(returnTo: string, actionId: string) {
+  return returnTo === "/today/active"
+    ? `/today/active?notice=removed&actionId=${actionId}`
+    : returnTo;
+}
+
 export async function removeActionFromTodayAction(
   _previousState: ActiveActionMutationResult,
   formData: FormData,
 ): Promise<ActiveActionMutationResult> {
   let actionId: string;
+  let returnTo: string;
 
   try {
     actionId = z.string().uuid().parse(formData.get("actionId"));
+    returnTo = parseActionRemovalReturn(formData);
     await actionWorkspaceService.removeFromToday(actionId);
     revalidateActiveActionPaths(actionId);
   } catch {
@@ -501,7 +526,7 @@ export async function removeActionFromTodayAction(
     };
   }
 
-  redirect(`/today/active?notice=removed&actionId=${actionId}`);
+  redirect(actionRemovalDestination(returnTo, actionId));
 }
 
 export async function removeActionFromTodayInlineAction(
@@ -529,11 +554,14 @@ export async function removeActionOccurrenceAction(
   _previousState: ActiveActionMutationResult,
   formData: FormData,
 ): Promise<ActiveActionMutationResult> {
+  let actionId: string;
+  let returnTo: string;
+
   try {
-    const actionId = z.string().uuid().parse(formData.get("actionId"));
+    actionId = z.string().uuid().parse(formData.get("actionId"));
+    returnTo = parseActionRemovalReturn(formData);
     await actionWorkspaceService.removeOccurrence(actionId);
     revalidateActiveActionPaths(actionId);
-    return { success: true, error: null, actionId };
   } catch {
     return {
       success: false,
@@ -541,6 +569,8 @@ export async function removeActionOccurrenceAction(
       actionId: null,
     };
   }
+
+  redirect(actionRemovalDestination(returnTo, actionId));
 }
 
 export async function removeActionOccurrenceInlineAction(

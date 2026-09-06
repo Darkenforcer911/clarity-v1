@@ -1,7 +1,7 @@
 "use client";
 
 import { Trash2, X } from "lucide-react";
-import { useActionState, useEffect } from "react";
+import { useActionState } from "react";
 
 import {
   removeActionFromTodayAction,
@@ -17,7 +17,7 @@ export function RemoveActionPanel({
   actionTitle,
   skipToday = false,
   currentDate = true,
-  onRemoved,
+  returnTo,
 }: {
   actionId: string;
   onClose: () => void;
@@ -25,7 +25,7 @@ export function RemoveActionPanel({
   actionTitle?: string;
   skipToday?: boolean;
   currentDate?: boolean;
-  onRemoved?: () => void;
+  returnTo: string;
 }) {
   const [state, formAction] = useActionState(
     occurrenceOnly ? removeActionOccurrenceAction : removeActionFromTodayAction,
@@ -35,10 +35,6 @@ export function RemoveActionPanel({
     actionId: null,
     },
   );
-
-  useEffect(() => {
-    if (state.success) onRemoved?.();
-  }, [onRemoved, state.success]);
 
   return (
     <section className="rounded-2xl bg-card p-5">
@@ -74,6 +70,7 @@ export function RemoveActionPanel({
       </div>
       <form action={formAction} className="mt-5 grid gap-2">
         <input type="hidden" name="actionId" value={actionId} />
+        <input type="hidden" name="returnTo" value={returnTo} />
         <PendingButton
           type="submit"
           variant="destructive"

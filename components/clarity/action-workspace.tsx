@@ -199,11 +199,8 @@ export function ActionWorkspace({
           actionTitle={action.title}
           skipToday={recurring}
           currentDate={currentDate}
+          returnTo={returnHref}
           onClose={() => setOpenPanel(null)}
-          onRemoved={() => {
-            router.push(returnHref);
-            router.refresh();
-          }}
         />
       )}
       {hasMore && openPanel === null && (
