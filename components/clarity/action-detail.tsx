@@ -78,6 +78,7 @@ export function ActionDetail({
         hourCycle: "h23",
       }).format(new Date(action.completed_at))
     : "";
+  const currentLocalDate = getLocalDate(profile.timezone);
   const linkedContext = extractLinkedContext(action.why_it_exists);
   const meaningfulWhy =
     !linkedContext && isMeaningfulWhy(action.why_it_exists, plan?.focus ?? null)
@@ -87,18 +88,18 @@ export function ActionDetail({
   const usefulMethod = isUsefulGeneratedDetail(action.suggested_method);
   const activeToday =
     plan?.status === "active" &&
-    action.local_date === getLocalDate(profile.timezone) &&
+    action.local_date === currentLocalDate &&
     ["active", "completed"].includes(action.status);
   const completedCurrentProposalAction =
     plan?.status === "proposed" &&
-    action.local_date === getLocalDate(profile.timezone) &&
+    action.local_date === currentLocalDate &&
     action.status === "completed" &&
     !action.completion_evidence_only &&
     action.approved_at === null;
   const editable =
     action.status === "active" ||
     (action.status === "proposed" &&
-      action.local_date >= getLocalDate(profile.timezone));
+      action.local_date >= currentLocalDate);
   const recurrence = recurrenceCopy(lifeContext.routine);
   const displayedDuration = completed
     ? action.actual_minutes
@@ -243,6 +244,7 @@ export function ActionDetail({
               returnHref={backHref}
               activeToday={activeToday}
               editable={editable}
+              currentDate={action.local_date === currentLocalDate}
             />
           ) : undefined
         }
@@ -366,6 +368,8 @@ function HistoricalActionRecord({
 }
 
 function recurrenceCopy(routine: ActionLifeContext["routine"]) {
+  if (routine?.status !== "active") return "";
+
   if (routine?.cadence === "daily") {
     return "Daily";
   }

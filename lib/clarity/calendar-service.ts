@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import { getLocalDate } from "./date-time";
 import { getAuthenticatedUserAndProfile } from "./daily-loop-queries";
 import {
@@ -76,11 +77,21 @@ export async function getCalendarCommitmentContext(
   commitmentId: string,
   localDate: string,
 ) {
+  const parsed = z.object({
+    commitmentId: z.string().uuid(),
+    localDate: z.iso.date(),
+  }).safeParse({ commitmentId, localDate });
+  if (!parsed.success) throw new CalendarCommitmentNotFoundError();
+
   const { supabase, profile } = await getAuthenticatedUserAndProfile();
-  const commitments = await getCalendarCommitmentsForDate(supabase, localDate);
+  const commitments = await getCalendarCommitmentsForDate(
+    supabase,
+    parsed.data.localDate,
+  );
   const commitment = commitments.find(
     (candidate) =>
-      candidate.id === commitmentId && candidate.occurrence_date === localDate,
+      candidate.id === parsed.data.commitmentId &&
+      candidate.occurrence_date === parsed.data.localDate,
   );
 
   if (!commitment) throw new CalendarCommitmentNotFoundError();

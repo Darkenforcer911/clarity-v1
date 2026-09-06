@@ -26,6 +26,14 @@ async function CalendarContent({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const query = await searchParams;
+  if (
+    typeof query.date === "string" &&
+    typeof query.commitment === "string"
+  ) {
+    redirect(
+      `/calendar/commitments/${encodeURIComponent(query.commitment)}?date=${encodeURIComponent(query.date)}`,
+    );
+  }
   let data;
 
   try {
@@ -43,9 +51,6 @@ async function CalendarContent({
       {...data}
       timezone={data.profile.timezone}
       initialNow={new Date().toISOString()}
-      initialCommitmentId={
-        typeof query.commitment === "string" ? query.commitment : undefined
-      }
     />
   );
 }

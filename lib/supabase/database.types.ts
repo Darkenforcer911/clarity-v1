@@ -2207,6 +2207,14 @@ export type Database = {
         Args: { p_daily_plan_id: string }
         Returns: undefined
       }
+      change_action_recurrence_v1: {
+        Args: {
+          p_daily_action_id: string
+          p_recurrence_days?: number[]
+          p_recurrence_pattern: string
+        }
+        Returns: undefined
+      }
       claim_notification_deliveries: {
         Args: {
           p_batch_size?: number

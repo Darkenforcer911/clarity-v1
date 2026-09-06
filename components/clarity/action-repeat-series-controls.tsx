@@ -41,7 +41,9 @@ export function ActionRepeatSeriesControls({
 }) {
   const initialPattern = cadence === "times_per_week" ? "weekly" : cadence;
   const [panel, setPanel] = useState<"change" | "stop" | null>(null);
-  const [pattern, setPattern] = useState(initialPattern);
+  const [pattern, setPattern] = useState<
+    "none" | "daily" | "weekly" | "certain_days"
+  >(initialPattern);
   const [days, setDays] = useState(selectedWeekdays);
   const [changeState, changeAction] = useActionState(
     changeActionRepeatAction,
@@ -75,6 +77,7 @@ export function ActionRepeatSeriesControls({
           onChange={(choice) => {
             const next = resolveActionRecurrencePrimaryChoice(choice);
             if (
+              next !== "none" &&
               next !== "daily" &&
               next !== "weekly" &&
               next !== "certain_days"
@@ -82,11 +85,6 @@ export function ActionRepeatSeriesControls({
             if (next !== "certain_days") setDays([]);
             setPattern(next);
           }}
-          choices={[
-            { value: "daily", label: "Daily" },
-            { value: "weekly", label: "Weekly" },
-            { value: "custom", label: "Custom" },
-          ]}
           showDone={false}
         >
           <div className="space-y-2">

@@ -26,6 +26,7 @@ export function CalendarOccurrenceWorkspace({
   readOnly = false,
   onEdit,
   onSaved,
+  onRemoved,
 }: {
   commitment: CalendarCommitment;
   today: string;
@@ -34,6 +35,7 @@ export function CalendarOccurrenceWorkspace({
   readOnly?: boolean;
   onEdit: () => void;
   onSaved: () => void;
+  onRemoved?: () => void;
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [skipConfirming, setSkipConfirming] = useState(false);
@@ -50,6 +52,12 @@ export function CalendarOccurrenceWorkspace({
     currentDate;
   const recordedOutcome = Boolean(commitment.reconciliation_outcome);
   const editable = !readOnly && commitment.status === "scheduled";
+  const canSkipOccurrence =
+    editable && recurringEvent && !recordedOutcome &&
+    commitment.occurrence_date >= today;
+  const skipLabel = currentDate
+    ? "Skip today"
+    : `Skip ${formatOccurrenceDate(commitment.occurrence_date)}`;
 
   useEffect(() => {
     if (completionState.saved) onSaved();
@@ -129,14 +137,14 @@ export function CalendarOccurrenceWorkspace({
                 Edit
               </Button>
             )}
-            {editable && recurringEvent && currentEvent && (
+            {canSkipOccurrence && (
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setSkipConfirming(true)}
                 className="h-11 w-full rounded-xl"
               >
-                Skip today
+                {skipLabel}
               </Button>
             )}
             {commitment.recurrence === "none" && (
@@ -144,8 +152,10 @@ export function CalendarOccurrenceWorkspace({
                 commitment={commitment}
                 confirming={deleteConfirming}
                 onConfirmingChange={setDeleteConfirming}
-                onSaved={onSaved}
-                triggerLabel={currentDate ? "Remove from today" : "Remove"}
+                onSaved={onRemoved ?? onSaved}
+                triggerLabel={
+                  currentDate ? "Remove from today" : "Remove this occurrence"
+                }
               />
             )}
           </>
@@ -192,6 +202,7 @@ export function CalendarOccurrenceWorkspace({
       {skipConfirming && (
         <SkipCalendarOccurrenceConfirmation
           commitment={commitment}
+          skipLabel={skipLabel}
           onCancel={() => setSkipConfirming(false)}
           onSaved={onSaved}
         />
@@ -202,10 +213,12 @@ export function CalendarOccurrenceWorkspace({
 
 function SkipCalendarOccurrenceConfirmation({
   commitment,
+  skipLabel,
   onCancel,
   onSaved,
 }: {
   commitment: CalendarCommitment;
+  skipLabel: string;
   onCancel: () => void;
   onSaved: () => void;
 }) {
@@ -221,7 +234,7 @@ function SkipCalendarOccurrenceConfirmation({
   return (
     <div className="space-y-3 rounded-xl bg-secondary p-3">
       <div className="space-y-1">
-        <p className="text-sm font-medium">Skip today?</p>
+        <p className="text-sm font-medium">{skipLabel}?</p>
         <p className="text-xs leading-5 text-muted-foreground">
           Only this dated occurrence is skipped. Future occurrences continue.
         </p>
@@ -237,7 +250,7 @@ function SkipCalendarOccurrenceConfirmation({
           Cancel
         </Button>
         <PendingButton type="submit" variant="destructive" pendingLabel="Skipping…">
-          Skip today
+          {skipLabel}
         </PendingButton>
       </form>
       {state.error && (
@@ -245,6 +258,15 @@ function SkipCalendarOccurrenceConfirmation({
       )}
     </div>
   );
+}
+
+function formatOccurrenceDate(localDate: string) {
+  const [year, month, day] = localDate.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-AU", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, day)));
 }
 
 function StopCalendarRepeatingControl({

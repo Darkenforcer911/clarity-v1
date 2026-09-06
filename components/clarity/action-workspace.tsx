@@ -46,6 +46,7 @@ export function ActionWorkspace({
   returnHref,
   activeToday,
   editable,
+  currentDate,
 }: {
   action: DailyAction;
   updates: ActionNote[];
@@ -57,6 +58,7 @@ export function ActionWorkspace({
   returnHref: string;
   activeToday: boolean;
   editable: boolean;
+  currentDate: boolean;
 }) {
   const router = useRouter();
   const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
@@ -133,7 +135,13 @@ export function ActionWorkspace({
             className="h-11 rounded-xl"
           >
             <Trash2 />
-            {recurring ? "Skip today" : "Remove from today"}
+            {recurring
+              ? currentDate
+                ? "Skip today"
+                : "Skip this occurrence"
+              : currentDate
+                ? "Remove from today"
+                : "Remove this occurrence"}
           </Button>
         )}
       </div>
@@ -190,6 +198,7 @@ export function ActionWorkspace({
           occurrenceOnly={recurring || action.status === "proposed"}
           actionTitle={action.title}
           skipToday={recurring}
+          currentDate={currentDate}
           onClose={() => setOpenPanel(null)}
           onRemoved={() => {
             router.push(returnHref);
@@ -311,8 +320,10 @@ function ActionEditForm({
           dueLocalDate: action.due_local_date ?? "",
           dueLocalTime: action.due_local_time?.slice(0, 5) ?? "",
           reminderOffsets: action.reminder_offsets_minutes,
-          recurrencePattern: routine?.cadence ?? "none",
-          recurrenceDays: routine?.weekdays ?? [],
+          recurrencePattern:
+            routine?.status === "active" ? routine.cadence : "none",
+          recurrenceDays:
+            routine?.status === "active" ? routine.weekdays : [],
           whyItExists: action.why_it_exists,
           definitionOfDone: action.definition_of_done,
           suggestedMethod: action.suggested_method,

@@ -248,7 +248,7 @@ export function DailyCommitmentCard({
       now={now}
       onEdit={() =>
         router.push(
-          `/calendar?date=${commitment.occurrence_date}&commitment=${commitment.id}`,
+          `/calendar/commitments/${commitment.id}?date=${commitment.occurrence_date}`,
         )
       }
       onSaved={handleOccurrenceSaved}

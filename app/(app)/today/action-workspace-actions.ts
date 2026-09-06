@@ -567,7 +567,7 @@ export async function changeActionRepeatAction(
   try {
     const parsed = z.object({
       actionId: z.string().uuid(),
-      recurrencePattern: z.enum(["daily", "weekly", "certain_days"]),
+      recurrencePattern: z.enum(["none", "daily", "weekly", "certain_days"]),
       recurrenceDays: z.array(z.coerce.number().int().min(0).max(6)).max(7),
     }).superRefine((value, context) => {
       if (

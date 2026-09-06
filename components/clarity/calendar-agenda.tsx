@@ -35,7 +35,6 @@ import type { CalendarHistoricalRecord } from "@/lib/clarity/calendar-service";
 import type { DayCorrection } from "@/lib/clarity/day-corrections";
 import {
   getCalendarDateMode,
-  resolveCalendarCommitmentSelection,
 } from "@/lib/clarity/calendar-rules";
 import { CalendarCommitmentForm } from "./calendar-commitment-form";
 import { CalendarCommitmentDeleteControl } from "./calendar-commitment-delete-control";
@@ -50,7 +49,6 @@ import {
   partitionCalendarDailyActions,
   type CalendarDailyAction,
 } from "@/lib/clarity/calendar-daily-actions";
-import { CalendarOccurrenceWorkspace } from "./calendar-occurrence-workspace";
 import {
   orderLaterTodayItems,
   type LaterTodayItem,
@@ -72,7 +70,6 @@ export function CalendarAgenda({
   historicalRecord,
   stripDates,
   initialNow,
-  initialCommitmentId,
 }: {
   selectedDate: string;
   today: string;
@@ -83,7 +80,6 @@ export function CalendarAgenda({
   historicalRecord: CalendarHistoricalRecord | null;
   stripDates: string[];
   initialNow: string;
-  initialCommitmentId?: string;
 }) {
   const router = useRouter();
   const [now, setNow] = useState(() => new Date(initialNow));
@@ -91,11 +87,7 @@ export function CalendarAgenda({
   const [addKind, setAddKind] = useState<
     "action" | "event" | "deadline" | null
   >(null);
-  const [openId, setOpenId] = useState<string | null>(() =>
-    resolveCalendarCommitmentSelection(initialCommitmentId, commitments),
-  );
   const [openSwipeItemKey, setOpenSwipeItemKey] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [jumpOpen, setJumpOpen] = useState(false);
   const [jumpDate, setJumpDate] = useState(selectedDate);
   const mode = getCalendarDateMode(selectedDate, today);
@@ -130,7 +122,6 @@ export function CalendarAgenda({
   const closeForm = useCallback(() => {
     setAddOpen(false);
     setAddKind(null);
-    setEditingId(null);
     setOpenSwipeItemKey(null);
   }, []);
   const handleSaved = useCallback(() => {
@@ -305,21 +296,10 @@ export function CalendarAgenda({
         today={today}
         timezone={timezone}
         now={now}
-        openId={openId}
-        editingId={editingId}
         openSwipeItemKey={openSwipeItemKey}
-        onOpenCommitment={(id) => {
-          setOpenSwipeItemKey(null);
-          setOpenId((current) => (current === id ? null : id));
-        }}
         onOpenAction={() => setOpenSwipeItemKey(null)}
         onSwipeOpenChange={handleSwipeOpenChange}
-        onEdit={(id) => {
-          setOpenSwipeItemKey(null);
-          setEditingId(id);
-        }}
         onSaved={handleSaved}
-        onCancelEdit={() => setEditingId(null)}
         readOnly={isPast}
       />
 
@@ -331,21 +311,10 @@ export function CalendarAgenda({
         today={today}
         timezone={timezone}
         now={now}
-        openId={openId}
-        editingId={editingId}
         openSwipeItemKey={openSwipeItemKey}
-        onOpenCommitment={(id) => {
-          setOpenSwipeItemKey(null);
-          setOpenId((current) => (current === id ? null : id));
-        }}
         onOpenAction={() => setOpenSwipeItemKey(null)}
         onSwipeOpenChange={handleSwipeOpenChange}
-        onEdit={(id) => {
-          setOpenSwipeItemKey(null);
-          setEditingId(id);
-        }}
         onSaved={handleSaved}
-        onCancelEdit={() => setEditingId(null)}
         readOnly={isPast}
       />
 
@@ -357,21 +326,10 @@ export function CalendarAgenda({
         today={today}
         timezone={timezone}
         now={now}
-        openId={openId}
-        editingId={editingId}
         openSwipeItemKey={openSwipeItemKey}
-        onOpenCommitment={(id) => {
-          setOpenSwipeItemKey(null);
-          setOpenId((current) => (current === id ? null : id));
-        }}
         onOpenAction={() => setOpenSwipeItemKey(null)}
         onSwipeOpenChange={handleSwipeOpenChange}
-        onEdit={(id) => {
-          setOpenSwipeItemKey(null);
-          setEditingId(id);
-        }}
         onSaved={handleSaved}
-        onCancelEdit={() => setEditingId(null)}
         readOnly={isPast}
       />
 
@@ -472,7 +430,6 @@ export function CalendarAgenda({
             size="lg"
             onClick={() => {
               setOpenSwipeItemKey(null);
-              setEditingId(null);
               setAddOpen(true);
               setAddKind("action");
             }}
@@ -486,7 +443,6 @@ export function CalendarAgenda({
             variant="ghost"
             onClick={() => {
               setOpenSwipeItemKey(null);
-              setEditingId(null);
               setAddOpen(true);
               setAddKind(null);
             }}
@@ -509,15 +465,10 @@ function CalendarDaySection({
   today,
   timezone,
   now,
-  openId,
-  editingId,
   openSwipeItemKey,
-  onOpenCommitment,
   onOpenAction,
   onSwipeOpenChange,
-  onEdit,
   onSaved,
-  onCancelEdit,
   readOnly,
 }: {
   title: string;
@@ -527,15 +478,10 @@ function CalendarDaySection({
   today: string;
   timezone: string;
   now: Date;
-  openId: string | null;
-  editingId: string | null;
   openSwipeItemKey: string | null;
-  onOpenCommitment: (id: string) => void;
   onOpenAction: () => void;
   onSwipeOpenChange: (itemKey: string, open: boolean) => void;
-  onEdit: (id: string | null) => void;
   onSaved: () => void;
-  onCancelEdit: () => void;
   readOnly: boolean;
 }) {
   if (items.length === 0) return null;
@@ -570,31 +516,18 @@ function CalendarDaySection({
 
           const commitment = item.value;
           const itemKey = `commitment:${commitment.id}:${commitment.occurrence_date}`;
-          return !readOnly && editingId === commitment.id ? (
-            <CalendarCommitmentForm
-              key={itemKey}
-              selectedDate={selectedDate}
-              timezone={timezone}
-              now={now}
-              commitment={commitment}
-              onCancel={onCancelEdit}
-              onSaved={onSaved}
-            />
-          ) : (
+          return (
             <CommitmentRow
               key={itemKey}
               commitment={commitment}
               today={today}
               timezone={timezone}
               now={now}
-              open={openId === commitment.id}
               swipeItemKey={itemKey}
               swipeOpen={openSwipeItemKey === itemKey}
-              onOpen={() => onOpenCommitment(commitment.id)}
               onSwipeOpenChange={(open) =>
                 onSwipeOpenChange(itemKey, open)
               }
-              onEdit={() => onEdit(commitment.id)}
               onSaved={onSaved}
               readOnly={readOnly}
             />
@@ -610,12 +543,9 @@ function CommitmentRow({
   today,
   timezone,
   now,
-  open,
   swipeItemKey,
   swipeOpen,
-  onOpen,
   onSwipeOpenChange,
-  onEdit,
   onSaved,
   readOnly,
 }: {
@@ -623,12 +553,9 @@ function CommitmentRow({
   today: string;
   timezone: string;
   now: Date;
-  open: boolean;
   swipeItemKey: string;
   swipeOpen: boolean;
-  onOpen: () => void;
   onSwipeOpenChange: (open: boolean) => void;
-  onEdit: () => void;
   onSaved: () => void;
   readOnly: boolean;
 }) {
@@ -647,7 +574,7 @@ function CommitmentRow({
     commitment.commitment_type === "event" && commitment.recurrence !== "none";
   const canSkipThisOccurrence =
     recurringEvent &&
-    commitment.occurrence_date === today &&
+    commitment.occurrence_date >= today &&
     commitment.status === "scheduled" &&
     !commitment.reconciliation_outcome;
   const canSwipeRemove =
@@ -667,7 +594,6 @@ function CommitmentRow({
       setDeletionError(null);
       setDeleteConfirming(true);
       onSwipeOpenChange(false);
-      if (!open) onOpen();
       return;
     }
 
@@ -717,13 +643,13 @@ function CommitmentRow({
       removing={removing}
       enabled={canSwipeRemove}
       accessibilityContext="from Calendar"
-      actionLabel={canSkipThisOccurrence ? "Skip today" : "Delete"}
+      actionLabel={canSkipThisOccurrence ? "Skip this occurrence" : "Delete"}
       pendingLabel={canSkipThisOccurrence ? "Skipping…" : "Deleting…"}
     >
       <article className="min-w-0 rounded-2xl border border-border bg-card">
-        <button
-          type="button"
-          onClick={onOpen}
+        <Link
+          href={`/calendar/commitments/${commitment.id}?date=${commitment.occurrence_date}`}
+          onClick={() => onSwipeOpenChange(false)}
           className="flex min-h-14 w-full min-w-0 items-start gap-3 rounded-2xl p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Clock3 className="mt-0.5 size-4 shrink-0 text-[var(--clarity-completed)]" />
@@ -742,7 +668,7 @@ function CommitmentRow({
               </span>
             )}
           </span>
-        </button>
+        </Link>
 
         {deletionError && (
           <p role="alert" className="px-4 pb-3 text-xs text-destructive">
@@ -750,29 +676,16 @@ function CommitmentRow({
           </p>
         )}
 
-        {open && (
-          <>
-            <CalendarOccurrenceWorkspace
+        {deleteConfirming && (
+          <div className="bg-card px-4 pb-4">
+            <CalendarCommitmentDeleteControl
               commitment={commitment}
-              today={today}
-              timezone={timezone}
-              now={now}
-              readOnly={readOnly}
-              onEdit={onEdit}
+              confirming
+              onConfirmingChange={setDeleteConfirming}
               onSaved={onSaved}
+              showTrigger={false}
             />
-            {deleteConfirming && (
-              <div className="bg-card px-4 pb-4">
-                <CalendarCommitmentDeleteControl
-                  commitment={commitment}
-                  confirming
-                  onConfirmingChange={setDeleteConfirming}
-                  onSaved={onSaved}
-                  showTrigger={false}
-                />
-              </div>
-            )}
-          </>
+          </div>
         )}
       </article>
     </SwipeToRemove>

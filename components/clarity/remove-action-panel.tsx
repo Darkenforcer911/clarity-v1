@@ -16,6 +16,7 @@ export function RemoveActionPanel({
   occurrenceOnly = false,
   actionTitle,
   skipToday = false,
+  currentDate = true,
   onRemoved,
 }: {
   actionId: string;
@@ -23,6 +24,7 @@ export function RemoveActionPanel({
   occurrenceOnly?: boolean;
   actionTitle?: string;
   skipToday?: boolean;
+  currentDate?: boolean;
   onRemoved?: () => void;
 }) {
   const [state, formAction] = useActionState(
@@ -44,7 +46,9 @@ export function RemoveActionPanel({
         <div>
           <h2 className="font-semibold">
             {skipToday
-              ? `Skip “${actionTitle ?? "this Action"}” today?`
+              ? currentDate
+                ? `Skip “${actionTitle ?? "this Action"}” today?`
+                : `Skip “${actionTitle ?? "this Action"}” on this date?`
               : occurrenceOnly
                 ? "Remove this Action?"
                 : "Remove from today?"}
@@ -78,9 +82,13 @@ export function RemoveActionPanel({
         >
           <Trash2 />
           {skipToday
-            ? "Skip today"
+            ? currentDate
+              ? "Skip today"
+              : "Skip this occurrence"
             : occurrenceOnly
-              ? "Remove from today"
+              ? currentDate
+                ? "Remove from today"
+                : "Remove this occurrence"
               : "Remove from today"}
         </PendingButton>
         <Button
