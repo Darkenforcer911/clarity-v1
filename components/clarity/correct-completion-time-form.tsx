@@ -61,22 +61,25 @@ export function CorrectCompletionTimeForm({
     return (
       <div
         data-completion-time-summary
-        className="flex min-w-0 items-start justify-between gap-3"
+        className="min-w-0 text-xs text-muted-foreground"
       >
-        <div className="min-w-0 text-xs text-muted-foreground">
-          <p>{completionSummary}</p>
-          {completionTimeUnknown && <p className="mt-1">Time not recorded</p>}
+        <div className="flex min-w-0 flex-wrap items-center gap-x-1">
+          <span>{completionSummary}</span>
+          {editable && (
+            <>
+              <span aria-hidden="true">·</span>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setEditing(true)}
+                className="h-7 shrink-0 rounded-md px-1.5 text-xs text-muted-foreground"
+              >
+                Edit time
+              </Button>
+            </>
+          )}
         </div>
-        {editable && (
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => setEditing(true)}
-            className="h-8 shrink-0 rounded-lg px-2 text-xs text-muted-foreground"
-          >
-            Edit
-          </Button>
-        )}
+        {completionTimeUnknown && <p className="mt-1">Time not recorded</p>}
       </div>
     );
   }
