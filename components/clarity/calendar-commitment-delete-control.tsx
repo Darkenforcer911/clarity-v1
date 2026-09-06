@@ -14,12 +14,14 @@ export function CalendarCommitmentDeleteControl({
   onConfirmingChange,
   onSaved,
   showTrigger = true,
+  triggerLabel,
 }: {
   commitment: Pick<CalendarCommitment, "id" | "commitment_type">;
   confirming: boolean;
   onConfirmingChange: (confirming: boolean) => void;
   onSaved: () => void;
   showTrigger?: boolean;
+  triggerLabel?: string;
 }) {
   const [deleteState, deleteAction] = useActionState(
     deleteCalendarCommitmentAction,
@@ -41,7 +43,7 @@ export function CalendarCommitmentDeleteControl({
         onClick={() => onConfirmingChange(true)}
         className="h-11 w-full text-destructive hover:text-destructive"
       >
-        Delete {noun}
+        {triggerLabel ?? `Delete ${noun}`}
       </Button>
     ) : null;
   }

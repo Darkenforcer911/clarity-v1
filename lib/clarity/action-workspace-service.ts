@@ -681,6 +681,75 @@ export class ActionWorkspaceService {
     ensureRpcSucceeded(error);
   }
 
+  async changeRepeat(
+    actionId: string,
+    cadence: "daily" | "weekly" | "certain_days",
+    weekdays: number[],
+  ) {
+    const data = await this.getAction(actionId);
+    if (!data.action.source_routine_id) {
+      throw new ActionWorkspaceServiceError(
+        "This Action does not have a repeating series.",
+      );
+    }
+
+    if (
+      (cadence === "certain_days" && weekdays.length === 0) ||
+      (cadence !== "certain_days" && weekdays.length > 0)
+    ) {
+      throw new ActionWorkspaceServiceError(
+        "Choose at least one weekday for a custom repeat.",
+        "recurrenceDays",
+      );
+    }
+
+    const { supabase, user } = await getAuthenticatedUserAndProfile();
+    const { data: routine, error: routineError } = await supabase
+      .from("routines")
+      .select("*")
+      .eq("id", data.action.source_routine_id)
+      .eq("user_id", user.id)
+      .single();
+
+    if (routineError || !routine || routine.status !== "active") {
+      throw new ActionWorkspaceServiceError(
+        routineError?.message ?? "Repeating Action not found.",
+      );
+    }
+
+    const { error } = await supabase.rpc("update_routine", {
+      p_routine_id: routine.id,
+      p_title: routine.title,
+      p_cadence: cadence,
+      p_estimated_minutes: routine.estimated_minutes,
+      p_goal_id: routine.goal_id ?? undefined,
+      p_project_id: routine.project_id ?? undefined,
+      p_cadence_count: routine.cadence_count ?? undefined,
+      p_weekdays: cadence === "certain_days" ? weekdays : [],
+      p_preferred_time: routine.preferred_time ?? undefined,
+      p_skip_policy: routine.skip_policy,
+    });
+
+    ensureRpcSucceeded(error);
+  }
+
+  async stopRepeating(actionId: string) {
+    const data = await this.getAction(actionId);
+    if (!data.action.source_routine_id) {
+      throw new ActionWorkspaceServiceError(
+        "This Action does not have a repeating series.",
+      );
+    }
+
+    const { supabase } = await getAuthenticatedUserAndProfile();
+    const { error } = await supabase.rpc("transition_routine_status", {
+      p_routine_id: data.action.source_routine_id,
+      p_new_status: "ended",
+    });
+
+    ensureRpcSucceeded(error);
+  }
+
   async restoreToToday(actionId: string) {
     const { supabase } = await getAuthenticatedUserAndProfile();
     const { error } = await callPendingActionWorkspaceRpc(

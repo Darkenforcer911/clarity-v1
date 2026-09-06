@@ -23,6 +23,7 @@ export function RecurrenceControl({
   onDone,
   children,
   choices = actionRecurrenceChoices,
+  showDone = true,
 }: {
   expanded: boolean;
   summary: string;
@@ -32,6 +33,7 @@ export function RecurrenceControl({
   onDone?: () => void;
   children?: React.ReactNode;
   choices?: ReadonlyArray<{ value: RecurrencePrimaryChoice; label: string }>;
+  showDone?: boolean;
 }) {
   return (
     <fieldset className="m-0 w-full min-w-0 max-w-full border-0 p-0">
@@ -43,6 +45,7 @@ export function RecurrenceControl({
         expanded={expanded}
         onExpandedChange={onExpandedChange}
         onDone={onDone}
+        showDone={showDone}
       >
         <div
           role="group"

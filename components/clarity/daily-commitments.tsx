@@ -1,20 +1,14 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Fragment,
-  useActionState,
   useCallback,
-  useEffect,
   useState,
   type ReactNode,
 } from "react";
 
 import {
-  cancelCalendarCommitmentAction,
-  correctCalendarEventOccurrenceOutcomeAction,
   skipCalendarEventOccurrenceAction,
 } from "@/app/(app)/calendar/actions";
 import { initialCalendarActionState } from "@/lib/clarity/calendar-action-state";
@@ -28,13 +22,10 @@ import {
   type CalendarCommitment,
 } from "@/lib/clarity/calendar-commitments";
 import type { DailyAction } from "@/lib/clarity/daily-loop-queries";
-import { getLocalTime } from "@/lib/clarity/date-time";
 import { orderLaterTodayItems } from "@/lib/clarity/today-display-order";
-import { Button } from "@/components/ui/button";
-import { CalendarOccurrenceOutcomeControl } from "./calendar-occurrence-outcome-control";
-import { PendingButton } from "./pending-button";
 import { SwipeToRemove } from "./swipe-to-remove";
 import { CalendarCommitmentDeleteControl } from "./calendar-commitment-delete-control";
+import { CalendarOccurrenceWorkspace } from "./calendar-occurrence-workspace";
 import { TimedDayItemSummary } from "./timed-day-item-summary";
 
 export function DailyCommitments({
@@ -152,7 +143,6 @@ export function DailyCommitmentCard({
   const [removing, setRemoving] = useState(false);
   const [removalError, setRemovalError] = useState<string | null>(null);
   const [deleteConfirming, setDeleteConfirming] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
   const expanded = controlledExpanded ?? internalExpanded;
   const setExpanded = onExpandedChange ?? setInternalExpanded;
   const swipeOpen = controlledSwipeOpen ?? internalSwipeOpen;
@@ -161,12 +151,6 @@ export function DailyCommitmentCard({
   const recurrence = formatCommitmentRecurrence(commitment);
   const recurringEvent =
     commitment.commitment_type === "event" && commitment.recurrence !== "none";
-  const eventOccurrence = commitment.commitment_type === "event";
-  const recordedOutcome = Boolean(commitment.reconciliation_outcome);
-  const [completionState, completionAction] = useActionState(
-    correctCalendarEventOccurrenceOutcomeAction,
-    initialCalendarActionState,
-  );
   const removable =
     commitment.status === "scheduled" &&
     !commitment.reconciliation_outcome &&
@@ -183,19 +167,12 @@ export function DailyCommitmentCard({
           ? timing[0].toUpperCase() + timing.slice(1)
           : null;
 
-  useEffect(() => {
-    if (!completionState.saved) return;
-    router.refresh();
-  }, [completionState.saved, completionState.version, router]);
-
   const handleOccurrenceSaved = useCallback(() => {
-    setMoreOpen(false);
     setExpanded(false);
     router.refresh();
   }, [router, setExpanded]);
 
   function toggleExpanded() {
-    setMoreOpen(false);
     setSwipeOpen(false);
     setExpanded(!expanded);
   }
@@ -218,23 +195,6 @@ export function DailyCommitmentCard({
       />
     </button>
   );
-
-  if (!eventOccurrence) {
-    return (
-      <Link
-        href={`/calendar?date=${commitment.occurrence_date}&commitment=${commitment.id}`}
-        className="flex min-h-14 min-w-0 items-start gap-3 rounded-2xl border border-border bg-card p-4 transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <TimedDayItemSummary
-          title={commitment.title}
-          meta={[getCommitmentMeta(commitment), recurrence]
-            .filter(Boolean)
-            .join(" · ")}
-          status={status}
-        />
-      </Link>
-    );
-  }
 
   async function skipToday() {
     if (removalPending) return;
@@ -281,118 +241,18 @@ export function DailyCommitmentCard({
   }
 
   const occurrenceWorkspace = expanded ? (
-    <div
-      data-today-calendar-occurrence-workspace
-      className="space-y-3 border-t border-border bg-card px-4 pb-4 pt-3"
-    >
-      {recordedOutcome ? (
-        <CalendarOccurrenceOutcomeControl
-          commitment={commitment}
-          timezone={timezone}
-          onSaved={handleOccurrenceSaved}
-          currentDay
-        />
-      ) : (
-        <>
-          <form action={completionAction}>
-            <input type="hidden" name="commitmentId" value={commitment.id} />
-            <input
-              type="hidden"
-              name="occurrenceDate"
-              value={commitment.occurrence_date}
-            />
-            <input type="hidden" name="outcome" value="attended" />
-            <input
-              type="hidden"
-              name="completedTime"
-              value={getLocalTime(timezone, now)}
-            />
-            <input type="hidden" name="note" value="" />
-            <PendingButton
-              type="submit"
-              pendingLabel="Completing…"
-              className="h-11 w-full rounded-xl"
-            >
-              Done
-            </PendingButton>
-          </form>
-          <Button asChild variant="outline" className="h-11 w-full">
-            <Link
-              href={`/calendar?date=${commitment.occurrence_date}&commitment=${commitment.id}`}
-            >
-              Edit
-            </Link>
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={skipToday}
-            disabled={removalPending}
-            className="h-11 w-full rounded-xl"
-          >
-            {removalPending
-              ? recurringEvent
-                ? "Skipping…"
-                : "Removing…"
-              : recurringEvent
-                ? "Skip today"
-                : "Remove from today"}
-          </Button>
-          {completionState.error && (
-            <p role="alert" className="text-xs text-destructive">
-              {completionState.error}
-            </p>
-          )}
-        </>
-      )}
-      {recordedOutcome && (
-        <Button asChild variant="outline" className="h-11 w-full">
-          <Link
-            href={`/calendar?date=${commitment.occurrence_date}&commitment=${commitment.id}`}
-          >
-            Edit
-          </Link>
-        </Button>
-      )}
-      {recurringEvent && (
-        <div className="space-y-2">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => setMoreOpen((current) => !current)}
-            aria-expanded={moreOpen}
-            className="h-10 w-full text-muted-foreground"
-          >
-            More
-            <ChevronDown
-              className={`transition-transform ${moreOpen ? "rotate-180" : ""}`}
-            />
-          </Button>
-          {moreOpen && (
-            <div
-              data-recurring-day-item-more
-              className="grid gap-2 rounded-xl bg-secondary p-3"
-            >
-              <Button
-                asChild
-                variant="ghost"
-                className="h-10 w-full text-muted-foreground"
-              >
-                <Link
-                  href={`/calendar?date=${commitment.occurrence_date}&commitment=${commitment.id}`}
-                >
-                  Change repeat
-                </Link>
-              </Button>
-              <TodayCancelRecurringSeriesControl
-                commitment={commitment}
-                onSaved={handleOccurrenceSaved}
-              />
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+    <CalendarOccurrenceWorkspace
+      commitment={commitment}
+      today={commitment.occurrence_date}
+      timezone={timezone}
+      now={now}
+      onEdit={() =>
+        router.push(
+          `/calendar?date=${commitment.occurrence_date}&commitment=${commitment.id}`,
+        )
+      }
+      onSaved={handleOccurrenceSaved}
+    />
   ) : null;
 
   if (!removable) {
@@ -439,56 +299,5 @@ export function DailyCommitmentCard({
         )}
       </article>
     </SwipeToRemove>
-  );
-}
-
-function TodayCancelRecurringSeriesControl({
-  commitment,
-  onSaved,
-}: {
-  commitment: CalendarCommitment;
-  onSaved: () => void;
-}) {
-  const [confirming, setConfirming] = useState(false);
-  const [state, action] = useActionState(
-    cancelCalendarCommitmentAction,
-    initialCalendarActionState,
-  );
-
-  useEffect(() => {
-    if (state.saved) onSaved();
-  }, [onSaved, state.saved, state.version]);
-
-  if (!confirming) {
-    return (
-      <Button
-        type="button"
-        variant="ghost"
-        onClick={() => setConfirming(true)}
-        className="h-11 w-full text-muted-foreground"
-      >
-        Cancel recurring series
-      </Button>
-    );
-  }
-
-  return (
-    <div className="space-y-3 rounded-xl bg-secondary p-3">
-      <p className="text-sm font-medium">Cancel this recurring series?</p>
-      <form action={action} className="grid grid-cols-2 gap-2">
-        <input type="hidden" name="commitmentId" value={commitment.id} />
-        <Button type="button" variant="ghost" onClick={() => setConfirming(false)}>
-          Keep
-        </Button>
-        <PendingButton type="submit" variant="destructive" pendingLabel="Working…">
-          Cancel
-        </PendingButton>
-      </form>
-      {state.error && (
-        <p role="alert" className="text-xs text-destructive">
-          {state.error}
-        </p>
-      )}
-    </div>
   );
 }

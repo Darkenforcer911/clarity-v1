@@ -33,6 +33,7 @@ export type DailyAction = Tables<"daily_actions"> & {
     Tables<"routines">,
     | "id"
     | "title"
+    | "status"
     | "cadence"
     | "weekdays"
     | "due_offset_days"
@@ -51,6 +52,7 @@ export type ActionLifeContext = {
     Tables<"routines">,
     | "id"
     | "title"
+    | "status"
     | "cadence"
     | "weekdays"
     | "due_offset_days"
@@ -190,7 +192,7 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
       supabase
         .from("daily_plans")
         .select(
-          "*, daily_actions(*, routine:routines!daily_actions_routine_owner_fkey(id, title, cadence, weekdays, due_offset_days, due_local_time, reminder_offsets_minutes)), day_records(*)",
+          "*, daily_actions(*, routine:routines!daily_actions_routine_owner_fkey(id, title, status, cadence, weekdays, due_offset_days, due_local_time, reminder_offsets_minutes)), day_records(*)",
         )
         .eq("user_id", user.id)
         .eq("local_date", localDate)
@@ -205,7 +207,7 @@ export async function getDailyLoopData(): Promise<DailyLoopData> {
       supabase
         .from("daily_plans")
         .select(
-          "*, daily_actions(*, routine:routines!daily_actions_routine_owner_fkey(id, title, cadence, weekdays, due_offset_days, due_local_time, reminder_offsets_minutes)), day_records(*)",
+          "*, daily_actions(*, routine:routines!daily_actions_routine_owner_fkey(id, title, status, cadence, weekdays, due_offset_days, due_local_time, reminder_offsets_minutes)), day_records(*)",
         )
         .eq("user_id", user.id)
         .lt("local_date", localDate)
@@ -473,7 +475,7 @@ export async function getActionWorkspaceData(actionId: string) {
         supabase
           .from("daily_actions")
           .select(
-            "*, daily_plans!daily_actions_plan_owner_fkey(*), goal:goals!daily_actions_goal_owner_fkey(id, title), project:projects!daily_actions_project_owner_fkey(id, title), routine:routines!daily_actions_routine_owner_fkey(id, title, cadence, weekdays, due_offset_days, due_local_time, reminder_offsets_minutes)",
+            "*, daily_plans!daily_actions_plan_owner_fkey(*), goal:goals!daily_actions_goal_owner_fkey(id, title), project:projects!daily_actions_project_owner_fkey(id, title), routine:routines!daily_actions_routine_owner_fkey(id, title, status, cadence, weekdays, due_offset_days, due_local_time, reminder_offsets_minutes)",
           )
           .eq("id", actionId)
           .eq("user_id", user.id)

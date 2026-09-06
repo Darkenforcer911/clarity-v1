@@ -560,6 +560,68 @@ export async function removeActionOccurrenceInlineAction(
   }
 }
 
+export async function changeActionRepeatAction(
+  _previousState: DailyLoopActionState,
+  formData: FormData,
+): Promise<DailyLoopActionState> {
+  try {
+    const parsed = z.object({
+      actionId: z.string().uuid(),
+      recurrencePattern: z.enum(["daily", "weekly", "certain_days"]),
+      recurrenceDays: z.array(z.coerce.number().int().min(0).max(6)).max(7),
+    }).superRefine((value, context) => {
+      if (
+        value.recurrencePattern === "certain_days" &&
+        value.recurrenceDays.length === 0
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["recurrenceDays"],
+          message: "Choose at least one weekday.",
+        });
+      }
+      if (
+        value.recurrencePattern !== "certain_days" &&
+        value.recurrenceDays.length > 0
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["recurrenceDays"],
+          message: "Weekdays only apply to a custom repeat.",
+        });
+      }
+    }).parse({
+      actionId: formData.get("actionId"),
+      recurrencePattern: formData.get("recurrencePattern"),
+      recurrenceDays: formData.getAll("recurrenceDays"),
+    });
+
+    await actionWorkspaceService.changeRepeat(
+      parsed.actionId,
+      parsed.recurrencePattern,
+      parsed.recurrenceDays,
+    );
+    revalidateActiveActionPaths(parsed.actionId);
+    return { error: null, success: "Repeat updated." };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function stopActionRepeatingAction(
+  _previousState: DailyLoopActionState,
+  formData: FormData,
+): Promise<DailyLoopActionState> {
+  try {
+    const actionId = z.string().uuid().parse(formData.get("actionId"));
+    await actionWorkspaceService.stopRepeating(actionId);
+    revalidateActiveActionPaths(actionId);
+    return { error: null, success: "Repeating stopped." };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
 export async function restoreActionToTodayAction(
   actionId: string,
 ): Promise<ActiveActionMutationResult> {

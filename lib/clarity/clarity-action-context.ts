@@ -1,4 +1,5 @@
 const actionContextKind = "action";
+const calendarContextKind = "calendar";
 const dayContextKind = "day";
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -14,8 +15,15 @@ export type ClarityDayInvocation = {
   localDate: string;
 };
 
+export type ClarityCalendarInvocation = {
+  kind: "calendar_commitment";
+  commitmentId: string;
+  localDate: string;
+};
+
 export type ClarityInvocation =
   | ClarityActionInvocation
+  | ClarityCalendarInvocation
   | ClarityDayInvocation;
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -38,6 +46,19 @@ export function buildDayClarityHref(localDate: string) {
   return `/clarity?${params.toString()}`;
 }
 
+export function buildCalendarCommitmentClarityHref(
+  commitmentId: string,
+  localDate: string,
+) {
+  const params = new URLSearchParams({
+    context: calendarContextKind,
+    commitmentId,
+    date: localDate,
+  });
+
+  return `/clarity?${params.toString()}`;
+}
+
 export function parseClarityInvocation(
   searchParams: SearchParams,
 ): ClarityInvocation | null {
@@ -54,6 +75,17 @@ export function parseClarityInvocation(
     const localDate = firstValue(searchParams.date);
     return localDate && isValidLocalDate(localDate)
       ? { kind: "day", localDate }
+      : null;
+  }
+
+  if (context === calendarContextKind) {
+    const commitmentId = firstValue(searchParams.commitmentId);
+    const localDate = firstValue(searchParams.date);
+    return commitmentId &&
+      uuidPattern.test(commitmentId) &&
+      localDate &&
+      isValidLocalDate(localDate)
+      ? { kind: "calendar_commitment", commitmentId, localDate }
       : null;
   }
 

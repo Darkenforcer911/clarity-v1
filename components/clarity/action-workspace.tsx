@@ -1,9 +1,9 @@
 "use client";
 
 import {
+  ChevronDown,
   Clock3,
   History,
-  MoreHorizontal,
   NotebookPen,
   Pencil,
   Trash2,
@@ -13,12 +13,6 @@ import { useRouter } from "next/navigation";
 
 import { updateActionAction } from "@/app/(app)/today/action-workspace-actions";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import type {
   ActionLifeContext,
   ActionNote,
@@ -26,7 +20,7 @@ import type {
 } from "@/lib/clarity/daily-loop-queries";
 import { initialDailyLoopActionState } from "@/lib/clarity/action-state";
 import { ActionFields } from "./action-fields";
-import { ChangeActionTimeForm } from "./change-action-time-form";
+import { ActionRepeatSeriesControls } from "./action-repeat-series-controls";
 import { ActionUpdateHistory } from "./action-update-history";
 import { CorrectCompletionTimeForm } from "./correct-completion-time-form";
 import { LogActionUpdate } from "./log-action-note";
@@ -34,7 +28,6 @@ import { RemoveActionPanel } from "./remove-action-panel";
 import { PendingButton } from "./pending-button";
 
 type OpenPanel =
-  | "time"
   | "edit"
   | "completion-time"
   | "log"
@@ -67,6 +60,7 @@ export function ActionWorkspace({
 }) {
   const router = useRouter();
   const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [deletedUpdateIds, setDeletedUpdateIds] = useState<
     ReadonlySet<string>
@@ -112,72 +106,36 @@ export function ActionWorkspace({
     setOpenPanel(panel);
   }
 
+  const removable = action.status === "active" || action.status === "proposed";
+  const recurring = routine?.status === "active";
+  const hasMore =
+    recurring || action.status === "completed" || activeToday || visibleUpdates.length > 0;
+
   return (
     <div className="space-y-3">
-      <div className="flex items-start justify-end gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="size-12 shrink-0 rounded-xl"
-              aria-label="More action options"
-            >
-              <MoreHorizontal />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            className="w-48 rounded-xl border-border bg-card p-2"
+      <div className="grid grid-cols-2 gap-2">
+        {editable && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => openWorkspacePanel("edit")}
+            className="h-11 rounded-xl"
           >
-            {editable && (
-              <>
-                <DropdownMenuItem
-                  onSelect={() => openWorkspacePanel("edit")}
-                  className="min-h-11 cursor-pointer rounded-lg"
-                >
-                  <Pencil />
-                  Edit action
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => openWorkspacePanel("time")}
-                  className="min-h-11 cursor-pointer rounded-lg"
-                >
-                  <Clock3 />
-                  Change time
-                </DropdownMenuItem>
-              </>
-            )}
-            {action.status === "completed" && (
-              <DropdownMenuItem
-                onSelect={() => openWorkspacePanel("completion-time")}
-                className="min-h-11 cursor-pointer rounded-lg"
-              >
-                <Clock3 />
-                Correct completion time
-              </DropdownMenuItem>
-            )}
-            {activeToday && (
-              <DropdownMenuItem
-                onSelect={() => openWorkspacePanel("log")}
-                className="min-h-11 cursor-pointer rounded-lg"
-              >
-                <NotebookPen />
-                Log update
-              </DropdownMenuItem>
-            )}
-            {visibleUpdates.length > 0 && (
-              <DropdownMenuItem
-                onSelect={() => openWorkspacePanel("updates")}
-                className="min-h-11 cursor-pointer rounded-lg"
-              >
-                <History />
-                View updates ({visibleUpdates.length})
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+            <Pencil />
+            Edit
+          </Button>
+        )}
+        {removable && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => openWorkspacePanel("remove")}
+            className="h-11 rounded-xl"
+          >
+            <Trash2 />
+            {recurring ? "Skip today" : "Remove from today"}
+          </Button>
+        )}
       </div>
 
       {statusMessage && (
@@ -189,14 +147,6 @@ export function ActionWorkspace({
         </p>
       )}
 
-      {openPanel === "time" && editable && (
-        <ChangeActionTimeForm
-          action={action}
-          scheduledTimeInput={scheduledTimeInput}
-          onClose={() => setOpenPanel(null)}
-          onSaved={handleTimeSaved}
-        />
-      )}
       {openPanel === "edit" && editable && (
         <ActionEditForm
           action={action}
@@ -237,7 +187,9 @@ export function ActionWorkspace({
         (action.status === "active" || action.status === "proposed") && (
         <RemoveActionPanel
           actionId={action.id}
-          occurrenceOnly={action.status === "proposed"}
+          occurrenceOnly={recurring || action.status === "proposed"}
+          actionTitle={action.title}
+          skipToday={recurring}
           onClose={() => setOpenPanel(null)}
           onRemoved={() => {
             router.push(returnHref);
@@ -245,17 +197,69 @@ export function ActionWorkspace({
           }}
         />
       )}
-      {(action.status === "active" || action.status === "proposed") &&
-        openPanel !== "remove" && (
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => openWorkspacePanel("remove")}
-          className="h-10 w-auto justify-start rounded-lg px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
-        >
-          <Trash2 />
-          {action.status === "active" ? "Remove from today" : "Remove Action"}
-        </Button>
+      {hasMore && openPanel === null && (
+        <div className="space-y-2">
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => setMoreOpen((current) => !current)}
+            aria-expanded={moreOpen}
+            className="h-10 w-full text-muted-foreground"
+          >
+            More
+            <ChevronDown className={`transition-transform ${moreOpen ? "rotate-180" : ""}`} />
+          </Button>
+          {moreOpen && (
+            <div className="space-y-2" data-recurring-day-item-more={recurring || undefined}>
+              {recurring && routine && (
+                <ActionRepeatSeriesControls
+                  actionId={action.id}
+                  actionTitle={action.title}
+                  cadence={routine.cadence}
+                  selectedWeekdays={routine.weekdays}
+                  onSaved={() => {
+                    setMoreOpen(false);
+                    setStatusMessage("Repeat updated.");
+                    router.refresh();
+                  }}
+                />
+              )}
+              {action.status === "completed" && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => openWorkspacePanel("completion-time")}
+                  className="h-10 w-full"
+                >
+                  <Clock3 />
+                  Correct completion time
+                </Button>
+              )}
+              {activeToday && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => openWorkspacePanel("log")}
+                  className="h-10 w-full"
+                >
+                  <NotebookPen />
+                  Log update
+                </Button>
+              )}
+              {visibleUpdates.length > 0 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => openWorkspacePanel("updates")}
+                  className="h-10 w-full"
+                >
+                  <History />
+                  View updates ({visibleUpdates.length})
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

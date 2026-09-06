@@ -1,4 +1,4 @@
-import { Clock3, Compass, Link2 } from "lucide-react";
+import { CalendarClock, Clock3, Compass, Link2 } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
@@ -9,7 +9,15 @@ import {
   parseClarityInvocation,
 } from "@/lib/clarity/clarity-action-context";
 import { actionWorkspaceService } from "@/lib/clarity/action-workspace-service";
-import { getCalendarPageData } from "@/lib/clarity/calendar-service";
+import {
+  CalendarCommitmentNotFoundError,
+  getCalendarCommitmentContext,
+  getCalendarPageData,
+} from "@/lib/clarity/calendar-service";
+import {
+  formatCommitmentRecurrence,
+  getCommitmentMeta,
+} from "@/lib/clarity/calendar-commitments";
 import {
   ActionNotFoundError,
   AuthenticationRequiredError,
@@ -41,6 +49,12 @@ async function ClarityContent({ searchParams }: ClarityPageProps) {
   const dayContext = invocation?.kind === "day"
     ? await getCalendarPageData(invocation.localDate)
     : null;
+  const calendarContext = invocation?.kind === "calendar_commitment"
+    ? await loadCalendarCommitmentContext(
+        invocation.commitmentId,
+        invocation.localDate,
+      )
+    : null;
 
   return (
     <div className="space-y-6" data-slot="clarity-conversation-skeleton">
@@ -56,6 +70,9 @@ async function ClarityContent({ searchParams }: ClarityPageProps) {
 
       {actionContext && <AttachedActionContext context={actionContext} />}
       {dayContext && <AttachedDayContext context={dayContext} />}
+      {calendarContext && (
+        <AttachedCalendarContext context={calendarContext} />
+      )}
 
       <section className="rounded-2xl border border-border bg-card p-5">
         <div className="grid size-11 place-items-center rounded-xl bg-primary/15 text-primary">
@@ -71,6 +88,65 @@ async function ClarityContent({ searchParams }: ClarityPageProps) {
         </div>
       </section>
     </div>
+  );
+}
+
+async function loadCalendarCommitmentContext(
+  commitmentId: string,
+  localDate: string,
+) {
+  try {
+    return await getCalendarCommitmentContext(commitmentId, localDate);
+  } catch (error) {
+    if (error instanceof AuthenticationRequiredError) redirect("/auth/login");
+    if (error instanceof CalendarCommitmentNotFoundError) redirect("/clarity");
+    throw error;
+  }
+}
+
+function AttachedCalendarContext({
+  context,
+}: {
+  context: Awaited<ReturnType<typeof getCalendarCommitmentContext>>;
+}) {
+  const recurrence = formatCommitmentRecurrence(context.commitment);
+  const meta = [
+    formatFullLocalDate(context.commitment.occurrence_date),
+    getCommitmentMeta(context.commitment),
+    recurrence,
+  ].filter((value): value is string => Boolean(value));
+
+  return (
+    <section
+      className="rounded-2xl border border-primary/50 bg-secondary p-5"
+      data-slot="clarity-calendar-context"
+    >
+      <div className="flex items-start gap-3">
+        <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
+          <CalendarClock className="size-5" aria-hidden="true" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Calendar item attached
+          </p>
+          <h2 className="mt-1 text-lg font-semibold tracking-[-0.02em]">
+            {context.commitment.title}
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {meta.join(" · ")}
+          </p>
+        </div>
+      </div>
+      <p className="mt-4 text-sm leading-6 text-muted-foreground">
+        This dated Calendar item is ready as context for your conversation with
+        Clarity.
+      </p>
+      <Button asChild variant="ghost" className="mt-2 h-10 rounded-xl px-2">
+        <Link href={`/calendar?date=${context.commitment.occurrence_date}&commitment=${context.commitment.id}`}>
+          View item
+        </Link>
+      </Button>
+    </section>
   );
 }
 

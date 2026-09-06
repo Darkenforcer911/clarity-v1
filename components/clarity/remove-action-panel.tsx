@@ -14,11 +14,15 @@ export function RemoveActionPanel({
   actionId,
   onClose,
   occurrenceOnly = false,
+  actionTitle,
+  skipToday = false,
   onRemoved,
 }: {
   actionId: string;
   onClose: () => void;
   occurrenceOnly?: boolean;
+  actionTitle?: string;
+  skipToday?: boolean;
   onRemoved?: () => void;
 }) {
   const [state, formAction] = useActionState(
@@ -39,10 +43,16 @@ export function RemoveActionPanel({
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="font-semibold">
-            {occurrenceOnly ? "Remove this Action?" : "Remove from today?"}
+            {skipToday
+              ? `Skip “${actionTitle ?? "this Action"}” today?`
+              : occurrenceOnly
+                ? "Remove this Action?"
+                : "Remove from today?"}
           </h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            {occurrenceOnly
+            {skipToday
+              ? "Only this dated occurrence is skipped. Future occurrences continue."
+              : occurrenceOnly
               ? "This removes only this dated occurrence. A repeating Action will continue on future dates."
               : "This removes the action without marking it complete."}
           </p>
@@ -67,7 +77,11 @@ export function RemoveActionPanel({
           className="h-11 rounded-xl"
         >
           <Trash2 />
-          {occurrenceOnly ? "Remove Action" : "Remove from today"}
+          {skipToday
+            ? "Skip today"
+            : occurrenceOnly
+              ? "Remove from today"
+              : "Remove from today"}
         </PendingButton>
         <Button
           type="button"

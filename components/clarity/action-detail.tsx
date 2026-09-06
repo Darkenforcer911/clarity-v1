@@ -4,7 +4,6 @@ import {
   Check,
   Clock3,
   Link2,
-  MessageCircle,
   MessageSquareText,
   Repeat2,
 } from "lucide-react";
@@ -31,6 +30,7 @@ import { ActionWorkspace } from "./action-workspace";
 import { ActionCompletionControl } from "./action-completion-control";
 import { HistoricalActionUpdates } from "./action-update-history";
 import { OngoingContextPrompt } from "./ongoing-context-prompt";
+import { DayItemWorkspaceShell } from "./day-item-workspace-shell";
 
 export function ActionDetail({
   action,
@@ -219,25 +219,34 @@ export function ActionDetail({
           />
         )}
 
-      {(activeToday || completedCurrentProposalAction) && (
-        <ActionCompletionControl
-          actionId={action.id}
-          completed={completed}
-          completionTime={completionTime}
-        />
-      )}
-
-      <Button
-        asChild
-        variant="outline"
-        size="lg"
-        className="h-12 w-full rounded-xl text-base"
-      >
-        <Link href={buildActionClarityHref(action.id)}>
-          <MessageCircle className="size-5 text-primary" />
-          Ask Clarity
-        </Link>
-      </Button>
+      <DayItemWorkspaceShell
+        primary={
+          activeToday || completedCurrentProposalAction ? (
+            <ActionCompletionControl
+              actionId={action.id}
+              completed={completed}
+              completionTime={completionTime}
+            />
+          ) : undefined
+        }
+        clarityHref={buildActionClarityHref(action.id)}
+        secondary={
+          !readOnly && (editable || activeToday) ? (
+            <ActionWorkspace
+              action={action}
+              updates={updates}
+              timezone={profile.timezone}
+              scheduledTimeInput={scheduledTimeInput}
+              completionTimeInput={completionTimeInput}
+              localDate={action.local_date}
+              routine={lifeContext.routine}
+              returnHref={backHref}
+              activeToday={activeToday}
+              editable={editable}
+            />
+          ) : undefined
+        }
+      />
 
       {action.details && (
         <div className="rounded-2xl border border-border bg-card p-4">
@@ -279,19 +288,6 @@ export function ActionDetail({
           action={action}
           updates={updates}
           timezone={profile.timezone}
-        />
-      ) : editable || activeToday ? (
-        <ActionWorkspace
-          action={action}
-          updates={updates}
-          timezone={profile.timezone}
-          scheduledTimeInput={scheduledTimeInput}
-          completionTimeInput={completionTimeInput}
-          localDate={action.local_date}
-          routine={lifeContext.routine}
-          returnHref={backHref}
-          activeToday={activeToday}
-          editable={editable}
         />
       ) : null}
     </section>

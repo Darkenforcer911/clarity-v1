@@ -10,10 +10,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useActionState, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import {
-  cancelCalendarCommitmentAction,
   skipCalendarEventOccurrenceAction,
 } from "@/app/(app)/calendar/actions";
 import { initialCalendarActionState } from "@/lib/clarity/calendar-action-state";
@@ -44,7 +43,6 @@ import {
   CalendarCorrections,
   HistoricalDayActivity,
 } from "./calendar-history";
-import { PendingButton } from "./pending-button";
 import { SwipeToRemove } from "./swipe-to-remove";
 import { CalendarActionRow } from "./calendar-daily-actions";
 import { AddActionForm } from "./add-action-form";
@@ -52,7 +50,7 @@ import {
   partitionCalendarDailyActions,
   type CalendarDailyAction,
 } from "@/lib/clarity/calendar-daily-actions";
-import { CalendarOccurrenceOutcomeControl } from "./calendar-occurrence-outcome-control";
+import { CalendarOccurrenceWorkspace } from "./calendar-occurrence-workspace";
 import {
   orderLaterTodayItems,
   type LaterTodayItem,
@@ -753,203 +751,31 @@ function CommitmentRow({
         )}
 
         {open && (
-          <div className="space-y-4 border-t border-border px-4 py-4">
-            {commitment.details && (
-              <p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-                {commitment.details}
-              </p>
-            )}
-            {!readOnly &&
-              commitment.commitment_type === "event" &&
-              commitment.occurrence_date === today && (
-                <CalendarOccurrenceOutcomeControl
+          <>
+            <CalendarOccurrenceWorkspace
+              commitment={commitment}
+              today={today}
+              timezone={timezone}
+              now={now}
+              readOnly={readOnly}
+              onEdit={onEdit}
+              onSaved={onSaved}
+            />
+            {deleteConfirming && (
+              <div className="bg-card px-4 pb-4">
+                <CalendarCommitmentDeleteControl
                   commitment={commitment}
-                  timezone={timezone}
+                  confirming
+                  onConfirmingChange={setDeleteConfirming}
                   onSaved={onSaved}
-                  currentDay
+                  showTrigger={false}
                 />
-              )}
-            {!readOnly && (
-              <div className="space-y-2">
-                {commitment.status === "scheduled" && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={onEdit}
-                    className="h-11 w-full"
-                  >
-                    {recurringEvent
-                      ? "Edit recurring commitment"
-                      : "Edit commitment"}
-                  </Button>
-                )}
-                {canSkipThisOccurrence && (
-                  <SkipCalendarEventOccurrenceControl
-                    commitment={commitment}
-                    onSaved={onSaved}
-                  />
-                )}
-                <CommitmentMutationControls
-                  commitment={commitment}
-                  onSaved={onSaved}
-                />
-                {commitment.recurrence === "none" && (
-                  <CalendarCommitmentDeleteControl
-                    commitment={commitment}
-                    confirming={deleteConfirming}
-                    onConfirmingChange={setDeleteConfirming}
-                    onSaved={onSaved}
-                  />
-                )}
               </div>
             )}
-            {readOnly && commitment.commitment_type === "event" && (
-                <CalendarOccurrenceOutcomeControl
-                  commitment={commitment}
-                  timezone={timezone}
-                  onSaved={onSaved}
-                  currentDay={false}
-                />
-              )}
-            {readOnly && commitment.recurrence === "none" && (
-              <CalendarCommitmentDeleteControl
-                commitment={commitment}
-                confirming={deleteConfirming}
-                onConfirmingChange={setDeleteConfirming}
-                onSaved={onSaved}
-              />
-            )}
-          </div>
+          </>
         )}
       </article>
     </SwipeToRemove>
-  );
-}
-
-function SkipCalendarEventOccurrenceControl({
-  commitment,
-  onSaved,
-}: {
-  commitment: CalendarCommitment;
-  onSaved: () => void;
-}) {
-  const [confirming, setConfirming] = useState(false);
-  const [skipState, skipAction] = useActionState(
-    skipCalendarEventOccurrenceAction,
-    initialCalendarActionState,
-  );
-
-  useEffect(() => {
-    if (skipState.saved) onSaved();
-  }, [skipState.saved, skipState.version, onSaved]);
-
-  if (!confirming) {
-    return (
-      <Button
-        type="button"
-        variant="ghost"
-        onClick={() => setConfirming(true)}
-        className="h-11 w-full text-muted-foreground"
-      >
-        Skip this occurrence
-      </Button>
-    );
-  }
-
-  return (
-    <div className="space-y-3 rounded-xl bg-secondary p-3">
-      <div className="space-y-1">
-        <p className="text-sm font-medium">Skip this occurrence?</p>
-        <p className="text-xs leading-5 text-muted-foreground">
-          Only this date will be cancelled. The recurring commitment will
-          continue.
-        </p>
-      </div>
-      <form action={skipAction} className="grid grid-cols-2 gap-2">
-        <input type="hidden" name="commitmentId" value={commitment.id} />
-        <input
-          type="hidden"
-          name="occurrenceDate"
-          value={commitment.occurrence_date}
-        />
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => setConfirming(false)}
-        >
-          Keep
-        </Button>
-        <PendingButton
-          type="submit"
-          variant="destructive"
-          pendingLabel="Skipping…"
-        >
-          Skip
-        </PendingButton>
-      </form>
-      {skipState.error && (
-        <p role="alert" className="text-xs text-destructive">
-          {skipState.error}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function CommitmentMutationControls({
-  commitment,
-  onSaved,
-}: {
-  commitment: CalendarCommitment;
-  onSaved: () => void;
-}) {
-  const recurringEvent =
-    commitment.commitment_type === "event" && commitment.recurrence !== "none";
-  const [confirming, setConfirming] = useState(false);
-  const [cancelState, cancelAction] = useActionState(
-    cancelCalendarCommitmentAction,
-    initialCalendarActionState,
-  );
-
-  useEffect(() => {
-    if (cancelState.saved) onSaved();
-  }, [cancelState.saved, cancelState.version, onSaved]);
-
-  if (!confirming) {
-    return commitment.status === "scheduled" ? (
-      <Button
-        type="button"
-        variant="ghost"
-        onClick={() => setConfirming(true)}
-        className="h-11 w-full text-muted-foreground"
-      >
-        {recurringEvent ? "Cancel recurring series" : "Cancel commitment"}
-      </Button>
-    ) : null;
-  }
-
-  return (
-    <div className="space-y-3 rounded-xl bg-secondary p-3">
-      <p className="text-sm font-medium">
-        {recurringEvent
-          ? "Cancel this recurring series?"
-          : "Cancel this commitment?"}
-      </p>
-      <form action={cancelAction} className="grid grid-cols-2 gap-2">
-        <input type="hidden" name="commitmentId" value={commitment.id} />
-        <Button type="button" variant="ghost" onClick={() => setConfirming(false)}>
-          Keep
-        </Button>
-        <PendingButton type="submit" variant="destructive" pendingLabel="Working…">
-          Cancel
-        </PendingButton>
-      </form>
-      {cancelState.error && (
-        <p role="alert" className="text-xs text-destructive">
-          {cancelState.error}
-        </p>
-      )}
-    </div>
   );
 }
 

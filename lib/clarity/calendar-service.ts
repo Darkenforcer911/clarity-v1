@@ -65,6 +65,29 @@ export type CalendarHistoricalRecord = {
   >;
 };
 
+export class CalendarCommitmentNotFoundError extends Error {
+  constructor() {
+    super("Calendar commitment not found.");
+    this.name = "CalendarCommitmentNotFoundError";
+  }
+}
+
+export async function getCalendarCommitmentContext(
+  commitmentId: string,
+  localDate: string,
+) {
+  const { supabase, profile } = await getAuthenticatedUserAndProfile();
+  const commitments = await getCalendarCommitmentsForDate(supabase, localDate);
+  const commitment = commitments.find(
+    (candidate) =>
+      candidate.id === commitmentId && candidate.occurrence_date === localDate,
+  );
+
+  if (!commitment) throw new CalendarCommitmentNotFoundError();
+
+  return { commitment, profile };
+}
+
 export async function getCalendarPageData(requestedDate?: string) {
   const { supabase, user, profile } = await getAuthenticatedUserAndProfile();
   const today = getLocalDate(profile.timezone);
