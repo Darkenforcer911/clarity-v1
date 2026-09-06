@@ -31,12 +31,14 @@ export function ActionRepeatSeriesControls({
   actionTitle,
   cadence,
   selectedWeekdays,
+  embedded = false,
   onSaved,
 }: {
   actionId: string;
   actionTitle: string;
   cadence: "daily" | "weekly" | "times_per_week" | "certain_days";
   selectedWeekdays: number[];
+  embedded?: boolean;
   onSaved: () => void;
 }) {
   const initialPattern = cadence === "times_per_week" ? "weekly" : cadence;
@@ -60,7 +62,10 @@ export function ActionRepeatSeriesControls({
 
   if (panel === "change") {
     return (
-      <form action={changeAction} className="space-y-3 rounded-xl bg-secondary p-3">
+      <form
+        action={changeAction}
+        className={`space-y-3 ${embedded ? "" : "rounded-xl bg-secondary p-3"}`}
+      >
         <input type="hidden" name="actionId" value={actionId} />
         <input type="hidden" name="recurrencePattern" value={pattern} />
         {pattern === "certain_days" &&
@@ -134,7 +139,9 @@ export function ActionRepeatSeriesControls({
 
   if (panel === "stop") {
     return (
-      <div className="space-y-3 rounded-xl bg-secondary p-3">
+      <div
+        className={`space-y-3 ${embedded ? "" : "rounded-xl bg-secondary p-3"}`}
+      >
         <div className="space-y-1">
           <p className="text-sm font-medium">Stop repeating “{actionTitle}”?</p>
           <p className="text-xs leading-5 text-muted-foreground">
@@ -159,7 +166,9 @@ export function ActionRepeatSeriesControls({
   }
 
   return (
-    <div className="grid gap-2 rounded-xl bg-secondary p-3">
+    <div
+      className={`grid gap-2 ${embedded ? "" : "rounded-xl bg-secondary p-3"}`}
+    >
       <Button type="button" variant="ghost" onClick={() => setPanel("change")}>
         Change repeat
       </Button>

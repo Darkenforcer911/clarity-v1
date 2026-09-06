@@ -1,5 +1,6 @@
 "use client";
 
+import { Trash2 } from "lucide-react";
 import { useActionState, useEffect } from "react";
 
 import { deleteCalendarCommitmentAction } from "@/app/(app)/calendar/actions";
@@ -39,10 +40,11 @@ export function CalendarCommitmentDeleteControl({
     return showTrigger ? (
       <Button
         type="button"
-        variant="ghost"
+        variant="outline"
         onClick={() => onConfirmingChange(true)}
-        className="h-11 w-full text-destructive hover:text-destructive"
+        className="h-11 w-full rounded-xl"
       >
+        <Trash2 />
         {triggerLabel ?? `Delete ${noun}`}
       </Button>
     ) : null;

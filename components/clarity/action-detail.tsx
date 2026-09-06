@@ -163,20 +163,6 @@ export function ActionDetail({
         )}
       </div>
 
-      {action.linked_context_label && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Link2 className="size-4 text-[var(--clarity-completed)]" />
-          <span>
-            Linked to{" "}
-            <strong className="font-semibold text-foreground">
-              {action.linked_context_label}
-            </strong>
-          </span>
-        </div>
-      )}
-
-      <ActionLifeRelationships lifeContext={lifeContext} />
-
       {(action.due_local_date || action.reminder_offsets_minutes.length > 0) && (
         <dl className="grid gap-2 rounded-2xl border border-border bg-card p-4 text-sm">
           {action.due_local_date && (
@@ -197,28 +183,6 @@ export function ActionDetail({
           )}
         </dl>
       )}
-
-      {linkedContext && (
-        <div className="flex items-start gap-3 rounded-2xl bg-secondary p-4">
-          <MessageSquareText className="mt-0.5 size-5 shrink-0 text-[var(--clarity-completed)]" />
-          <div>
-            <p className="text-sm font-semibold">Context</p>
-            <p className="mt-1 leading-6 text-muted-foreground">
-              {linkedContext}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {action.ongoing_context_suggestion &&
-        !action.ongoing_context_decision &&
-        !readOnly && (
-          <OngoingContextPrompt
-            actionId={action.id}
-            suggestion={action.ongoing_context_suggestion}
-            destination={`/today/actions/${action.id}`}
-          />
-        )}
 
       <DayItemWorkspaceShell
         primary={
@@ -249,6 +213,42 @@ export function ActionDetail({
           ) : undefined
         }
       />
+
+      {action.linked_context_label && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Link2 className="size-4 text-[var(--clarity-completed)]" />
+          <span>
+            Linked to{" "}
+            <strong className="font-semibold text-foreground">
+              {action.linked_context_label}
+            </strong>
+          </span>
+        </div>
+      )}
+
+      <ActionLifeRelationships lifeContext={lifeContext} />
+
+      {linkedContext && (
+        <div className="flex items-start gap-3 rounded-2xl bg-secondary p-4">
+          <MessageSquareText className="mt-0.5 size-5 shrink-0 text-[var(--clarity-completed)]" />
+          <div>
+            <p className="text-sm font-semibold">Context</p>
+            <p className="mt-1 leading-6 text-muted-foreground">
+              {linkedContext}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {action.ongoing_context_suggestion &&
+        !action.ongoing_context_decision &&
+        !readOnly && (
+          <OngoingContextPrompt
+            actionId={action.id}
+            suggestion={action.ongoing_context_suggestion}
+            destination={`/today/actions/${action.id}`}
+          />
+        )}
 
       {action.details && (
         <div className="rounded-2xl border border-border bg-card p-4">

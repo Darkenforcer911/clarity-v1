@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { useActionState, useCallback, useEffect, useState } from "react";
 
 import {
@@ -15,7 +15,11 @@ import { buildCalendarCommitmentClarityHref } from "@/lib/clarity/clarity-action
 import { getLocalTime } from "@/lib/clarity/date-time";
 import { CalendarCommitmentDeleteControl } from "./calendar-commitment-delete-control";
 import { CalendarOccurrenceOutcomeControl } from "./calendar-occurrence-outcome-control";
-import { DayItemWorkspaceShell } from "./day-item-workspace-shell";
+import {
+  DayItemMoreDisclosure,
+  DayItemSecondaryActions,
+  DayItemWorkspaceShell,
+} from "./day-item-workspace-shell";
 import { PendingButton } from "./pending-button";
 
 export function CalendarOccurrenceWorkspace({
@@ -24,6 +28,7 @@ export function CalendarOccurrenceWorkspace({
   timezone,
   now,
   readOnly = false,
+  contained = true,
   onEdit,
   onSaved,
   onRemoved,
@@ -33,6 +38,7 @@ export function CalendarOccurrenceWorkspace({
   timezone: string;
   now: Date;
   readOnly?: boolean;
+  contained?: boolean;
   onEdit: () => void;
   onSaved: () => void;
   onRemoved?: () => void;
@@ -112,13 +118,8 @@ export function CalendarOccurrenceWorkspace({
   return (
     <div
       data-calendar-occurrence-workspace
-      className="space-y-3 bg-card px-4 pb-4 pt-3"
+      className={contained ? "space-y-3 bg-card px-4 pb-4 pt-3" : "space-y-3"}
     >
-      {commitment.details && (
-        <p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-          {commitment.details}
-        </p>
-      )}
       <DayItemWorkspaceShell
         primary={primary}
         clarityHref={buildCalendarCommitmentClarityHref(
@@ -126,7 +127,7 @@ export function CalendarOccurrenceWorkspace({
           commitment.occurrence_date,
         )}
         secondary={
-          <>
+          <DayItemSecondaryActions>
             {editable && (
               <Button
                 type="button"
@@ -134,6 +135,7 @@ export function CalendarOccurrenceWorkspace({
                 onClick={onEdit}
                 className="h-11 w-full rounded-xl"
               >
+                <Pencil />
                 Edit
               </Button>
             )}
@@ -144,13 +146,14 @@ export function CalendarOccurrenceWorkspace({
                 onClick={() => setSkipConfirming(true)}
                 className="h-11 w-full rounded-xl"
               >
+                <Trash2 />
                 {skipLabel}
               </Button>
             )}
-            {commitment.recurrence === "none" && (
+            {commitment.recurrence === "none" && !deleteConfirming && (
               <CalendarCommitmentDeleteControl
                 commitment={commitment}
-                confirming={deleteConfirming}
+                confirming={false}
                 onConfirmingChange={setDeleteConfirming}
                 onSaved={onRemoved ?? onSaved}
                 triggerLabel={
@@ -158,46 +161,42 @@ export function CalendarOccurrenceWorkspace({
                 }
               />
             )}
-          </>
+          </DayItemSecondaryActions>
         }
         more={
           editable && recurringEvent ? (
-            <div className="space-y-2">
+            <DayItemMoreDisclosure
+              open={moreOpen}
+              onOpenChange={setMoreOpen}
+            >
               <Button
                 type="button"
                 variant="ghost"
-                onClick={() => setMoreOpen((current) => !current)}
-                aria-expanded={moreOpen}
+                onClick={onEdit}
                 className="h-10 w-full text-muted-foreground"
               >
-                More
-                <ChevronDown
-                  className={`transition-transform ${moreOpen ? "rotate-180" : ""}`}
-                />
+                Change repeat
               </Button>
-              {moreOpen && (
-                <div
-                  data-recurring-day-item-more
-                  className="grid gap-2 rounded-xl bg-secondary p-3"
-                >
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={onEdit}
-                    className="h-10 w-full text-muted-foreground"
-                  >
-                    Change repeat
-                  </Button>
-                  <StopCalendarRepeatingControl
-                    commitment={commitment}
-                    onSaved={onSaved}
-                  />
-                </div>
-              )}
-            </div>
+              <div className="contents" data-recurring-day-item-more>
+                <StopCalendarRepeatingControl
+                  commitment={commitment}
+                  onSaved={onSaved}
+                />
+              </div>
+            </DayItemMoreDisclosure>
           ) : undefined
         }
       />
+
+      {commitment.recurrence === "none" && deleteConfirming && (
+        <CalendarCommitmentDeleteControl
+          commitment={commitment}
+          confirming
+          onConfirmingChange={setDeleteConfirming}
+          onSaved={onRemoved ?? onSaved}
+          showTrigger={false}
+        />
+      )}
 
       {skipConfirming && (
         <SkipCalendarOccurrenceConfirmation
@@ -206,6 +205,15 @@ export function CalendarOccurrenceWorkspace({
           onCancel={() => setSkipConfirming(false)}
           onSaved={onSaved}
         />
+      )}
+
+      {commitment.details && (
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <p className="text-sm font-semibold">Details</p>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+            {commitment.details}
+          </p>
+        </div>
       )}
     </div>
   );

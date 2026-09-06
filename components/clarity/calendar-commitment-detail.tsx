@@ -91,6 +91,7 @@ export function CalendarCommitmentDetail({
         timezone={timezone}
         now={new Date(initialNow)}
         readOnly={commitment.occurrence_date < today}
+        contained={false}
         onEdit={() => setEditing(true)}
         onSaved={() => router.refresh()}
         onRemoved={() => {

@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  ChevronDown,
   Clock3,
   History,
   NotebookPen,
@@ -26,6 +25,10 @@ import { CorrectCompletionTimeForm } from "./correct-completion-time-form";
 import { LogActionUpdate } from "./log-action-note";
 import { RemoveActionPanel } from "./remove-action-panel";
 import { PendingButton } from "./pending-button";
+import {
+  DayItemMoreDisclosure,
+  DayItemSecondaryActions,
+} from "./day-item-workspace-shell";
 
 type OpenPanel =
   | "edit"
@@ -115,7 +118,7 @@ export function ActionWorkspace({
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2">
+      <DayItemSecondaryActions>
         {editable && (
           <Button
             type="button"
@@ -144,7 +147,7 @@ export function ActionWorkspace({
                 : "Remove this occurrence"}
           </Button>
         )}
-      </div>
+      </DayItemSecondaryActions>
 
       {statusMessage && (
         <p
@@ -204,68 +207,60 @@ export function ActionWorkspace({
         />
       )}
       {hasMore && openPanel === null && (
-        <div className="space-y-2">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => setMoreOpen((current) => !current)}
-            aria-expanded={moreOpen}
-            className="h-10 w-full text-muted-foreground"
+        <DayItemMoreDisclosure open={moreOpen} onOpenChange={setMoreOpen}>
+          <div
+            className="contents"
+            data-recurring-day-item-more={recurring || undefined}
           >
-            More
-            <ChevronDown className={`transition-transform ${moreOpen ? "rotate-180" : ""}`} />
-          </Button>
-          {moreOpen && (
-            <div className="space-y-2" data-recurring-day-item-more={recurring || undefined}>
-              {recurring && routine && (
-                <ActionRepeatSeriesControls
-                  actionId={action.id}
-                  actionTitle={action.title}
-                  cadence={routine.cadence}
-                  selectedWeekdays={routine.weekdays}
-                  onSaved={() => {
-                    setMoreOpen(false);
-                    setStatusMessage("Repeat updated.");
-                    router.refresh();
-                  }}
-                />
-              )}
-              {action.status === "completed" && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => openWorkspacePanel("completion-time")}
-                  className="h-10 w-full"
-                >
-                  <Clock3 />
-                  Correct completion time
-                </Button>
-              )}
-              {activeToday && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => openWorkspacePanel("log")}
-                  className="h-10 w-full"
-                >
-                  <NotebookPen />
-                  Log update
-                </Button>
-              )}
-              {visibleUpdates.length > 0 && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => openWorkspacePanel("updates")}
-                  className="h-10 w-full"
-                >
-                  <History />
-                  View updates ({visibleUpdates.length})
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
+            {recurring && routine && (
+              <ActionRepeatSeriesControls
+                actionId={action.id}
+                actionTitle={action.title}
+                cadence={routine.cadence}
+                selectedWeekdays={routine.weekdays}
+                embedded
+                onSaved={() => {
+                  setMoreOpen(false);
+                  setStatusMessage("Repeat updated.");
+                  router.refresh();
+                }}
+              />
+            )}
+            {action.status === "completed" && (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => openWorkspacePanel("completion-time")}
+                className="h-10 w-full"
+              >
+                <Clock3 />
+                Correct completion time
+              </Button>
+            )}
+            {activeToday && (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => openWorkspacePanel("log")}
+                className="h-10 w-full"
+              >
+                <NotebookPen />
+                Log update
+              </Button>
+            )}
+            {visibleUpdates.length > 0 && (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => openWorkspacePanel("updates")}
+                className="h-10 w-full"
+              >
+                <History />
+                View updates ({visibleUpdates.length})
+              </Button>
+            )}
+          </div>
+        </DayItemMoreDisclosure>
       )}
     </div>
   );
