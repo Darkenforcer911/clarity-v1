@@ -286,9 +286,7 @@ export function ProposedActionCard({
                     className="h-10 w-auto justify-start rounded-lg px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
                   >
                     <Trash2 />
-                    {action.source_routine_id
-                      ? "Skip today"
-                      : "Remove from today"}
+                    {action.source_routine_id ? "Skip" : "Remove"}
                   </Button>
                 </div>
               </>

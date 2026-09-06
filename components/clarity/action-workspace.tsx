@@ -49,7 +49,6 @@ export function ActionWorkspace({
   returnHref,
   activeToday,
   editable,
-  currentDate,
 }: {
   action: DailyAction;
   updates: ActionNote[];
@@ -61,7 +60,6 @@ export function ActionWorkspace({
   returnHref: string;
   activeToday: boolean;
   editable: boolean;
-  currentDate: boolean;
 }) {
   const router = useRouter();
   const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
@@ -138,13 +136,7 @@ export function ActionWorkspace({
             className="h-11 rounded-xl"
           >
             <Trash2 />
-            {recurring
-              ? currentDate
-                ? "Skip today"
-                : "Skip this occurrence"
-              : currentDate
-                ? "Remove from today"
-                : "Remove this occurrence"}
+            {recurring ? "Skip" : "Remove"}
           </Button>
         )}
       </DayItemSecondaryActions>
@@ -201,7 +193,6 @@ export function ActionWorkspace({
           occurrenceOnly={recurring || action.status === "proposed"}
           actionTitle={action.title}
           skipToday={recurring}
-          currentDate={currentDate}
           returnTo={returnHref}
           onClose={() => setOpenPanel(null)}
         />

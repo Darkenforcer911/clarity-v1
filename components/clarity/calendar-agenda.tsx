@@ -610,7 +610,7 @@ function CommitmentRow({
       );
       if (!result.saved) {
         setDeletionError(
-          result.error ?? "Couldn’t skip this occurrence. Try again.",
+          result.error ?? "Couldn’t skip this date. Try again.",
         );
         onSwipeOpenChange(false);
         return;
@@ -625,7 +625,7 @@ function CommitmentRow({
         onSaved();
       }, delay);
     } catch {
-      setDeletionError("Couldn’t skip this occurrence. Try again.");
+      setDeletionError("Couldn’t skip this date. Try again.");
       onSwipeOpenChange(false);
     } finally {
       setDeletionPending(false);
@@ -643,8 +643,8 @@ function CommitmentRow({
       removing={removing}
       enabled={canSwipeRemove}
       accessibilityContext="from Calendar"
-      actionLabel={canSkipThisOccurrence ? "Skip this occurrence" : "Delete"}
-      pendingLabel={canSkipThisOccurrence ? "Skipping…" : "Deleting…"}
+      actionLabel={canSkipThisOccurrence ? "Skip" : "Remove"}
+      pendingLabel={canSkipThisOccurrence ? "Skipping…" : "Removing…"}
     >
       <article className="min-w-0 rounded-2xl border border-border bg-card">
         <Link

@@ -145,8 +145,7 @@ export function ActionRepeatSeriesControls({
         <div className="space-y-1">
           <p className="text-sm font-medium">Stop repeating “{actionTitle}”?</p>
           <p className="text-xs leading-5 text-muted-foreground">
-            Future occurrences will no longer be created. Past activity will
-            remain in your history.
+            Future repeats will stop. Past history will remain.
           </p>
         </div>
         <form action={stopAction} className="grid grid-cols-2 gap-2">

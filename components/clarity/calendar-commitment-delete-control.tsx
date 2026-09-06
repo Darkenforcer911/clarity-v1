@@ -17,7 +17,7 @@ export function CalendarCommitmentDeleteControl({
   showTrigger = true,
   triggerLabel,
 }: {
-  commitment: Pick<CalendarCommitment, "id" | "commitment_type">;
+  commitment: Pick<CalendarCommitment, "id" | "title">;
   confirming: boolean;
   onConfirmingChange: (confirming: boolean) => void;
   onSaved: () => void;
@@ -28,8 +28,6 @@ export function CalendarCommitmentDeleteControl({
     deleteCalendarCommitmentAction,
     initialCalendarActionState,
   );
-  const noun = commitment.commitment_type === "event" ? "event" : "deadline";
-
   useEffect(() => {
     if (!deleteState.saved) return;
     onConfirmingChange(false);
@@ -45,7 +43,7 @@ export function CalendarCommitmentDeleteControl({
         className="h-11 w-full rounded-xl"
       >
         <Trash2 />
-        {triggerLabel ?? `Delete ${noun}`}
+        {triggerLabel ?? "Remove"}
       </Button>
     ) : null;
   }
@@ -53,9 +51,9 @@ export function CalendarCommitmentDeleteControl({
   return (
     <div className="space-y-3 rounded-xl bg-secondary p-3">
       <div className="space-y-1">
-        <p className="text-sm font-medium">Delete this {noun}?</p>
+        <p className="text-sm font-medium">Remove {commitment.title}?</p>
         <p className="text-xs leading-5 text-muted-foreground">
-          This removes its recorded outcome too.
+          This will remove it from your calendar.
         </p>
       </div>
       <form action={deleteAction} className="grid grid-cols-2 gap-2">
@@ -70,9 +68,9 @@ export function CalendarCommitmentDeleteControl({
         <PendingButton
           type="submit"
           variant="destructive"
-          pendingLabel="Deleting…"
+          pendingLabel="Removing…"
         >
-          Delete
+          Remove
         </PendingButton>
       </form>
       {deleteState.error && (

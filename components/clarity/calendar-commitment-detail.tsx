@@ -92,6 +92,7 @@ export function CalendarCommitmentDetail({
         now={new Date(initialNow)}
         readOnly={commitment.occurrence_date < today}
         contained={false}
+        skipReturnDate={commitment.occurrence_date}
         onEdit={() => setEditing(true)}
         onSaved={() => router.refresh()}
         onRemoved={() => {

@@ -864,7 +864,7 @@ export function ProposedPlan({
         removing={removingActionIds.has(action.id)}
         enabled={!reorderMode}
         accessibilityContext="from the proposed plan"
-        actionLabel={action.source_routine_id ? "Skip today" : "Remove"}
+        actionLabel={action.source_routine_id ? "Skip" : "Remove"}
         pendingLabel={action.source_routine_id ? "Skipping…" : "Removing…"}
       >
         <div data-fixed-daily-action-id={action.id}>
@@ -1049,7 +1049,7 @@ export function ProposedPlan({
                       enabled={!reorderMode}
                       accessibilityContext="from the proposed plan"
                       actionLabel={
-                        action.source_routine_id ? "Skip today" : "Remove"
+                        action.source_routine_id ? "Skip" : "Remove"
                       }
                       pendingLabel={
                         action.source_routine_id ? "Skipping…" : "Removing…"

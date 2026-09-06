@@ -99,8 +99,8 @@ export function CalendarOccurrenceOutcomeControl({
       noteAvailable={(value) => value !== "not_recorded"}
       supportingCopy={
         currentDay
-          ? "This updates only today’s occurrence. The recurring commitment stays unchanged."
-          : "This corrects only this occurrence. The recurring commitment stays unchanged."
+          ? "This updates only this date. The repeating commitment stays unchanged."
+          : "This corrects only this date. The repeating commitment stays unchanged."
       }
       submitting={submitting}
       error={error}

@@ -16,7 +16,6 @@ export function RemoveActionPanel({
   occurrenceOnly = false,
   actionTitle,
   skipToday = false,
-  currentDate = true,
   returnTo,
 }: {
   actionId: string;
@@ -24,7 +23,6 @@ export function RemoveActionPanel({
   occurrenceOnly?: boolean;
   actionTitle?: string;
   skipToday?: boolean;
-  currentDate?: boolean;
   returnTo: string;
 }) {
   const [state, formAction] = useActionState(
@@ -42,19 +40,13 @@ export function RemoveActionPanel({
         <div>
           <h2 className="font-semibold">
             {skipToday
-              ? currentDate
-                ? `Skip “${actionTitle ?? "this Action"}” today?`
-                : `Skip “${actionTitle ?? "this Action"}” on this date?`
-              : occurrenceOnly
-                ? "Remove this Action?"
-                : "Remove from today?"}
+              ? `Skip ${actionTitle ?? "this Action"}?`
+              : `Remove ${actionTitle ?? "this Action"}?`}
           </h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
             {skipToday
-              ? "Only this dated occurrence is skipped. Future occurrences continue."
-              : occurrenceOnly
-              ? "This removes only this dated occurrence. A repeating Action will continue on future dates."
-              : "This removes the action without marking it complete."}
+              ? "Only this date will be skipped. Future repeats will continue."
+              : "This will remove it from your plan without marking it complete."}
           </p>
         </div>
         <Button
@@ -74,19 +66,11 @@ export function RemoveActionPanel({
         <PendingButton
           type="submit"
           variant="destructive"
-          pendingLabel="Removing…"
+          pendingLabel={skipToday ? "Skipping…" : "Removing…"}
           className="h-11 rounded-xl"
         >
           <Trash2 />
-          {skipToday
-            ? currentDate
-              ? "Skip today"
-              : "Skip this occurrence"
-            : occurrenceOnly
-              ? currentDate
-                ? "Remove from today"
-                : "Remove this occurrence"
-              : "Remove from today"}
+          {skipToday ? "Skip" : "Remove"}
         </PendingButton>
         <Button
           type="button"

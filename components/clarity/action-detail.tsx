@@ -208,7 +208,6 @@ export function ActionDetail({
               returnHref={backHref}
               activeToday={activeToday}
               editable={editable}
-              currentDate={action.local_date === currentLocalDate}
             />
           ) : undefined
         }

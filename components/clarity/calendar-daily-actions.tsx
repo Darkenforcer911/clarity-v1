@@ -142,15 +142,7 @@ export function CalendarActionRow({
       removing={removing}
       enabled
       accessibilityContext="from Calendar"
-      actionLabel={
-        action.source_routine_id
-          ? localDate === today
-            ? "Skip today"
-            : "Skip this occurrence"
-          : localDate === today
-            ? "Remove today"
-            : "Remove this occurrence"
-      }
+      actionLabel={action.source_routine_id ? "Skip" : "Remove"}
       pendingLabel={action.source_routine_id ? "Skipping…" : "Removing…"}
     >
       <div className="min-w-0">

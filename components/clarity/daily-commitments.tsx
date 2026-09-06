@@ -275,7 +275,7 @@ export function DailyCommitmentCard({
       removing={removing}
       enabled
       accessibilityContext="from today"
-      actionLabel={recurringEvent ? "Skip today" : "Remove today"}
+      actionLabel={recurringEvent ? "Skip" : "Remove"}
       pendingLabel={recurringEvent ? "Skipping…" : "Removing…"}
     >
       <article className="min-w-0 overflow-hidden rounded-2xl border border-border bg-card">

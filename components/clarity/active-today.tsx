@@ -680,6 +680,8 @@ function SwipeableActionCard({
       removing={removing}
       enabled={enabled}
       accessibilityContext="from today"
+      actionLabel={action.source_routine_id ? "Skip" : "Remove"}
+      pendingLabel={action.source_routine_id ? "Skipping…" : "Removing…"}
     >
       <ActionCard action={action} {...cardProps} />
     </SwipeToRemove>

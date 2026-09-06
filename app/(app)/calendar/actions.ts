@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { parseCalendarCommitmentForm } from "@/lib/clarity/calendar-form";
@@ -187,14 +188,26 @@ export async function skipCalendarEventOccurrenceAction(
   previous: CalendarActionState,
   formData: FormData,
 ): Promise<CalendarActionState> {
+  let returnDate: string | null = null;
+
   try {
-    const input = z.object({
-      commitmentId: z.string().uuid(),
-      occurrenceDate: z.iso.date(),
-    }).parse({
-      commitmentId: formData.get("commitmentId"),
-      occurrenceDate: formData.get("occurrenceDate"),
-    });
+    const input = z
+      .object({
+        commitmentId: z.string().uuid(),
+        occurrenceDate: z.iso.date(),
+        returnDate: z.union([z.iso.date(), z.literal("")]),
+      })
+      .refine(
+        ({ occurrenceDate, returnDate: candidate }) =>
+          candidate === "" || candidate === occurrenceDate,
+        { message: "Invalid Calendar return date.", path: ["returnDate"] },
+      )
+      .parse({
+        commitmentId: formData.get("commitmentId"),
+        occurrenceDate: formData.get("occurrenceDate"),
+        returnDate: String(formData.get("returnDate") ?? ""),
+      });
+    returnDate = input.returnDate || null;
     await correctCalendarEventOccurrenceOutcome({
       commitmentId: input.commitmentId,
       occurrenceDate: input.occurrenceDate,
@@ -203,10 +216,13 @@ export async function skipCalendarEventOccurrenceAction(
       note: null,
     });
     revalidateCalendar();
-    return { error: null, saved: true, version: previous.version + 1 };
   } catch (error) {
     return actionError(error, previous);
   }
+
+  if (returnDate) redirect(`/calendar?date=${returnDate}`);
+
+  return { error: null, saved: true, version: previous.version + 1 };
 }
 
 export async function createDayCorrectionAction(
