@@ -23,10 +23,7 @@ export type ClarityConversationMessage = {
   recordedAt: string;
 };
 
-/**
- * One continuous conversation archive for one authenticated user. This is a
- * contract only; V1 does not persist conversation messages.
- */
+/** One append-only, user-visible conversation for one authenticated user. */
 export type ClarityConversationArchive = {
   conversationId: string;
   messages: ClarityConversationMessage[];

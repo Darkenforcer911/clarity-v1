@@ -11,6 +11,7 @@ import type { AuthoritativeReturnState } from "../previous-day-routing";
 import type { ClarityMemoryContext, ClarityMemorySource } from "./clarity-memory";
 import type {
   ClarityActionInvocation,
+  ClarityCalendarInvocation,
   ClarityDayInvocation,
 } from "../clarity-action-context";
 
@@ -102,6 +103,7 @@ export type ClarityContextBundle = {
 
 export type ClarityInvocationSubject =
   | ClarityActionInvocation
+  | ClarityCalendarInvocation
   | ClarityDayInvocation;
 
 export interface ClarityLifeContextSource {

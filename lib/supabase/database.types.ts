@@ -384,6 +384,113 @@ export type Database = {
           },
         ]
       }
+      clarity_conversations: {
+        Row: {
+          created_at: string
+          id: string
+          last_message_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_message_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_message_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clarity_conversations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clarity_messages: {
+        Row: {
+          content: string
+          conversation_id: string
+          created_at: string
+          id: string
+          input_tokens: number | null
+          invocation_type: string
+          latency_ms: number | null
+          model_provider: string | null
+          model_version: string | null
+          next_move_type: string | null
+          output_tokens: number | null
+          response_to_message_id: string | null
+          role: string
+          structured_metadata: Json | null
+          subject_action_id: string | null
+          subject_calendar_commitment_id: string | null
+          subject_local_date: string | null
+          user_id: string
+        }
+        Insert: {
+          content: string
+          conversation_id: string
+          created_at?: string
+          id?: string
+          input_tokens?: number | null
+          invocation_type?: string
+          latency_ms?: number | null
+          model_provider?: string | null
+          model_version?: string | null
+          next_move_type?: string | null
+          output_tokens?: number | null
+          response_to_message_id?: string | null
+          role: string
+          structured_metadata?: Json | null
+          subject_action_id?: string | null
+          subject_calendar_commitment_id?: string | null
+          subject_local_date?: string | null
+          user_id: string
+        }
+        Update: {
+          content?: string
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          input_tokens?: number | null
+          invocation_type?: string
+          latency_ms?: number | null
+          model_provider?: string | null
+          model_version?: string | null
+          next_move_type?: string | null
+          output_tokens?: number | null
+          response_to_message_id?: string | null
+          role?: string
+          structured_metadata?: Json | null
+          subject_action_id?: string | null
+          subject_calendar_commitment_id?: string | null
+          subject_local_date?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clarity_messages_conversation_owner_fkey"
+            columns: ["conversation_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "clarity_conversations"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "clarity_messages_response_fkey"
+            columns: ["response_to_message_id"]
+            isOneToOne: true
+            referencedRelation: "clarity_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       current_contexts: {
         Row: {
           created_at: string
@@ -2177,6 +2284,38 @@ export type Database = {
           p_why_it_exists?: string
         }
         Returns: string
+      }
+      append_clarity_response_v1: {
+        Args: {
+          p_content: string
+          p_input_tokens?: number
+          p_latency_ms: number
+          p_model_provider: string
+          p_model_version: string
+          p_next_move_type: string
+          p_output_tokens?: number
+          p_structured_metadata: Json
+          p_user_message_id: string
+        }
+        Returns: {
+          conversation_id: string
+          created_at: string
+          message_id: string
+        }[]
+      }
+      append_clarity_user_message_v1: {
+        Args: {
+          p_content: string
+          p_invocation_type?: string
+          p_subject_action_id?: string
+          p_subject_calendar_commitment_id?: string
+          p_subject_local_date?: string
+        }
+        Returns: {
+          conversation_id: string
+          created_at: string
+          message_id: string
+        }[]
       }
       approve_daily_plan: {
         Args: { p_daily_plan_id: string }

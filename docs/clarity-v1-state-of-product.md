@@ -1,7 +1,7 @@
 # State of Clarity V1
 
-Audit date: 4 September 2026  
-Repository baseline: `2f193e8 simplify universal action form`, plus the uncommitted duration-hint test change described in section 15.
+Audit date: 7 September 2026
+Repository baseline: `ec0af52 clarify completion time editing`, plus the local Clarity Intelligence V1 slice described below.
 
 ## Status language
 
@@ -18,9 +18,9 @@ Clarity is currently an authenticated, mobile-first personal planning applicatio
 
 The deterministic product foundation is real. Daily plans, Actions, Calendar commitments and occurrences, Day Records, Return Boundaries, Life records, and notification deliveries have database designs and ownership-safe RPCs in `supabase/migrations/`. Today reads Calendar constraints, Calendar projects the same `daily_actions` rows, and a dated Action keeps one ID across both views (`lib/clarity/daily-loop-queries.ts`, `lib/clarity/calendar-service.ts`, `components/clarity/calendar-daily-actions.tsx`).
 
-The intelligence is not real yet. `/clarity` is an honest placeholder that can attach an owner-scoped Action or date context but cannot accept or answer a message (`app/(app)/clarity/page.tsx`). Shape Today currently calls a deterministic, hard-coded `MockClarityAI` that proposes CV/job-search/sister/gym Actions rather than a model provider (`lib/clarity/daily-loop-service.ts`, `lib/clarity/ai/mock-clarity-ai.ts`). The context, memory, orchestration, opportunity, forecast, and authority types are contracts only (`lib/clarity/ai/`).
+The first real intelligence slice now exists locally. `/clarity` has one persistent owner-scoped conversation, a side-effect-free bounded context assembler, a server-only provider adapter, strict structured output, and retryable failure handling (`app/(app)/clarity/page.tsx`, `lib/clarity/ai/clarity-conversation-orchestrator.ts`). Its migration is local and unapplied, and the configured provider still needs end-to-end runtime dogfooding. Shape Today continues to call the deterministic `MockClarityAI`; onboarding, proposal execution, external research, and proactive intelligence remain unimplemented.
 
-The product is therefore closer to a coherent deterministic planning beta than to an intelligent V1. The single biggest missing capability is a provider-neutral runtime that can take authenticated canonical context plus a user turn, return a validated structured next move, and route consequential changes through confirmation instead of writing them directly.
+The product now has a coherent deterministic planning beta plus a narrow read-only intelligence vertical slice. The next major gap is proving that runtime in deployment, then extending the same authority-safe orchestrator into reviewed proposals and adaptive onboarding without bypassing deterministic confirmation boundaries.
 
 # 2. Product thesis
 
@@ -41,7 +41,7 @@ The screen responsibilities are intentionally separate:
 
 - **Today** is present attention and execution.
 - **Calendar** is the date/time view over commitments and the same dated Actions.
-- **Clarity** is intended to be the single reasoning and conversation surface; today it is a shell.
+- **Clarity** is the single reasoning and conversation surface; V1 is read-only and cannot execute changes.
 - **Life** is confirmed canonical understanding, not a transcript or unconfirmed inference.
 
 These boundaries are encoded in `docs/clarity-intelligence-v1.md`, `lib/clarity/ai/clarity-context.ts`, and the confirmation requirements in `lib/clarity/ai/clarity-orchestrator.ts`.
@@ -78,7 +78,7 @@ These boundaries are encoded in `docs/clarity-intelligence-v1.md`, `lib/clarity/
 
 ## Clarity tab
 
-**Foundation only.** `/clarity` displays its purpose and optional attached context. It has no composer, provider, streamed response, thread, or memory (`app/(app)/clarity/page.tsx`, `lib/clarity/clarity-intelligence-skeleton.test.mjs`).
+**Partially implemented locally.** `/clarity` loads one owner-scoped persistent conversation, accepts messages, assembles canonical context, calls one configured server-side provider, validates a strict response, and persists only the user-visible answer and safe metadata. Action, Calendar occurrence, and day invocations reuse that conversation. It has no mutation tools, research, streaming, episodic compression, or proactive behavior (`app/(app)/clarity/page.tsx`, `lib/clarity/ai/clarity-conversation-orchestrator.ts`, `supabase/migrations/20260907000002_clarity_conversation_v1.sql`).
 
 # 4. Onboarding
 
@@ -484,8 +484,8 @@ None of these is an established moat. They require a reliable model runtime, acc
 |---|---:|---|
 | Deterministic product foundation | **8/10** | The Daily Loop, Calendar, universal dated Actions, recurrence, outcomes, Return Boundary, Life schema, and proposal safety form a coherent foundation. Remote migration alignment and some legacy seams remain. |
 | Mobile UX consistency | **6.5/10** | The shell, safe areas, compact disclosures, swipe controls, and shared Action form are intentionally mobile-first, but recent changes still need real-device proof and native controls remain platform-sensitive. |
-| Intelligence implementation | **1.5/10** | Strong contracts and policy exist, but production behavior is a hard-coded mock and `/clarity` has no conversation. |
-| Memory implementation | **1/10** | Categories and interface exist; no persistent Clarity conversation, episodic store, compression, or retrieval implementation exists. |
+| Intelligence implementation | **4/10** | A real read-only `/clarity` provider path, strict output contract, bounded canonical context, and golden eval fixtures exist locally; planning/onboarding intelligence, research, proposals, and deployment proof remain. |
+| Memory implementation | **2.5/10** | One append-only conversation is persisted and bounded recent history is retrieved; episodic memory, compression, relevance retrieval, and learning remain unimplemented. |
 | Safety/authority boundaries | **8/10** | Auth/RLS, owner-scoped reads, secure RPCs, additive corrections, neutral Return Boundaries, and atomic Life confirmation are strong. Real-DB integration tests and a general operational proposal ledger are missing. |
 | Beta readiness | **4.5/10** | A deterministic dogfood beta is plausible after migration/config/device verification. The promised intelligent experience is not beta-ready. |
 | Long-term vision completion | **3/10** | The data and authority architecture anticipates the vision, but adaptive reasoning, conversation, memory, learning, and opportunity execution remain to be built. |
