@@ -58,7 +58,9 @@ The provider adapter is configured with `CLARITY_MODEL_PROVIDER`,
 provider-neutral effort setting; when omitted, Clarity leaves the request
 unset and uses the model provider's default. Provider credentials never cross
 into client components.
-There is no research or mutation tool execution in this slice.
+The only tool execution in this slice is bounded provider-native web research
+when the initial structured turn identifies a material current-world
+dependency. Canonical mutation tools remain unavailable.
 
 The baseline remains `gpt-5.6-sol`. With no explicit reasoning effort in the
 request, that model currently uses its provider default (`medium`). The
@@ -105,8 +107,22 @@ deterministic application logic applies it.
 Personal context and current-world facts are separate inputs. If a
 consequential recommendation depends on changing information such as laws,
 benefits, visas, tax, job markets, university rules, costs, or housing support,
-Clarity must request verified external context rather than rely on model memory.
-No research integration exists in V1.
+Clarity must verify current evidence rather than rely on model memory.
+
+Research uses a bounded two-stage path. The first normal structured turn sets
+`requiresCurrentVerification` and a precise `verificationNeed`. When true, the
+orchestrator performs a second response with provider-native web search forced,
+up to four tool calls, and asks for the final Clarity synthesis. The preliminary
+answer is never persisted or rendered. Stable knowledge and ordinary personal
+execution questions stay on the existing one-pass path.
+
+The research prompt prioritizes official central banks, governments,
+regulators, company announcements, and filings where appropriate. Breaking
+news may require multiple credible current sources. Verified facts remain
+distinct from forecasts, inferences, disputed causal claims, and Clarity's own
+judgment. Relevant profile location and personal context inform the synthesis;
+the result must answer the user's decision rather than merely summarize search
+results.
 
 ## Authority boundary
 
@@ -134,15 +150,63 @@ cross-user store, global-learning table, or pipeline.
 
 `clarity_conversations` enforces one conversation per user.
 `clarity_messages` stores append-only user-visible messages plus safe invocation,
-model, next-move, latency, and token metadata. Direct writes are revoked; the
+model, next-move, latency, token, and research metadata. Research metadata uses
+the existing `structured_metadata` JSON object and contains only sanitized
+source title, URL, domain, optional publication date, retrieval time, source and
+tool-call counts, and research latency. Direct writes are revoked; the
 authenticated append RPCs validate ownership and invocation subjects. Model
 reasoning, provider traces, full context snapshots, secrets, and chain-of-thought
 are never stored.
 
 The user message is appended before context assembly and provider execution. A
-provider failure therefore leaves the user message intact and retryable without
-creating a duplicate message. A successful response is uniquely linked to its
-user message.
+provider or research failure therefore leaves the user message intact and
+retryable without creating a duplicate message. A successful response is
+uniquely linked to its user message. Researched responses render their persisted
+sources in a compact disclosure after refresh or conversation reload.
+
+## Multimodal conversation boundary
+
+Photos attach to the same persistent Clarity conversation and user-message
+record; they do not create media-specific chats. The composer accepts up to four
+JPEG, PNG, WebP, or GIF images of at most 8 MB each. Microphone input is composer
+dictation: one recording of at most 15 MB and five minutes is uploaded as a
+temporary owned draft, transcribed into editable composer text, then removed.
+Stopping dictation never sends a message. Photo and final edited text are sent
+together only through the ordinary Send action. A failed transcription keeps
+the draft available for Retry or Cancel without fabricating text or persisting
+a conversation message. Legacy audio messages remain readable and retryable.
+
+Media bytes live in the private `clarity-media` storage bucket under the
+authenticated user's folder. The owner-scoped `clarity_message_attachments`
+table stores only bounded metadata, message association, transcription state,
+and transcript text. Conversation reads create short-lived signed URLs for
+legacy playback. Raw media, base64 image data, signed URLs, and audio are
+never stored in message content or structured metadata, and logs contain no
+media or transcripts.
+
+Clarity currently has no persisted-message, conversation-history, profile, or
+account deletion workflow. Draft attachment removal deletes the private object
+through the Storage API before removing its unattached metadata row. If account
+or persisted-message deletion is introduced later, its trusted server workflow
+must delete owned Storage objects through the Storage API before database
+metadata is deleted or cascaded. SQL triggers must not mutate `storage.objects`
+directly.
+
+Only media attached to the current user turn is sent to the model. Historical
+photos are represented in bounded history only as the fact that an image was
+sent; historical audio uses its transcript. Media and transcripts remain
+conversation evidence and never become canonical Life truth without the
+existing explicit proposal and confirmation boundary.
+
+## Research response presentation
+
+Clarity persists research source data separately from answer prose. Source URLs
+are normalized and deduplicated before storage. User-visible prose strips raw
+URLs and literal Markdown decoration, while paragraph breaks remain intact.
+The conversation renders a compact collapsed Sources disclosure with a bounded
+initial list and an explicit View all control. Refreshing the conversation
+reconstructs this presentation from stored safe metadata rather than from raw
+provider output.
 
 ## Read-only context assembly
 
@@ -161,12 +225,15 @@ rather than automatically important.
 
 ## Evaluation
 
-The initial golden suite contains twenty-one fictional scenarios covering bottleneck
+The golden suite contains fictional scenarios covering bottleneck
 reasoning, deadlines, overload, clear direction, Calendar conflicts, epistemic
 separation, material and immaterial unknowns, linked Project context, Calendar
 occurrences, current-world verification, synthesis without planning, product
 boundaries, specialist-tool handoff, creator identity, system composition, the
-LLM boundary, vendor-neutral model disclosure, and compound identity intents. Its
+LLM boundary, vendor-neutral model disclosure, compound identity intents,
+explicit current events, implicit researched decisions, official-source
+priority, disputed causality, conflicting forecasts, and deliberate no-research
+turns. Its
 acceptance metadata also checks concise, answer-first plain English, a maximum
 of one useful question, hypothesis discipline, stale-record uncertainty, and
 freedom from consultant-style phrasing. Product-boundary cases also require

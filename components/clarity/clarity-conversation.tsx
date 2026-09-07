@@ -1,18 +1,77 @@
 "use client";
 
-import { LoaderCircle, Send, X } from "lucide-react";
-import { useActionState, useEffect, useRef, useState } from "react";
+import {
+  Camera,
+  ExternalLink,
+  ImagePlus,
+  LoaderCircle,
+  Mic,
+  Pause,
+  Play,
+  Plus,
+  Send,
+  Square,
+  X,
+} from "lucide-react";
+import {
+  startTransition,
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 
-import { sendClarityMessageAction } from "@/app/(app)/clarity/actions";
+import {
+  discardClarityAttachmentAction,
+  prepareClarityAttachmentAction,
+  sendClarityMessageAction,
+  transcribeClarityDictationAction,
+} from "@/app/(app)/clarity/actions";
+import { Button } from "@/components/ui/button";
 import { initialClarityConversationActionState } from "@/lib/clarity/ai/clarity-conversation-action-state";
+import {
+  appendDictationTranscript,
+  type ClarityDictationStatus,
+} from "@/lib/clarity/ai/clarity-dictation";
 import type { ClarityConversationMessage } from "@/lib/clarity/ai/clarity-conversation-service";
 import type { ClarityInvocationDescriptor } from "@/lib/clarity/ai/clarity-context-assembler";
+import {
+  CLARITY_MEDIA_BUCKET,
+  MAX_CLARITY_AUDIO_BYTES,
+  MAX_CLARITY_AUDIO_DURATION_MS,
+  MAX_CLARITY_IMAGE_BYTES,
+  MAX_CLARITY_IMAGE_COUNT,
+  clarityImageMimeTypes,
+  normalizeClarityMimeType,
+  type ClarityMessageAttachment,
+} from "@/lib/clarity/ai/clarity-attachments";
+import { normalizeClarityVisibleResponse } from "@/lib/clarity/ai/clarity-response-presentation";
+import {
+  researchSourcesFromMetadata,
+  type ClarityResearchSource,
+} from "@/lib/clarity/ai/clarity-research";
+import { createClient } from "@/lib/supabase/client";
 import { PendingButton } from "./pending-button";
 
 type ComposerAttachment = {
   invocation: ClarityInvocationDescriptor;
   label: string;
+};
+
+type DraftMedia = {
+  attachmentId: string;
+  storagePath: string;
+  kind: "image" | "audio";
+  mimeType: string;
+  previewUrl: string;
+  durationMs: number | null;
+};
+
+type PendingDictation = {
+  file: File;
+  durationMs: number;
+  attachmentId: string | null;
 };
 
 const GENERAL_INVOCATION: ClarityInvocationDescriptor = {
@@ -32,17 +91,36 @@ export function ClarityConversation({
   subjectLabel: string | null;
 }) {
   const router = useRouter();
-  const [state, formAction] = useActionState(
+  const [state, formAction, isPending] = useActionState(
     sendClarityMessageAction,
     initialClarityConversationActionState,
   );
   const lastCompletedAt = useRef<number | undefined>(undefined);
-  const composerRef = useRef<HTMLFormElement>(null);
   const incomingAttachmentKey = attachmentKey(invocation, subjectLabel);
   const [attachment, setAttachment] = useState<ComposerAttachment | null>(() =>
     createAttachment(invocation, subjectLabel),
   );
   const previousIncomingAttachmentKey = useRef(incomingAttachmentKey);
+  const [message, setMessage] = useState("");
+  const [draftMedia, setDraftMedia] = useState<DraftMedia[]>([]);
+  const [mediaError, setMediaError] = useState<string | null>(null);
+  const [mediaBusy, setMediaBusy] = useState(false);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const libraryInputRef = useRef<HTMLInputElement>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recorderStreamRef = useRef<MediaStream | null>(null);
+  const recorderChunksRef = useRef<Blob[]>([]);
+  const activeRecordingStartedAtRef = useRef(0);
+  const recordedDurationMsRef = useRef(0);
+  const cancelRecordingRef = useRef(false);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [dictationStatus, setDictationStatus] =
+    useState<ClarityDictationStatus>("idle");
+  const [pendingDictation, setPendingDictation] =
+    useState<PendingDictation | null>(null);
+  const [canPauseRecording, setCanPauseRecording] = useState(false);
+  const [recordingElapsedMs, setRecordingElapsedMs] = useState(0);
 
   useEffect(() => {
     if (incomingAttachmentKey === previousIncomingAttachmentKey.current) return;
@@ -53,24 +131,284 @@ export function ClarityConversation({
   useEffect(() => {
     if (!state.completedAt || state.completedAt === lastCompletedAt.current) return;
     lastCompletedAt.current = state.completedAt;
-    if (state.success) {
-      composerRef.current?.reset();
-      if (attachment) {
-        router.replace("/clarity", { scroll: false });
-        return;
-      }
+    if (state.success || state.retryMessageId) {
+      queueMicrotask(() => {
+        setMessage("");
+        setDraftMedia((current) => {
+          current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+          return [];
+        });
+      });
+    }
+    if (state.success && attachment) {
+      router.replace("/clarity", { scroll: false });
+      return;
     }
     router.refresh();
-  }, [attachment, router, state.completedAt, state.success]);
+  }, [attachment, router, state.completedAt, state.retryMessageId, state.success]);
+
+  useEffect(() => () => {
+    stopRecorderTracks();
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+  }, []);
 
   function removeAttachment() {
     setAttachment(null);
     router.replace("/clarity", { scroll: false });
   }
 
+  async function addImages(files: File[]) {
+    setAddMenuOpen(false);
+    setMediaError(null);
+    const available = MAX_CLARITY_IMAGE_COUNT - draftMedia.length;
+    const selected = files.slice(0, Math.max(0, available));
+    if (selected.length === 0) {
+      setMediaError(`You can attach up to ${MAX_CLARITY_IMAGE_COUNT} photos.`);
+      return;
+    }
+
+    setMediaBusy(true);
+    try {
+      for (const file of selected) {
+        const mimeType = normalizeClarityMimeType(file.type);
+        if (!clarityImageMimeTypes.includes(mimeType as never)) {
+          throw new Error("Choose a JPEG, PNG, WebP, or GIF image.");
+        }
+        if (file.size < 1 || file.size > MAX_CLARITY_IMAGE_BYTES) {
+          throw new Error("Images must be 8 MB or smaller.");
+        }
+        const uploaded = await uploadDraft(file, "image", null);
+        setDraftMedia((current) => [...current, uploaded]);
+      }
+    } catch (error) {
+      setMediaError(
+        error instanceof Error ? error.message : "That photo couldn’t be added.",
+      );
+    } finally {
+      setMediaBusy(false);
+      if (cameraInputRef.current) cameraInputRef.current.value = "";
+      if (libraryInputRef.current) libraryInputRef.current.value = "";
+    }
+  }
+
+  async function removeDraft(item: DraftMedia) {
+    setDraftMedia((current) =>
+      current.filter((candidate) => candidate.attachmentId !== item.attachmentId),
+    );
+    URL.revokeObjectURL(item.previewUrl);
+    try {
+      await discardClarityAttachmentAction({
+        attachmentId: item.attachmentId,
+      });
+    } catch {
+      setMediaError("That attachment couldn’t be removed. Try again.");
+    }
+  }
+
+  async function startRecording() {
+    setMediaError(null);
+    setAddMenuOpen(false);
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setMediaError("Dictation isn’t available on this device.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = preferredRecorderMimeType();
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+      recorderRef.current = recorder;
+      recorderStreamRef.current = stream;
+      recorderChunksRef.current = [];
+      cancelRecordingRef.current = false;
+      activeRecordingStartedAtRef.current = Date.now();
+      recordedDurationMsRef.current = 0;
+      setRecordingElapsedMs(0);
+      setPendingDictation(null);
+      setCanPauseRecording(
+        typeof recorder.pause === "function" &&
+          typeof recorder.resume === "function",
+      );
+      setDictationStatus("recording");
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recorderChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => void finishRecordedBlob(recorder.mimeType);
+      recorder.start(500);
+      recordingTimerRef.current = setInterval(() => {
+        const elapsed =
+          recordedDurationMsRef.current +
+          (recorder.state === "recording"
+            ? Date.now() - activeRecordingStartedAtRef.current
+            : 0);
+        setRecordingElapsedMs(elapsed);
+        if (elapsed >= MAX_CLARITY_AUDIO_DURATION_MS) stopDictation();
+      }, 250);
+    } catch {
+      stopRecorderTracks();
+      setDictationStatus("idle");
+      setMediaError("Clarity couldn’t access the microphone.");
+    }
+  }
+
+  function pauseRecording() {
+    const recorder = recorderRef.current;
+    if (!recorder || recorder.state !== "recording" || !canPauseRecording) return;
+    recordedDurationMsRef.current +=
+      Date.now() - activeRecordingStartedAtRef.current;
+    setRecordingElapsedMs(recordedDurationMsRef.current);
+    recorder.requestData();
+    recorder.pause();
+    setDictationStatus("paused");
+  }
+
+  function resumeRecording() {
+    const recorder = recorderRef.current;
+    if (!recorder || recorder.state !== "paused" || !canPauseRecording) return;
+    activeRecordingStartedAtRef.current = Date.now();
+    recorder.resume();
+    setDictationStatus("recording");
+  }
+
+  function stopDictation() {
+    const recorder = recorderRef.current;
+    if (!recorder || !["recording", "paused"].includes(recorder.state)) return;
+    if (recorder.state === "recording") {
+      recordedDurationMsRef.current +=
+        Date.now() - activeRecordingStartedAtRef.current;
+    }
+    setRecordingElapsedMs(recordedDurationMsRef.current);
+    clearRecordingTimer();
+    setDictationStatus("transcribing");
+    recorder.stop();
+  }
+
+  function cancelRecording() {
+    cancelRecordingRef.current = true;
+    clearRecordingTimer();
+    if (
+      recorderRef.current &&
+      ["recording", "paused"].includes(recorderRef.current.state)
+    ) {
+      recorderRef.current.stop();
+    } else {
+      stopRecorderTracks();
+    }
+    setDictationStatus("idle");
+    setRecordingElapsedMs(0);
+  }
+
+  async function finishRecordedBlob(recorderMimeType: string) {
+    clearRecordingTimer();
+    const cancelled = cancelRecordingRef.current;
+    const elapsed = Math.min(
+      MAX_CLARITY_AUDIO_DURATION_MS,
+      Math.max(1, recordedDurationMsRef.current),
+    );
+    const chunks = recorderChunksRef.current;
+    stopRecorderTracks();
+    setRecordingElapsedMs(0);
+    if (cancelled) {
+      setDictationStatus("idle");
+      return;
+    }
+
+    const mimeType = normalizeClarityMimeType(
+      recorderMimeType || chunks[0]?.type || "audio/webm",
+    );
+    const blob = new Blob(chunks, { type: mimeType });
+    if (blob.size < 1 || blob.size > MAX_CLARITY_AUDIO_BYTES) {
+      setDictationStatus("idle");
+      setMediaError("That dictation couldn’t be processed.");
+      return;
+    }
+
+    const dictation = {
+      file: new File([blob], audioFileName(mimeType), { type: mimeType }),
+      durationMs: elapsed,
+      attachmentId: null,
+    };
+    setPendingDictation(dictation);
+    await transcribeDictation(dictation);
+  }
+
+  async function transcribeDictation(dictation: PendingDictation) {
+    setDictationStatus("transcribing");
+    setMediaError(null);
+    let attachmentId = dictation.attachmentId;
+    try {
+      if (!attachmentId) {
+        const uploaded = await uploadDraft(
+          dictation.file,
+          "audio",
+          dictation.durationMs,
+        );
+        attachmentId = uploaded.attachmentId;
+        setPendingDictation({ ...dictation, attachmentId });
+        URL.revokeObjectURL(uploaded.previewUrl);
+      }
+      const result = await transcribeClarityDictationAction({ attachmentId });
+      if (!result.transcript) {
+        throw new Error(result.error ?? "Transcription failed.");
+      }
+      setMessage((current) =>
+        appendDictationTranscript(current, result.transcript),
+      );
+      setPendingDictation(null);
+      setDictationStatus("transcript_ready");
+    } catch {
+      setDictationStatus("failed");
+      setMediaError(null);
+    }
+  }
+
+  async function cancelPendingDictation() {
+    const attachmentId = pendingDictation?.attachmentId;
+    setPendingDictation(null);
+    setDictationStatus("idle");
+    setMediaError(null);
+    if (!attachmentId) return;
+    try {
+      await discardClarityAttachmentAction({ attachmentId });
+    } catch {
+      setMediaError("That dictation couldn’t be removed. Try again.");
+    }
+  }
+
+  function clearRecordingTimer() {
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    recordingTimerRef.current = null;
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (
+      isPending ||
+      mediaBusy ||
+      ["recording", "paused", "transcribing", "failed"].includes(
+        dictationStatus,
+      )
+    ) return;
+    if (!message.trim() && draftMedia.length === 0) {
+      setMediaError("Write a message or add something first.");
+      return;
+    }
+    setMediaError(null);
+    const formData = new FormData(event.currentTarget);
+    draftMedia.forEach((item) =>
+      formData.append("attachmentId", item.attachmentId),
+    );
+    startTransition(() => formAction(formData));
+  }
+
+  const canSend = Boolean(message.trim() || draftMedia.length > 0);
+
   return (
-    <div className="flex min-h-[calc(100dvh-13rem)] flex-col gap-4">
-      <div className="flex-1 space-y-3" aria-live="polite">
+    <div className="flex min-h-[calc(100dvh-13rem)] min-w-0 flex-col gap-4">
+      <div className="min-w-0 flex-1 space-y-3" aria-live="polite">
         {messages.length === 0 && (
           <p className="max-w-sm text-sm leading-6 text-muted-foreground">
             Tell me what’s on your mind. I’ll use what Clarity already knows
@@ -78,88 +416,521 @@ export function ClarityConversation({
           </p>
         )}
         {messages.map((item) => (
-          <article
+          <ConversationMessage
             key={item.id}
-            className={
-              item.role === "user"
-                ? "ml-auto max-w-[88%] rounded-2xl rounded-br-md bg-primary px-4 py-3 text-sm leading-6 text-primary-foreground"
-                : "max-w-[94%] rounded-2xl rounded-bl-md bg-card px-4 py-3 text-sm leading-6 text-foreground"
-            }
-          >
-            <p className="mb-1 text-xs font-semibold opacity-70">
-              {item.role === "user" ? "You" : "Clarity"}
-            </p>
-            <p className="whitespace-pre-wrap">{item.content}</p>
-          </article>
+            item={item}
+            formAction={formAction}
+          />
         ))}
       </div>
 
-      <div className="sticky bottom-[calc(4.75rem+env(safe-area-inset-bottom))] space-y-2 bg-background/95 pt-2 backdrop-blur">
-        {(state.error || state.fieldError) && (
-          <div role="alert" className="rounded-xl border border-border bg-secondary px-3 py-2 text-sm">
-            <p>{state.fieldError ?? state.error}</p>
+      <div className="sticky bottom-[calc(4.75rem+env(safe-area-inset-bottom))] min-w-0 space-y-2 bg-background/95 pt-2 backdrop-blur">
+        {(state.error || state.fieldError || mediaError) && (
+          <div
+            role="alert"
+            className="rounded-xl border border-border bg-secondary px-3 py-2 text-sm"
+          >
+            <p>{mediaError ?? state.fieldError ?? state.error}</p>
             {state.retryMessageId && (
-              <form action={formAction} className="mt-2">
-                <input type="hidden" name="retryMessageId" value={state.retryMessageId} />
-                <PendingButton
-                  type="submit"
-                  variant="outline"
-                  pendingLabel="Retrying…"
-                  className="h-9 rounded-lg"
-                >
-                  Retry
-                </PendingButton>
-              </form>
+              <RetryMessageForm
+                messageId={state.retryMessageId}
+                formAction={formAction}
+              />
             )}
           </div>
         )}
 
         <form
-          ref={composerRef}
           action={formAction}
+          onSubmit={handleSubmit}
           noValidate
-          className="flex min-w-0 items-end gap-2 rounded-2xl border border-border bg-card p-2 shadow-sm"
+          className="relative min-w-0 rounded-2xl border border-border bg-card p-2 shadow-sm"
         >
-          <InvocationFields invocation={attachment?.invocation ?? GENERAL_INVOCATION} />
-          <div className="min-w-0 flex-1">
-            {attachment && (
-              <button
-                type="button"
-                onClick={removeAttachment}
-                aria-label={`Remove ${attachment.label} context`}
-                className="mx-2 mb-1 inline-flex max-w-[calc(100%-1rem)] items-center gap-1.5 rounded-full border border-border bg-secondary px-2.5 py-1 text-xs text-muted-foreground"
-              >
-                <span className="truncate font-medium text-foreground">
-                  {attachment.label}
-                </span>
-                <X className="size-3.5 shrink-0" aria-hidden="true" />
-              </button>
-            )}
-            <label className="block min-w-0">
-              <span className="sr-only">Message Clarity</span>
-              <textarea
-                name="message"
-                placeholder="Message Clarity…"
-                rows={1}
-                maxLength={8000}
-                className="block max-h-32 min-h-11 w-full min-w-0 resize-none bg-transparent px-2 py-2.5 text-base leading-6 outline-none placeholder:text-muted-foreground"
+          <InvocationFields
+            invocation={attachment?.invocation ?? GENERAL_INVOCATION}
+          />
+
+          {draftMedia.length > 0 && (
+            <div className="mb-2 flex min-w-0 gap-2 overflow-x-auto px-1 pb-1">
+              {draftMedia.map((item) => (
+                <DraftMediaPreview
+                  key={item.attachmentId}
+                  item={item}
+                  onRemove={removeDraft}
+                />
+              ))}
+            </div>
+          )}
+
+          {dictationStatus === "recording" || dictationStatus === "paused" ? (
+            <div className="flex min-h-11 min-w-0 flex-wrap items-center gap-1 px-1">
+              <span
+                className={`size-2 shrink-0 rounded-full bg-destructive ${
+                  dictationStatus === "recording" ? "animate-pulse" : "opacity-50"
+                }`}
               />
-            </label>
-          </div>
-          <PendingButton
-            type="submit"
-            size="icon"
-            pendingLabel={
-              <LoaderCircle className="size-4 animate-spin" aria-label="Sending" />
-            }
-            aria-label="Send message"
-            className="size-11 shrink-0 rounded-xl"
-          >
-            <Send />
-          </PendingButton>
+              <span className="min-w-24 flex-1 text-sm font-medium">
+                {dictationStatus === "paused" ? "Paused" : "Recording"} ·{" "}
+                {formatElapsed(recordingElapsedMs)}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-9 px-2"
+                onClick={
+                  dictationStatus === "paused" ? resumeRecording : pauseRecording
+                }
+                disabled={!canPauseRecording}
+              >
+                {dictationStatus === "paused" ? (
+                  <Play className="size-4" />
+                ) : (
+                  <Pause className="size-4" />
+                )}
+                {dictationStatus === "paused" ? "Resume" : "Pause"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-9 px-2"
+                onClick={cancelRecording}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="h-9 rounded-xl px-2.5"
+                onClick={stopDictation}
+              >
+                <Square className="size-4" />
+                Stop dictation
+              </Button>
+            </div>
+          ) : dictationStatus === "transcribing" ? (
+            <div className="flex min-h-11 min-w-0 items-center gap-2 px-2 text-sm font-medium">
+              <LoaderCircle className="size-4 animate-spin" />
+              Transcribing…
+            </div>
+          ) : dictationStatus === "failed" ? (
+            <div className="flex min-h-11 min-w-0 items-center gap-2 px-1">
+              <span className="min-w-0 flex-1 text-sm">
+                I couldn’t transcribe that.
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => void cancelPendingDictation()}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() =>
+                  pendingDictation && void transcribeDictation(pendingDictation)
+                }
+                disabled={!pendingDictation}
+              >
+                Retry
+              </Button>
+            </div>
+          ) : (
+            <div className="flex min-w-0 items-end gap-2">
+              <div className="relative shrink-0">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-11 rounded-xl"
+                  aria-label="Add photo"
+                  aria-expanded={addMenuOpen}
+                  onClick={() => setAddMenuOpen((open) => !open)}
+                  disabled={mediaBusy || isPending}
+                >
+                  <Plus />
+                </Button>
+                {addMenuOpen && (
+                  <div className="absolute bottom-12 left-0 z-20 w-44 overflow-hidden rounded-xl border border-border bg-popover p-1 shadow-lg">
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-secondary"
+                      onClick={() => cameraInputRef.current?.click()}
+                    >
+                      <Camera className="size-4" /> Take Photo
+                    </button>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-secondary"
+                      onClick={() => libraryInputRef.current?.click()}
+                    >
+                      <ImagePlus className="size-4" /> Photo Library
+                    </button>
+                  </div>
+                )}
+              </div>
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                capture="environment"
+                className="hidden"
+                onChange={(event) =>
+                  void addImages([...(event.target.files ?? [])])
+                }
+              />
+              <input
+                ref={libraryInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                multiple
+                className="hidden"
+                onChange={(event) =>
+                  void addImages([...(event.target.files ?? [])])
+                }
+              />
+
+              <div className="min-w-0 flex-1">
+                {attachment && (
+                  <button
+                    type="button"
+                    onClick={removeAttachment}
+                    aria-label={`Remove ${attachment.label} context`}
+                    className="mx-2 mb-1 inline-flex max-w-[calc(100%-1rem)] items-center gap-1.5 rounded-full border border-border bg-secondary px-2.5 py-1 text-xs text-muted-foreground"
+                  >
+                    <span className="truncate font-medium text-foreground">
+                      {attachment.label}
+                    </span>
+                    <X className="size-3.5 shrink-0" aria-hidden="true" />
+                  </button>
+                )}
+                <label className="block min-w-0">
+                  <span className="sr-only">Message Clarity</span>
+                  <textarea
+                    name="message"
+                    value={message}
+                    onChange={(event) => setMessage(event.target.value)}
+                    placeholder="Message Clarity…"
+                    rows={1}
+                    maxLength={8000}
+                    className="block max-h-32 min-h-11 w-full min-w-0 resize-none bg-transparent px-2 py-2.5 text-base leading-6 outline-none placeholder:text-muted-foreground"
+                    disabled={isPending || mediaBusy}
+                  />
+                </label>
+              </div>
+
+              {mediaBusy ? (
+                <Button
+                  type="button"
+                  size="icon"
+                  className="size-11 shrink-0 rounded-xl"
+                  disabled
+                  aria-label="Adding attachment"
+                >
+                  <LoaderCircle className="size-4 animate-spin" />
+                </Button>
+              ) : (
+                <div className="flex shrink-0 items-center gap-1">
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="size-11 shrink-0 rounded-xl"
+                    onClick={() => void startRecording()}
+                    aria-label="Start dictation"
+                    disabled={isPending}
+                  >
+                    <Mic />
+                  </Button>
+                  {canSend && (
+                    <Button
+                      type="submit"
+                      size="icon"
+                      className="size-11 shrink-0 rounded-xl"
+                      disabled={isPending}
+                      aria-label="Send message"
+                    >
+                      {isPending ? (
+                        <LoaderCircle className="size-4 animate-spin" />
+                      ) : (
+                        <Send />
+                      )}
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </form>
       </div>
     </div>
+  );
+
+  async function uploadDraft(
+    file: File,
+    kind: "image" | "audio",
+    durationMs: number | null,
+  ): Promise<DraftMedia> {
+    const mimeType = normalizeClarityMimeType(file.type);
+    const prepared = await prepareClarityAttachmentAction({
+      kind,
+      mimeType,
+      byteSize: file.size,
+      width: null,
+      height: null,
+      durationMs,
+    });
+    const supabase = createClient();
+    const uploaded = await supabase.storage
+      .from(CLARITY_MEDIA_BUCKET)
+      .uploadToSignedUrl(prepared.storagePath, prepared.uploadToken, file, {
+        contentType: mimeType,
+      });
+    if (uploaded.error) {
+      await discardClarityAttachmentAction({
+        attachmentId: prepared.attachmentId,
+      }).catch(() => undefined);
+      throw new Error(uploaded.error.message);
+    }
+    return {
+      attachmentId: prepared.attachmentId,
+      storagePath: prepared.storagePath,
+      kind,
+      mimeType,
+      previewUrl: URL.createObjectURL(file),
+      durationMs,
+    };
+  }
+
+  function stopRecorderTracks() {
+    recorderStreamRef.current?.getTracks().forEach((track) => track.stop());
+    recorderStreamRef.current = null;
+    recorderRef.current = null;
+  }
+}
+
+function ConversationMessage({
+  item,
+  formAction,
+}: {
+  item: ClarityConversationMessage;
+  formAction: (payload: FormData) => void;
+}) {
+  const sources = item.role === "clarity"
+    ? researchSourcesFromMetadata(item.structured_metadata)
+    : [];
+  const visibleContent = item.role === "clarity"
+    ? normalizeClarityVisibleResponse(item.content)
+    : item.content;
+  const failedAudio = item.attachments.some(
+    (media) =>
+      media.kind === "audio" && media.transcriptionStatus === "failed",
+  );
+
+  return (
+    <article
+      className={
+        item.role === "user"
+          ? "ml-auto max-w-[88%] min-w-0 overflow-hidden rounded-2xl rounded-br-md bg-primary px-4 py-3 text-sm leading-6 text-primary-foreground"
+          : "max-w-[94%] min-w-0 overflow-hidden rounded-2xl rounded-bl-md bg-card px-4 py-3 text-sm leading-6 text-foreground"
+      }
+    >
+      <p className="mb-1 text-xs font-semibold opacity-70">
+        {item.role === "user" ? "You" : "Clarity"}
+      </p>
+      {item.attachments.length > 0 && (
+        <MessageAttachments attachments={item.attachments} />
+      )}
+      {visibleContent && (
+        <div className="min-w-0 space-y-3 break-words [overflow-wrap:anywhere]">
+          {visibleContent.split(/\n{2,}/).map((paragraph, index) => (
+            <p
+              key={`${item.id}-paragraph-${index}`}
+              className="whitespace-pre-wrap"
+            >
+              {paragraph}
+            </p>
+          ))}
+        </div>
+      )}
+      {failedAudio && (
+        <RetryMessageForm
+          messageId={item.id}
+          formAction={formAction}
+          label="Retry transcription"
+        />
+      )}
+      {sources.length > 0 && <ResearchSources sources={sources} />}
+    </article>
+  );
+}
+
+function MessageAttachments({
+  attachments,
+}: {
+  attachments: ClarityMessageAttachment[];
+}) {
+  return (
+    <div className="mb-2 min-w-0 space-y-2">
+      <div className="grid min-w-0 grid-cols-2 gap-1.5">
+        {attachments
+          .filter((item) => item.kind === "image")
+          .map((item) =>
+            item.signedUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- private signed user media has no stable Next Image host.
+              <img
+                key={item.id}
+                src={item.signedUrl}
+                alt="Attached photo"
+                className="max-h-64 min-w-0 rounded-xl object-cover"
+              />
+            ) : null,
+          )}
+      </div>
+      {attachments
+        .filter((item) => item.kind === "audio")
+        .map((item) => (
+          <div key={item.id} className="min-w-0 space-y-1.5">
+            {item.signedUrl && (
+              <audio
+                controls
+                preload="metadata"
+                src={item.signedUrl}
+                className="h-10 w-full min-w-0 max-w-full"
+              />
+            )}
+            {item.transcript && (
+              <details className="text-xs opacity-80">
+                <summary className="cursor-pointer">Transcript</summary>
+                <p className="mt-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                  {item.transcript}
+                </p>
+              </details>
+            )}
+            {item.transcriptionStatus === "failed" && (
+              <p className="text-xs opacity-80">Transcription failed.</p>
+            )}
+          </div>
+        ))}
+    </div>
+  );
+}
+
+function ResearchSources({ sources }: { sources: ClarityResearchSource[] }) {
+  const visible = sources.slice(0, 4);
+  const remaining = sources.slice(4);
+  return (
+    <details className="mt-3 min-w-0 border-t border-border/70 pt-2">
+      <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+        Sources · {sources.length}
+      </summary>
+      <ul className="mt-2 min-w-0 space-y-2">
+        {visible.map((source) => (
+          <SourceLink key={source.url} source={source} />
+        ))}
+      </ul>
+      {remaining.length > 0 && (
+        <details className="mt-2 min-w-0">
+          <summary className="cursor-pointer text-xs text-muted-foreground">
+            View all
+          </summary>
+          <ul className="mt-2 min-w-0 space-y-2">
+            {remaining.map((source) => (
+              <SourceLink key={source.url} source={source} />
+            ))}
+          </ul>
+        </details>
+      )}
+    </details>
+  );
+}
+
+function SourceLink({ source }: { source: ClarityResearchSource }) {
+  return (
+    <li className="min-w-0">
+      <a
+        href={source.url}
+        target="_blank"
+        rel="noreferrer"
+        className="flex min-w-0 items-start gap-1.5 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+      >
+        <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">
+          <span className="block font-medium text-foreground">
+            {source.domain}
+          </span>
+          <span className="block">{source.title}</span>
+        </span>
+        <ExternalLink
+          className="mt-0.5 size-3 shrink-0"
+          aria-hidden="true"
+        />
+      </a>
+    </li>
+  );
+}
+
+function DraftMediaPreview({
+  item,
+  onRemove,
+}: {
+  item: DraftMedia;
+  onRemove: (item: DraftMedia) => void;
+}) {
+  return (
+    <div className="relative min-w-0 shrink-0 overflow-hidden rounded-xl border border-border bg-secondary">
+      {item.kind === "image" ? (
+        // eslint-disable-next-line @next/next/no-img-element -- local object URL preview.
+        <img
+          src={item.previewUrl}
+          alt="Photo ready to send"
+          className="size-20 object-cover"
+        />
+      ) : (
+        <div className="flex w-52 max-w-[70vw] items-center gap-2 p-2 pr-9">
+          <audio
+            controls
+            preload="metadata"
+            src={item.previewUrl}
+            className="h-9 min-w-0 flex-1"
+          />
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => void onRemove(item)}
+        aria-label={`Remove ${item.kind}`}
+        className="absolute right-1 top-1 grid size-7 place-items-center rounded-full bg-background/85 text-foreground shadow-sm"
+      >
+        <X className="size-4" />
+      </button>
+    </div>
+  );
+}
+
+function RetryMessageForm({
+  messageId,
+  formAction,
+  label = "Retry",
+}: {
+  messageId: string;
+  formAction: (payload: FormData) => void;
+  label?: string;
+}) {
+  return (
+    <form action={formAction} className="mt-2">
+      <input type="hidden" name="retryMessageId" value={messageId} />
+      <PendingButton
+        type="submit"
+        variant="outline"
+        pendingLabel="Retrying…"
+        className="h-9 rounded-lg"
+      >
+        {label}
+      </PendingButton>
+    </form>
   );
 }
 
@@ -202,4 +973,21 @@ function InvocationFields({
       <input type="hidden" name="localDate" value={invocation.localDate ?? ""} />
     </>
   );
+}
+
+function preferredRecorderMimeType() {
+  return ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg"].find(
+    (mimeType) => MediaRecorder.isTypeSupported(mimeType),
+  );
+}
+
+function audioFileName(mimeType: string) {
+  if (mimeType === "audio/mp4" || mimeType === "audio/m4a") return "voice.m4a";
+  if (mimeType === "audio/ogg") return "voice.ogg";
+  return "voice.webm";
+}
+
+function formatElapsed(durationMs: number) {
+  const seconds = Math.floor(durationMs / 1000);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }

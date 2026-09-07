@@ -9,6 +9,17 @@ export type ClarityGoldenEval = {
     acceptableNextMoves: Array<"ask" | "clarify" | "synthesize" | "recommend">;
     mustPreserveTruthState?: boolean;
     mustRequestCurrentVerification?: boolean;
+    research?: {
+      shouldUseResearch: boolean;
+      trigger: "explicit" | "implicit" | "none";
+      requiresFreshSources?: true;
+      sourcePriority?: string[];
+      usesRelevantPersonalContext?: true;
+      producesDecisionRecommendation?: true;
+      separatesFactInferenceAndJudgment?: true;
+      rejectsUnsupportedCausality?: true;
+      reflectsConflictingForecasts?: true;
+    };
     mustNotInventAlternatives?: boolean;
     mustKeepHypothesisTentative?: boolean;
     voice: {
@@ -266,8 +277,152 @@ export const clarityGoldenEvals: ClarityGoldenEval[] = [
       voice: DEFAULT_VOICE,
       voiceExample: {
         avoid: "I cannot answer this question because current-world verification is required.",
-        prefer: "I can’t safely tell you from memory because visa rules can change. Check the exact work conditions attached to your visa before accepting the contract.",
+        prefer: "I checked the current rules, but whether you can take the contract still depends on the exact work conditions attached to your visa.",
       },
+      mustNotMutate: true,
+    },
+  },
+  {
+    id: "research-current-iran-events",
+    fictionalUser: "Noor asks for a current account of an active geopolitical conflict.",
+    invocation: "general",
+    prompt: "What's happening with the war in Iran?",
+    expected: {
+      relevantContext: ["current date", "credible current reporting"],
+      acceptableNextMoves: ["synthesize"],
+      mustRequestCurrentVerification: true,
+      research: {
+        shouldUseResearch: true,
+        trigger: "explicit",
+        requiresFreshSources: true,
+        sourcePriority: ["multiple credible current news sources"],
+      },
+      voice: DEFAULT_VOICE,
+      mustNotMutate: true,
+    },
+  },
+  {
+    id: "research-australian-interest-rates",
+    fictionalUser: "Mia is in Australia and asks whether interest rates changed.",
+    invocation: "general",
+    prompt: "Did interest rates go up?",
+    expected: {
+      relevantContext: ["confirmed Australian location", "current rate", "change date"],
+      acceptableNextMoves: ["synthesize"],
+      mustRequestCurrentVerification: true,
+      research: {
+        shouldUseResearch: true,
+        trigger: "explicit",
+        requiresFreshSources: true,
+        sourcePriority: ["Reserve Bank of Australia"],
+      },
+      voice: DEFAULT_VOICE,
+      mustNotMutate: true,
+    },
+  },
+  {
+    id: "research-property-decision",
+    fictionalUser: "Eli is considering property and has relevant location, savings, flexibility, and timeline context in Life.",
+    invocation: "general",
+    prompt: "Should I buy property right now?",
+    expected: {
+      relevantContext: ["personal finances", "timeline", "current borrowing environment"],
+      acceptableNextMoves: ["recommend"],
+      mustRequestCurrentVerification: true,
+      research: {
+        shouldUseResearch: true,
+        trigger: "implicit",
+        requiresFreshSources: true,
+        usesRelevantPersonalContext: true,
+        producesDecisionRecommendation: true,
+        separatesFactInferenceAndJudgment: true,
+      },
+      voice: DEFAULT_VOICE,
+      mustNotMutate: true,
+    },
+  },
+  {
+    id: "research-australian-chef-sponsorship",
+    fictionalUser: "Kai asks about current Australian visa sponsorship rules for a chef.",
+    invocation: "general",
+    prompt: "What are the current Australian rules for sponsoring a chef?",
+    expected: {
+      relevantContext: ["Australian jurisdiction", "current visa rules"],
+      acceptableNextMoves: ["synthesize", "recommend"],
+      mustRequestCurrentVerification: true,
+      research: {
+        shouldUseResearch: true,
+        trigger: "explicit",
+        requiresFreshSources: true,
+        sourcePriority: ["Australian government immigration sources"],
+      },
+      voice: DEFAULT_VOICE,
+      mustNotMutate: true,
+    },
+  },
+  {
+    id: "research-not-needed-stable-knowledge",
+    fictionalUser: "Tess asks for a stable technical explanation.",
+    invocation: "general",
+    prompt: "What is Active Directory?",
+    expected: {
+      relevantContext: ["stable technical knowledge"],
+      acceptableNextMoves: ["synthesize"],
+      research: { shouldUseResearch: false, trigger: "none" },
+      voice: DEFAULT_VOICE,
+      mustNotMutate: true,
+    },
+  },
+  {
+    id: "research-not-needed-personal-execution",
+    fictionalUser: "Ari opens today's Gym Action and asks whether to do it.",
+    invocation: "action",
+    prompt: "Should I do Gym today?",
+    expected: {
+      relevantContext: ["selected Gym Action", "Today", "current constraints"],
+      acceptableNextMoves: ["recommend"],
+      research: { shouldUseResearch: false, trigger: "none" },
+      voice: DEFAULT_VOICE,
+      mustNotMutate: true,
+    },
+  },
+  {
+    id: "research-unsupported-rate-causality",
+    fictionalUser: "A user proposes a single unsupported cause for the future rate path.",
+    invocation: "general",
+    prompt: "Rates won't come down because immigration is too high, right?",
+    expected: {
+      relevantContext: ["current rate outlook", "inflation", "employment", "population and housing demand"],
+      acceptableNextMoves: ["synthesize", "recommend"],
+      mustRequestCurrentVerification: true,
+      research: {
+        shouldUseResearch: true,
+        trigger: "implicit",
+        requiresFreshSources: true,
+        separatesFactInferenceAndJudgment: true,
+        rejectsUnsupportedCausality: true,
+      },
+      voice: DEFAULT_VOICE,
+      mustNotMutate: true,
+    },
+  },
+  {
+    id: "research-conflicting-forecasts",
+    fictionalUser: "Zara asks when rates will fall and current credible forecasts disagree.",
+    invocation: "general",
+    prompt: "When are rates likely to come down?",
+    expected: {
+      relevantContext: ["current official rate", "credible forecasts", "forecast dates"],
+      acceptableNextMoves: ["synthesize", "recommend"],
+      mustRequestCurrentVerification: true,
+      research: {
+        shouldUseResearch: true,
+        trigger: "implicit",
+        requiresFreshSources: true,
+        separatesFactInferenceAndJudgment: true,
+        reflectsConflictingForecasts: true,
+      },
+      voice: DEFAULT_VOICE,
       mustNotMutate: true,
     },
   },

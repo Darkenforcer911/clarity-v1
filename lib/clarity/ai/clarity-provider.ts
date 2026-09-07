@@ -3,6 +3,10 @@ import {
   clarityConversationResponseSchema,
   type ClarityConversationResponse,
 } from "./clarity-response-schema.ts";
+import {
+  extractClarityResearchMetadata,
+  type ClarityResearchMetadata,
+} from "./clarity-research.ts";
 
 export type ClarityProviderUsage = {
   inputTokens: number | null;
@@ -16,11 +20,28 @@ export type ClarityProviderResult = {
   latencyMs: number;
   usage: ClarityProviderUsage;
   repaired: boolean;
+  research?: ClarityResearchMetadata;
 };
 
 export type ClarityProviderRequest = {
   systemPrompt: string;
   userPrompt: string;
+  images?: ClarityProviderImage[];
+};
+
+export type ClarityProviderImage = {
+  mimeType: string;
+  base64Data: string;
+};
+
+export type ClarityResearchLocation = {
+  city: string | null;
+  countryCode: string | null;
+  timezone: string;
+};
+
+export type ClarityProviderResearchRequest = ClarityProviderRequest & {
+  userLocation: ClarityResearchLocation;
 };
 
 export const clarityReasoningEfforts = [
@@ -39,6 +60,9 @@ export interface ClarityModelProvider {
   readonly model: string;
   readonly reasoningEffort?: ClarityReasoningEffort | null;
   generate(request: ClarityProviderRequest): Promise<ClarityProviderResult>;
+  research(
+    request: ClarityProviderResearchRequest,
+  ): Promise<ClarityProviderResult>;
 }
 
 export class ClarityProviderError extends Error {
@@ -46,7 +70,8 @@ export class ClarityProviderError extends Error {
     | "configuration"
     | "timeout"
     | "provider_failure"
-    | "invalid_output";
+    | "invalid_output"
+    | "research_failure";
 
   constructor(
     message: string,
@@ -54,7 +79,8 @@ export class ClarityProviderError extends Error {
       | "configuration"
       | "timeout"
       | "provider_failure"
-      | "invalid_output",
+      | "invalid_output"
+      | "research_failure",
   ) {
     super(message);
     this.name = "ClarityProviderError";
@@ -67,7 +93,9 @@ type FetchLike = typeof fetch;
 type OpenAIResponse = {
   output_text?: unknown;
   output?: Array<{
-    content?: Array<{ type?: string; text?: string }>;
+    type?: string;
+    action?: { sources?: unknown };
+    content?: Array<{ type?: string; text?: string; annotations?: unknown }>;
   }>;
   usage?: {
     input_tokens?: number;
@@ -136,9 +164,86 @@ export class OpenAIClarityProvider implements ClarityModelProvider {
     );
   }
 
+  async research(
+    request: ClarityProviderResearchRequest,
+  ): Promise<ClarityProviderResult> {
+    const startedAt = Date.now();
+    let repairInstruction: string | null = null;
+    let toolCallCount = 0;
+    const sources = new Map<string, ClarityResearchMetadata["sources"][number]>();
+    let inputTokens: number | null = null;
+    let outputTokens: number | null = null;
+
+    try {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const raw = await this.requestStructuredResponse(
+          request,
+          repairInstruction,
+          request.userLocation,
+        );
+        const text = extractOpenAIText(raw);
+        const parsed = parseStructuredResponse(text);
+        const attemptResearch = extractClarityResearchMetadata(raw, {
+          retrievedAt: new Date().toISOString(),
+          latencyMs: Date.now() - startedAt,
+        });
+        toolCallCount += attemptResearch.toolCallCount;
+        attemptResearch.sources.forEach((source) => sources.set(source.url, source));
+        inputTokens = addKnownCount(inputTokens, raw.usage?.input_tokens);
+        outputTokens = addKnownCount(outputTokens, raw.usage?.output_tokens);
+
+        if (
+          parsed &&
+          attemptResearch.toolCallCount > 0 &&
+          attemptResearch.sourceCount > 0
+        ) {
+          const researchSources = [...sources.values()].slice(0, 8);
+          return {
+            output: parsed,
+            provider: this.provider,
+            model: this.model,
+            latencyMs: Date.now() - startedAt,
+            usage: {
+              inputTokens,
+              outputTokens,
+            },
+            repaired: attempt === 1,
+            research: {
+              used: true,
+              sources: researchSources,
+              sourceCount: researchSources.length,
+              toolCallCount,
+              latencyMs: Date.now() - startedAt,
+            },
+          };
+        }
+
+        repairInstruction =
+          "The researched response was incomplete. Use web search, rely on current sources, and return only a corrected response matching the required JSON schema.";
+      }
+    } catch (error) {
+      if (
+        error instanceof ClarityProviderError &&
+        error.code === "configuration"
+      ) {
+        throw error;
+      }
+      throw new ClarityProviderError(
+        "Current research could not be completed.",
+        "research_failure",
+      );
+    }
+
+    throw new ClarityProviderError(
+      "Current research did not return usable sources.",
+      "research_failure",
+    );
+  }
+
   private async requestStructuredResponse(
     request: ClarityProviderRequest,
     repairInstruction: string | null,
+    researchLocation: ClarityResearchLocation | null = null,
   ): Promise<OpenAIResponse> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -155,6 +260,20 @@ export class OpenAIClarityProvider implements ClarityModelProvider {
           model: this.model,
           store: false,
           max_output_tokens: 2_500,
+          ...(researchLocation
+            ? {
+                include: ["web_search_call.action.sources"],
+                tools: [
+                  {
+                    type: "web_search_preview",
+                    search_context_size: "medium",
+                    user_location: approximateUserLocation(researchLocation),
+                  },
+                ],
+                tool_choice: "required",
+                max_tool_calls: 4,
+              }
+            : {}),
           ...(this.reasoningEffort
             ? { reasoning: { effort: this.reasoningEffort } }
             : {}),
@@ -162,9 +281,12 @@ export class OpenAIClarityProvider implements ClarityModelProvider {
             { role: "system", content: request.systemPrompt },
             {
               role: "user",
-              content: repairInstruction
-                ? `${request.userPrompt}\n\n${repairInstruction}`
-                : request.userPrompt,
+              content: providerUserContent(
+                repairInstruction
+                  ? `${request.userPrompt}\n\n${repairInstruction}`
+                  : request.userPrompt,
+                request.images ?? [],
+              ),
             },
           ],
           text: {
@@ -238,4 +360,33 @@ function integerOrNull(value: unknown) {
   return typeof value === "number" && Number.isInteger(value) && value >= 0
     ? value
     : null;
+}
+
+function addKnownCount(current: number | null, value: unknown) {
+  const parsed = integerOrNull(value);
+  return parsed === null ? current : (current ?? 0) + parsed;
+}
+
+function approximateUserLocation(location: ClarityResearchLocation) {
+  return {
+    type: "approximate" as const,
+    ...(location.city ? { city: location.city } : {}),
+    ...(location.countryCode ? { country: location.countryCode } : {}),
+    timezone: location.timezone,
+  };
+}
+
+function providerUserContent(
+  userPrompt: string,
+  images: ClarityProviderImage[],
+) {
+  if (images.length === 0) return userPrompt;
+  return [
+    { type: "input_text" as const, text: userPrompt },
+    ...images.map((image) => ({
+      type: "input_image" as const,
+      detail: "auto" as const,
+      image_url: `data:${image.mimeType};base64,${image.base64Data}`,
+    })),
+  ];
 }

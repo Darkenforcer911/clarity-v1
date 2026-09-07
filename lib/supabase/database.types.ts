@@ -413,6 +413,75 @@ export type Database = {
           },
         ]
       }
+      clarity_message_attachments: {
+        Row: {
+          byte_size: number
+          created_at: string
+          duration_ms: number | null
+          height: number | null
+          id: string
+          kind: string
+          message_id: string | null
+          mime_type: string
+          position: number | null
+          storage_path: string
+          transcript: string | null
+          transcription_status: string
+          updated_at: string
+          user_id: string
+          width: number | null
+        }
+        Insert: {
+          byte_size: number
+          created_at?: string
+          duration_ms?: number | null
+          height?: number | null
+          id?: string
+          kind: string
+          message_id?: string | null
+          mime_type: string
+          position?: number | null
+          storage_path: string
+          transcript?: string | null
+          transcription_status: string
+          updated_at?: string
+          user_id: string
+          width?: number | null
+        }
+        Update: {
+          byte_size?: number
+          created_at?: string
+          duration_ms?: number | null
+          height?: number | null
+          id?: string
+          kind?: string
+          message_id?: string | null
+          mime_type?: string
+          position?: number | null
+          storage_path?: string
+          transcript?: string | null
+          transcription_status?: string
+          updated_at?: string
+          user_id?: string
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clarity_message_attachments_message_owner_fkey"
+            columns: ["message_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "clarity_messages"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "clarity_message_attachments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clarity_messages: {
         Row: {
           content: string
@@ -2317,6 +2386,21 @@ export type Database = {
           message_id: string
         }[]
       }
+      append_clarity_user_message_v2: {
+        Args: {
+          p_attachment_ids?: string[]
+          p_content: string
+          p_invocation_type?: string
+          p_subject_action_id?: string
+          p_subject_calendar_commitment_id?: string
+          p_subject_local_date?: string
+        }
+        Returns: {
+          conversation_id: string
+          created_at: string
+          message_id: string
+        }[]
+      }
       approve_daily_plan: {
         Args: { p_daily_plan_id: string }
         Returns: undefined
@@ -2363,6 +2447,10 @@ export type Database = {
         Returns: {
           delivery_id: string
         }[]
+      }
+      complete_clarity_audio_transcription_v1: {
+        Args: { p_attachment_id: string; p_transcript: string }
+        Returns: undefined
       }
       complete_proposed_action: {
         Args: { p_daily_action_id: string }
@@ -2449,6 +2537,20 @@ export type Database = {
           p_title: string
         }
         Returns: string
+      }
+      create_clarity_attachment_v1: {
+        Args: {
+          p_byte_size: number
+          p_duration_ms?: number
+          p_height?: number
+          p_kind: string
+          p_mime_type: string
+          p_width?: number
+        }
+        Returns: {
+          attachment_id: string
+          storage_path: string
+        }[]
       }
       create_completed_plan_evidence: {
         Args: {
@@ -2595,8 +2697,16 @@ export type Database = {
         Args: { p_endpoint: string }
         Returns: undefined
       }
+      discard_clarity_draft_attachment_v1: {
+        Args: { p_attachment_id: string }
+        Returns: undefined
+      }
       end_current_context: {
         Args: { p_current_context_id: string; p_ended_on?: string }
+        Returns: undefined
+      }
+      fail_clarity_audio_transcription_v1: {
+        Args: { p_attachment_id: string }
         Returns: undefined
       }
       finish_day: {
