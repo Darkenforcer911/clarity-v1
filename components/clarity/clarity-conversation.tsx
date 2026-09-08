@@ -16,6 +16,7 @@ import {
 import {
   startTransition,
   useActionState,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -53,6 +54,11 @@ import {
   CLARITY_COMPOSER_MAX_HEIGHT_PX,
   clarityComposerHeight,
 } from "@/lib/clarity/ai/clarity-composer";
+import {
+  isClarityConversationNearBottom,
+  isClarityKeyboardOpen,
+  resolveClarityConversationViewport,
+} from "@/lib/clarity/ai/clarity-chat-layout";
 import { normalizeClarityImageFile } from "@/lib/clarity/ai/clarity-image-normalization";
 import { normalizeClarityVisibleResponse } from "@/lib/clarity/ai/clarity-response-presentation";
 import {
@@ -81,6 +87,13 @@ type PendingDictation = {
   file: File;
   durationMs: number;
   attachmentId: string | null;
+};
+
+type ConversationViewportLayout = {
+  height: number | null;
+  keyboardOpen: boolean;
+  restingHeight: number | null;
+  top: number;
 };
 
 const GENERAL_INVOCATION: ClarityInvocationDescriptor = {
@@ -132,8 +145,22 @@ export function ClarityConversation({
   const [recordingElapsedMs, setRecordingElapsedMs] = useState(0);
   const composerFormRef = useRef<HTMLFormElement>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const conversationHostRef = useRef<HTMLDivElement>(null);
+  const conversationScrollRef = useRef<HTMLDivElement>(null);
+  const messageContentRef = useRef<HTMLDivElement>(null);
+  const initialPositionedRef = useRef(false);
+  const followLatestRef = useRef(true);
+  const baselineViewportHeightRef = useRef(0);
+  const keyboardWasOpenRef = useRef(false);
   const [composerFocused, setComposerFocused] = useState(false);
   const [mobileViewport, setMobileViewport] = useState(false);
+  const [viewportLayout, setViewportLayout] =
+    useState<ConversationViewportLayout>({
+      height: null,
+      keyboardOpen: false,
+      restingHeight: null,
+      top: 0,
+    });
   const mobileComposerActive = mobileViewport && (
     composerFocused ||
     addMenuOpen ||
@@ -142,7 +169,84 @@ export function ClarityConversation({
   );
   useAppShellEditorState(mobileComposerActive);
 
-  useEffect(() => {
+  const scrollConversationToBottom = useCallback(() => {
+    const scroll = conversationScrollRef.current;
+    if (!scroll) return;
+    scroll.scrollTop = scroll.scrollHeight;
+    followLatestRef.current = true;
+  }, []);
+
+  const updateConversationViewport = useCallback(() => {
+    const host = conversationHostRef.current;
+    if (!host || !mobileViewport) return;
+    const visualViewport = window.visualViewport;
+    const visibleHeight = visualViewport?.height ?? window.innerHeight;
+    const visibleOffsetTop = visualViewport?.offsetTop ?? 0;
+    if (!composerFocused) {
+      baselineViewportHeightRef.current = Math.max(
+        baselineViewportHeightRef.current,
+        visibleHeight,
+        window.innerHeight,
+      );
+    } else if (baselineViewportHeightRef.current === 0) {
+      baselineViewportHeightRef.current = Math.max(
+        visibleHeight,
+        window.innerHeight,
+      );
+    }
+    const keyboardOpen = isClarityKeyboardOpen({
+      baselineHeight: baselineViewportHeightRef.current,
+      visibleHeight,
+      composerFocused,
+    });
+    const headerBottom = document
+      .querySelector<HTMLElement>("[data-app-shell-header]")
+      ?.getBoundingClientRect().bottom ?? visibleOffsetTop;
+    const navigationTop = mobileComposerActive
+      ? null
+      : document
+          .querySelector<HTMLElement>('nav[aria-label="Primary"]')
+          ?.getBoundingClientRect().top ?? null;
+    const resolved = resolveClarityConversationViewport({
+      visibleHeight,
+      visibleOffsetTop,
+      hostTop: host.getBoundingClientRect().top,
+      headerBottom,
+      navigationTop,
+      keyboardOpen,
+    });
+
+    setViewportLayout((current) => {
+      const restingHeight = keyboardOpen
+        ? (current.restingHeight ?? resolved.height)
+        : resolved.height;
+      if (
+        current.height === resolved.height &&
+        current.keyboardOpen === keyboardOpen &&
+        current.restingHeight === restingHeight &&
+        current.top === resolved.top
+      ) {
+        return current;
+      }
+      return {
+        height: resolved.height,
+        keyboardOpen,
+        restingHeight,
+        top: resolved.top,
+      };
+    });
+
+    if (
+      keyboardWasOpenRef.current &&
+      !keyboardOpen &&
+      document.activeElement === composerTextareaRef.current
+    ) {
+      composerTextareaRef.current?.blur();
+    }
+    keyboardWasOpenRef.current = keyboardOpen;
+  }, [composerFocused, mobileComposerActive, mobileViewport]);
+
+  useLayoutEffect(() => {
     const query = window.matchMedia("(max-width: 767px)");
     const update = () => setMobileViewport(query.matches);
     update();
@@ -152,27 +256,59 @@ export function ClarityConversation({
 
   useEffect(() => {
     const viewport = window.visualViewport;
-    if (!viewport) return;
-    let keyboardWasOpen = false;
-    const handleViewportResize = () => {
-      const keyboardOpen = window.innerHeight - viewport.height > 120;
-      if (
-        keyboardWasOpen &&
-        !keyboardOpen &&
-        document.activeElement === composerTextareaRef.current
-      ) {
-        composerTextareaRef.current?.blur();
-      }
-      keyboardWasOpen = keyboardOpen;
+    const update = () => {
+      updateConversationViewport();
       resizeComposerTextarea(composerTextareaRef.current);
     };
-    viewport.addEventListener("resize", handleViewportResize);
-    return () => viewport.removeEventListener("resize", handleViewportResize);
-  }, []);
+    viewport?.addEventListener("resize", update);
+    viewport?.addEventListener("scroll", update);
+    window.addEventListener("resize", update);
+    return () => {
+      viewport?.removeEventListener("resize", update);
+      viewport?.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [updateConversationViewport]);
+
+  useLayoutEffect(() => {
+    updateConversationViewport();
+    const firstFrame = window.requestAnimationFrame(updateConversationViewport);
+    const secondFrame = window.requestAnimationFrame(() =>
+      window.requestAnimationFrame(updateConversationViewport),
+    );
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+    };
+  }, [updateConversationViewport]);
 
   useLayoutEffect(() => {
     resizeComposerTextarea(composerTextareaRef.current);
   }, [message, attachment]);
+
+  useLayoutEffect(() => {
+    if (!initialPositionedRef.current) {
+      initialPositionedRef.current = true;
+      scrollConversationToBottom();
+      const frame = window.requestAnimationFrame(scrollConversationToBottom);
+      return () => window.cancelAnimationFrame(frame);
+    }
+    if (followLatestRef.current) scrollConversationToBottom();
+  }, [messages, scrollConversationToBottom, state.fallbackResponse]);
+
+  useLayoutEffect(() => {
+    if (followLatestRef.current) scrollConversationToBottom();
+  }, [scrollConversationToBottom, viewportLayout.height]);
+
+  useEffect(() => {
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (followLatestRef.current) scrollConversationToBottom();
+    });
+    if (messageContentRef.current) observer.observe(messageContentRef.current);
+    if (composerFormRef.current) observer.observe(composerFormRef.current);
+    return () => observer.disconnect();
+  }, [scrollConversationToBottom]);
 
   useEffect(() => {
     if (incomingAttachmentKey === previousIncomingAttachmentKey.current) return;
@@ -462,67 +598,133 @@ export function ClarityConversation({
 
   const canSend = Boolean(message.trim() || draftMedia.length > 0);
 
-  return (
-    <div className="flex min-h-[calc(100dvh-13rem)] min-w-0 flex-col gap-4">
-      <div className="min-w-0 flex-1 space-y-3" aria-live="polite">
-        {messages.length === 0 && (
-          <p className="max-w-sm text-sm leading-6 text-muted-foreground">
-            Tell me what’s on your mind. I’ll use what Clarity already knows
-            to help you work out what matters next.
-          </p>
-        )}
-        {messages.map((item) => (
-          <ConversationMessage
-            key={item.id}
-            item={item}
-            formAction={formAction}
-          />
-        ))}
-        {state.fallbackResponse && state.retryMessageId && (
-          <ResearchFallbackResponse
-            messageId={state.retryMessageId}
-            response={state.fallbackResponse}
-          />
-        )}
-      </div>
+  function handleConversationScroll() {
+    const scroll = conversationScrollRef.current;
+    if (!scroll) return;
+    followLatestRef.current = isClarityConversationNearBottom({
+      scrollHeight: scroll.scrollHeight,
+      scrollTop: scroll.scrollTop,
+      clientHeight: scroll.clientHeight,
+    });
+  }
 
+  function handleMediaSettled() {
+    if (followLatestRef.current) scrollConversationToBottom();
+  }
+
+  function handleComposerFocus() {
+    setComposerFocused(true);
+    window.requestAnimationFrame(() => {
+      updateConversationViewport();
+      window.requestAnimationFrame(() => {
+        const composer = composerFormRef.current;
+        const viewport = window.visualViewport;
+        if (!composer || !viewport) return;
+        const rect = composer.getBoundingClientRect();
+        const visibleTop = viewport.offsetTop;
+        const visibleBottom = visibleTop + viewport.height;
+        if (rect.top < visibleTop || rect.bottom > visibleBottom) {
+          composer.scrollIntoView({ block: "nearest" });
+        }
+      });
+    });
+  }
+
+  const mobileHostStyle = mobileViewport && viewportLayout.restingHeight
+    ? { height: `${viewportLayout.restingHeight}px` }
+    : undefined;
+  const conversationPanelStyle = viewportLayout.keyboardOpen
+    ? {
+        height: `${viewportLayout.height ?? 1}px`,
+        left: "max(1rem, calc((100vw - 480px) / 2 + 1rem))",
+        right: "max(1rem, calc((100vw - 480px) / 2 + 1rem))",
+        top: `${viewportLayout.top}px`,
+      }
+    : undefined;
+
+  return (
+    <div
+      ref={conversationHostRef}
+      className="relative h-[calc(100dvh-13rem)] min-w-0"
+      style={mobileHostStyle}
+    >
       <div
-        className={`sticky min-w-0 space-y-2 bg-background/95 pt-2 backdrop-blur ${
-          mobileComposerActive
-            ? "bottom-[env(safe-area-inset-bottom)]"
-            : "bottom-[calc(4.75rem+env(safe-area-inset-bottom))]"
+        data-clarity-keyboard-open={viewportLayout.keyboardOpen || undefined}
+        className={`flex min-w-0 flex-col gap-4 bg-background ${
+          viewportLayout.keyboardOpen
+            ? "fixed z-50"
+            : "h-full"
+        } ${
+          mobileComposerActive && !viewportLayout.keyboardOpen
+            ? "pb-[env(safe-area-inset-bottom)]"
+            : ""
         }`}
+        style={conversationPanelStyle}
       >
-        {(state.error || state.fieldError || mediaError) && (
-          <div
-            role="alert"
-            className="rounded-xl border border-border bg-secondary px-3 py-2 text-sm"
-          >
-            <p>{mediaError ?? state.fieldError ?? state.error}</p>
-            {state.retryMessageId && state.retryKind !== "research" && (
-              <RetryMessageForm
-                messageId={state.retryMessageId}
+        <div
+          ref={conversationScrollRef}
+          data-clarity-conversation-scroll
+          className="min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto overscroll-contain"
+          aria-live="polite"
+          onScroll={handleConversationScroll}
+        >
+          <div ref={messageContentRef} className="space-y-3">
+            {messages.length === 0 && (
+              <p className="max-w-sm text-sm leading-6 text-muted-foreground">
+                Tell me what’s on your mind. I’ll use what Clarity already
+                knows to help you work out what matters next.
+              </p>
+            )}
+            {messages.map((item) => (
+              <ConversationMessage
+                key={item.id}
+                item={item}
                 formAction={formAction}
+                onMediaSettled={handleMediaSettled}
+              />
+            ))}
+            {state.fallbackResponse && state.retryMessageId && (
+              <ResearchFallbackResponse
+                messageId={state.retryMessageId}
+                response={state.fallbackResponse}
               />
             )}
           </div>
-        )}
+        </div>
 
-        <form
-          ref={composerFormRef}
-          action={formAction}
-          onSubmit={handleSubmit}
-          onFocusCapture={() => setComposerFocused(true)}
-          onBlurCapture={() => {
-            window.setTimeout(() => {
-              if (!composerFormRef.current?.contains(document.activeElement)) {
-                setComposerFocused(false);
-              }
-            }, 0);
-          }}
-          noValidate
-          className="relative min-w-0 rounded-2xl border border-border bg-card p-2 shadow-sm"
-        >
+        <div className="min-w-0 shrink-0 space-y-2 bg-background/95 pt-2 backdrop-blur">
+          {(state.error || state.fieldError || mediaError) && (
+            <div
+              role="alert"
+              className="rounded-xl border border-border bg-secondary px-3 py-2 text-sm"
+            >
+              <p>{mediaError ?? state.fieldError ?? state.error}</p>
+              {state.retryMessageId && state.retryKind !== "research" && (
+                <RetryMessageForm
+                  messageId={state.retryMessageId}
+                  formAction={formAction}
+                />
+              )}
+            </div>
+          )}
+
+          <form
+            ref={composerFormRef}
+            action={formAction}
+            onSubmit={handleSubmit}
+            onFocusCapture={handleComposerFocus}
+            onBlurCapture={() => {
+              window.setTimeout(() => {
+                if (
+                  !composerFormRef.current?.contains(document.activeElement)
+                ) {
+                  setComposerFocused(false);
+                }
+              }, 0);
+            }}
+            noValidate
+            className="relative min-w-0 rounded-2xl border border-border bg-card p-2 shadow-sm"
+          >
           <InvocationFields
             invocation={attachment?.invocation ?? GENERAL_INVOCATION}
           />
@@ -743,7 +945,8 @@ export function ClarityConversation({
               )}
             </div>
           )}
-        </form>
+          </form>
+        </div>
       </div>
     </div>
   );
@@ -794,9 +997,11 @@ export function ClarityConversation({
 function ConversationMessage({
   item,
   formAction,
+  onMediaSettled,
 }: {
   item: ClarityConversationMessage;
   formAction: (payload: FormData) => void;
+  onMediaSettled: () => void;
 }) {
   const sources = item.role === "clarity"
     ? researchSourcesFromMetadata(item.structured_metadata)
@@ -821,7 +1026,10 @@ function ConversationMessage({
         {item.role === "user" ? "You" : "Clarity"}
       </p>
       {item.attachments.length > 0 && (
-        <MessageAttachments attachments={item.attachments} />
+        <MessageAttachments
+          attachments={item.attachments}
+          onMediaSettled={onMediaSettled}
+        />
       )}
       {visibleContent && (
         <div className="min-w-0 space-y-3 break-words [overflow-wrap:anywhere]">
@@ -849,8 +1057,10 @@ function ConversationMessage({
 
 function MessageAttachments({
   attachments,
+  onMediaSettled,
 }: {
   attachments: ClarityMessageAttachment[];
+  onMediaSettled: () => void;
 }) {
   return (
     <div className="mb-2 min-w-0 space-y-2">
@@ -865,6 +1075,7 @@ function MessageAttachments({
                 src={item.signedUrl}
                 alt="Attached photo"
                 className="max-h-64 min-w-0 rounded-xl object-cover"
+                onLoad={onMediaSettled}
               />
             ) : null,
           )}
@@ -879,6 +1090,7 @@ function MessageAttachments({
                 preload="metadata"
                 src={item.signedUrl}
                 className="h-10 w-full min-w-0 max-w-full"
+                onLoadedMetadata={onMediaSettled}
               />
             )}
             {item.transcript && (
