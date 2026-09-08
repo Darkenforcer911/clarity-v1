@@ -17,6 +17,7 @@ import {
   transcribeClarityDraftAudio,
 } from "@/lib/clarity/ai/clarity-attachment-service";
 import {
+  MAX_CLARITY_IMAGE_COUNT,
   clarityAttachmentPreparationSchema,
   type ClarityMessageAttachment,
 } from "@/lib/clarity/ai/clarity-attachments";
@@ -25,11 +26,17 @@ import {
   type ClarityInvocationDescriptor,
 } from "@/lib/clarity/ai/clarity-context-assembler";
 import type { ClarityConversationActionState } from "@/lib/clarity/ai/clarity-conversation-action-state";
-import { runClarityConversationTurn } from "@/lib/clarity/ai/clarity-conversation-orchestrator";
+import {
+  runClarityConversationTurn,
+  runClarityResearchRetryTurn,
+} from "@/lib/clarity/ai/clarity-conversation-orchestrator";
 import { ClarityProviderError } from "@/lib/clarity/ai/clarity-provider";
+import { ClarityResearchFallbackError } from "@/lib/clarity/ai/clarity-research-fallback";
 
 const messageSchema = z.string().trim().max(8000);
-const attachmentIdsSchema = z.array(z.string().uuid()).max(4);
+const attachmentIdsSchema = z
+  .array(z.string().uuid())
+  .max(MAX_CLARITY_IMAGE_COUNT);
 const optionalUuid = z.union([z.literal(""), z.string().uuid()]);
 const optionalDate = z.union([z.literal(""), z.iso.date()]);
 
@@ -92,19 +99,66 @@ export async function sendClarityMessageAction(
     const fieldError = error instanceof z.ZodError
       ? error.issues[0]?.message
       : undefined;
+    const researchFallback = error instanceof ClarityResearchFallbackError
+      ? error
+      : null;
     return {
       error: fieldError
         ? null
-        : persistedMessageId
-          ? error instanceof ClarityProviderError &&
-            error.code === "research_failure"
-            ? "I couldn’t verify the current information just now. Your message is saved, so you can retry."
-            : error instanceof ClarityTranscriptionError
-              ? "I couldn’t transcribe that voice memo. It’s saved, so you can retry."
-            : "Clarity couldn’t respond just now. Your message is saved, so you can retry."
-          : "Clarity couldn’t save that message. Try again.",
+        : researchFallback
+          ? null
+          : persistedMessageId
+            ? error instanceof ClarityProviderError &&
+              error.code === "research_failure"
+              ? "I couldn’t verify the current information just now. Your message is saved, so you can retry."
+              : error instanceof ClarityTranscriptionError
+                ? "I couldn’t transcribe that voice memo. It’s saved, so you can retry."
+                : "Clarity couldn’t respond just now. Your message is saved, so you can retry."
+            : "Clarity couldn’t save that message. Try again.",
       fieldError,
       ...(persistedMessageId ? { retryMessageId: persistedMessageId } : {}),
+      ...(persistedMessageId
+        ? {
+            retryKind: researchFallback
+              ? ("research" as const)
+              : ("response" as const),
+          }
+        : {}),
+      ...(researchFallback
+        ? { fallbackResponse: researchFallback.fallbackResponse }
+        : {}),
+      completedAt: Date.now(),
+    };
+  }
+}
+
+export async function retryClarityResearchAction(
+  _previousState: ClarityConversationActionState,
+  formData: FormData,
+): Promise<ClarityConversationActionState> {
+  try {
+    const messageId = z.string().uuid().parse(formData.get("retryMessageId"));
+    const retry = await loadRetryableUserMessage(messageId);
+    if (retry.alreadyAnswered) {
+      revalidatePath("/clarity");
+      return { error: null, success: true, completedAt: Date.now() };
+    }
+    const prepared = await prepareClarityMessageForReasoning({
+      content: retry.message.content,
+      attachments: retry.message.attachments,
+    });
+    await runClarityResearchRetryTurn({
+      userMessageId: retry.message.id,
+      userMessage: prepared.userMessage,
+      invocation: descriptorFromStoredMessage(retry.message),
+      images: prepared.images,
+    });
+    revalidatePath("/clarity");
+    return { error: null, success: true, completedAt: Date.now() };
+  } catch {
+    return {
+      error: "I still couldn’t verify the current information. Try again when you’re ready.",
+      retryKind: "research",
       completedAt: Date.now(),
     };
   }

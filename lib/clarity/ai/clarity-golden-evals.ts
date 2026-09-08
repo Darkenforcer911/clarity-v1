@@ -22,6 +22,8 @@ export type ClarityGoldenEval = {
     };
     mustNotInventAlternatives?: boolean;
     mustKeepHypothesisTentative?: boolean;
+    mustPreserveConsequentialConstraints?: boolean;
+    mustNotInventConstraints?: boolean;
     voice: {
       conciseByDefault: true;
       answerFirst: true;
@@ -261,6 +263,24 @@ export const clarityGoldenEvals: ClarityGoldenEval[] = [
     expected: {
       relevantContext: ["selected occurrence", "current time", "near Calendar"],
       acceptableNextMoves: ["clarify", "recommend"],
+      voice: DEFAULT_VOICE,
+      mustNotMutate: true,
+    },
+  },
+  {
+    id: "plan-preserves-confirmed-execution-constraint",
+    fictionalUser: "Inez has a confirmed evening medication commitment whose user-authored details say to take it with food.",
+    invocation: "calendar_occurrence",
+    prompt: "Fit this into tonight for me.",
+    expected: {
+      relevantContext: [
+        "selected medication commitment",
+        "confirmed with-food instruction",
+        "evening Calendar",
+      ],
+      acceptableNextMoves: ["synthesize", "recommend"],
+      mustPreserveConsequentialConstraints: true,
+      mustNotInventConstraints: true,
       voice: DEFAULT_VOICE,
       mustNotMutate: true,
     },

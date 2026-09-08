@@ -5,6 +5,7 @@ import {
 } from "./clarity-response-schema.ts";
 import {
   extractClarityResearchMetadata,
+  selectClarityResearchSources,
   type ClarityResearchMetadata,
 } from "./clarity-research.ts";
 
@@ -168,59 +169,45 @@ export class OpenAIClarityProvider implements ClarityModelProvider {
     request: ClarityProviderResearchRequest,
   ): Promise<ClarityProviderResult> {
     const startedAt = Date.now();
-    let repairInstruction: string | null = null;
-    let toolCallCount = 0;
-    const sources = new Map<string, ClarityResearchMetadata["sources"][number]>();
-    let inputTokens: number | null = null;
-    let outputTokens: number | null = null;
 
     try {
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        const raw = await this.requestStructuredResponse(
-          request,
-          repairInstruction,
-          request.userLocation,
+      const raw = await this.requestStructuredResponse(
+        request,
+        null,
+        request.userLocation,
+      );
+      const parsed = parseStructuredResponse(extractOpenAIText(raw));
+      const research = extractClarityResearchMetadata(raw, {
+        retrievedAt: new Date().toISOString(),
+        latencyMs: Date.now() - startedAt,
+      });
+      if (!parsed || research.toolCallCount < 1 || research.sourceCount < 1) {
+        throw new ClarityProviderError(
+          "Current research did not return a usable answer.",
+          "research_failure",
         );
-        const text = extractOpenAIText(raw);
-        const parsed = parseStructuredResponse(text);
-        const attemptResearch = extractClarityResearchMetadata(raw, {
-          retrievedAt: new Date().toISOString(),
-          latencyMs: Date.now() - startedAt,
-        });
-        toolCallCount += attemptResearch.toolCallCount;
-        attemptResearch.sources.forEach((source) => sources.set(source.url, source));
-        inputTokens = addKnownCount(inputTokens, raw.usage?.input_tokens);
-        outputTokens = addKnownCount(outputTokens, raw.usage?.output_tokens);
-
-        if (
-          parsed &&
-          attemptResearch.toolCallCount > 0 &&
-          attemptResearch.sourceCount > 0
-        ) {
-          const researchSources = [...sources.values()].slice(0, 8);
-          return {
-            output: parsed,
-            provider: this.provider,
-            model: this.model,
-            latencyMs: Date.now() - startedAt,
-            usage: {
-              inputTokens,
-              outputTokens,
-            },
-            repaired: attempt === 1,
-            research: {
-              used: true,
-              sources: researchSources,
-              sourceCount: researchSources.length,
-              toolCallCount,
-              latencyMs: Date.now() - startedAt,
-            },
-          };
-        }
-
-        repairInstruction =
-          "The researched response was incomplete. Use web search, rely on current sources, and return only a corrected response matching the required JSON schema.";
       }
+      const researchSources = selectClarityResearchSources(
+        research.sources,
+        true,
+      );
+      return {
+        output: parsed,
+        provider: this.provider,
+        model: this.model,
+        latencyMs: Date.now() - startedAt,
+        usage: {
+          inputTokens: integerOrNull(raw.usage?.input_tokens),
+          outputTokens: integerOrNull(raw.usage?.output_tokens),
+        },
+        repaired: false,
+        research: {
+          ...research,
+          sources: researchSources,
+          sourceCount: researchSources.length,
+          latencyMs: Date.now() - startedAt,
+        },
+      };
     } catch (error) {
       if (
         error instanceof ClarityProviderError &&
@@ -233,11 +220,6 @@ export class OpenAIClarityProvider implements ClarityModelProvider {
         "research_failure",
       );
     }
-
-    throw new ClarityProviderError(
-      "Current research did not return usable sources.",
-      "research_failure",
-    );
   }
 
   private async requestStructuredResponse(
@@ -360,11 +342,6 @@ function integerOrNull(value: unknown) {
   return typeof value === "number" && Number.isInteger(value) && value >= 0
     ? value
     : null;
-}
-
-function addKnownCount(current: number | null, value: unknown) {
-  const parsed = integerOrNull(value);
-  return parsed === null ? current : (current ?? 0) + parsed;
 }
 
 function approximateUserLocation(location: ClarityResearchLocation) {

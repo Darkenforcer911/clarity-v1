@@ -17,6 +17,7 @@ import {
   startTransition,
   useActionState,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -25,10 +26,12 @@ import { useRouter } from "next/navigation";
 import {
   discardClarityAttachmentAction,
   prepareClarityAttachmentAction,
+  retryClarityResearchAction,
   sendClarityMessageAction,
   transcribeClarityDictationAction,
 } from "@/app/(app)/clarity/actions";
 import { Button } from "@/components/ui/button";
+import { useAppShellEditorState } from "@/components/clarity/app-shell-editor-context";
 import { initialClarityConversationActionState } from "@/lib/clarity/ai/clarity-conversation-action-state";
 import {
   appendDictationTranscript,
@@ -46,9 +49,15 @@ import {
   normalizeClarityMimeType,
   type ClarityMessageAttachment,
 } from "@/lib/clarity/ai/clarity-attachments";
+import {
+  CLARITY_COMPOSER_MAX_HEIGHT_PX,
+  clarityComposerHeight,
+} from "@/lib/clarity/ai/clarity-composer";
+import { normalizeClarityImageFile } from "@/lib/clarity/ai/clarity-image-normalization";
 import { normalizeClarityVisibleResponse } from "@/lib/clarity/ai/clarity-response-presentation";
 import {
   researchSourcesFromMetadata,
+  researchPublisherLabel,
   type ClarityResearchSource,
 } from "@/lib/clarity/ai/clarity-research";
 import { createClient } from "@/lib/supabase/client";
@@ -121,6 +130,49 @@ export function ClarityConversation({
     useState<PendingDictation | null>(null);
   const [canPauseRecording, setCanPauseRecording] = useState(false);
   const [recordingElapsedMs, setRecordingElapsedMs] = useState(0);
+  const composerFormRef = useRef<HTMLFormElement>(null);
+  const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const [composerFocused, setComposerFocused] = useState(false);
+  const [mobileViewport, setMobileViewport] = useState(false);
+  const mobileComposerActive = mobileViewport && (
+    composerFocused ||
+    addMenuOpen ||
+    mediaBusy ||
+    !["idle", "transcript_ready"].includes(dictationStatus)
+  );
+  useAppShellEditorState(mobileComposerActive);
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 767px)");
+    const update = () => setMobileViewport(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    let keyboardWasOpen = false;
+    const handleViewportResize = () => {
+      const keyboardOpen = window.innerHeight - viewport.height > 120;
+      if (
+        keyboardWasOpen &&
+        !keyboardOpen &&
+        document.activeElement === composerTextareaRef.current
+      ) {
+        composerTextareaRef.current?.blur();
+      }
+      keyboardWasOpen = keyboardOpen;
+      resizeComposerTextarea(composerTextareaRef.current);
+    };
+    viewport.addEventListener("resize", handleViewportResize);
+    return () => viewport.removeEventListener("resize", handleViewportResize);
+  }, []);
+
+  useLayoutEffect(() => {
+    resizeComposerTextarea(composerTextareaRef.current);
+  }, [message, attachment]);
 
   useEffect(() => {
     if (incomingAttachmentKey === previousIncomingAttachmentKey.current) return;
@@ -169,16 +221,20 @@ export function ClarityConversation({
 
     setMediaBusy(true);
     try {
-      for (const file of selected) {
+      for (const selectedFile of selected) {
+        const file = await normalizeClarityImageFile(selectedFile);
         const mimeType = normalizeClarityMimeType(file.type);
         if (!clarityImageMimeTypes.includes(mimeType as never)) {
           throw new Error("Choose a JPEG, PNG, WebP, or GIF image.");
         }
         if (file.size < 1 || file.size > MAX_CLARITY_IMAGE_BYTES) {
-          throw new Error("Images must be 8 MB or smaller.");
+          throw new Error("Images must be 15 MB or smaller.");
         }
         const uploaded = await uploadDraft(file, "image", null);
         setDraftMedia((current) => [...current, uploaded]);
+      }
+      if (files.length > selected.length) {
+        setMediaError(`You can attach up to ${MAX_CLARITY_IMAGE_COUNT} photos.`);
       }
     } catch (error) {
       setMediaError(
@@ -422,16 +478,28 @@ export function ClarityConversation({
             formAction={formAction}
           />
         ))}
+        {state.fallbackResponse && state.retryMessageId && (
+          <ResearchFallbackResponse
+            messageId={state.retryMessageId}
+            response={state.fallbackResponse}
+          />
+        )}
       </div>
 
-      <div className="sticky bottom-[calc(4.75rem+env(safe-area-inset-bottom))] min-w-0 space-y-2 bg-background/95 pt-2 backdrop-blur">
+      <div
+        className={`sticky min-w-0 space-y-2 bg-background/95 pt-2 backdrop-blur ${
+          mobileComposerActive
+            ? "bottom-[env(safe-area-inset-bottom)]"
+            : "bottom-[calc(4.75rem+env(safe-area-inset-bottom))]"
+        }`}
+      >
         {(state.error || state.fieldError || mediaError) && (
           <div
             role="alert"
             className="rounded-xl border border-border bg-secondary px-3 py-2 text-sm"
           >
             <p>{mediaError ?? state.fieldError ?? state.error}</p>
-            {state.retryMessageId && (
+            {state.retryMessageId && state.retryKind !== "research" && (
               <RetryMessageForm
                 messageId={state.retryMessageId}
                 formAction={formAction}
@@ -441,8 +509,17 @@ export function ClarityConversation({
         )}
 
         <form
+          ref={composerFormRef}
           action={formAction}
           onSubmit={handleSubmit}
+          onFocusCapture={() => setComposerFocused(true)}
+          onBlurCapture={() => {
+            window.setTimeout(() => {
+              if (!composerFormRef.current?.contains(document.activeElement)) {
+                setComposerFocused(false);
+              }
+            }, 0);
+          }}
           noValidate
           className="relative min-w-0 rounded-2xl border border-border bg-card p-2 shadow-sm"
         >
@@ -575,7 +652,7 @@ export function ClarityConversation({
               <input
                 ref={cameraInputRef}
                 type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif"
+                accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif"
                 capture="environment"
                 className="hidden"
                 onChange={(event) =>
@@ -585,7 +662,7 @@ export function ClarityConversation({
               <input
                 ref={libraryInputRef}
                 type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif"
+                accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif"
                 multiple
                 className="hidden"
                 onChange={(event) =>
@@ -610,13 +687,15 @@ export function ClarityConversation({
                 <label className="block min-w-0">
                   <span className="sr-only">Message Clarity</span>
                   <textarea
+                    ref={composerTextareaRef}
                     name="message"
                     value={message}
                     onChange={(event) => setMessage(event.target.value)}
                     placeholder="Message Clarity…"
                     rows={1}
                     maxLength={8000}
-                    className="block max-h-32 min-h-11 w-full min-w-0 resize-none bg-transparent px-2 py-2.5 text-base leading-6 outline-none placeholder:text-muted-foreground"
+                    style={{ maxHeight: CLARITY_COMPOSER_MAX_HEIGHT_PX }}
+                    className="block min-h-11 w-full min-w-0 resize-none overflow-y-hidden bg-transparent px-2 py-2.5 text-base leading-6 outline-none placeholder:text-muted-foreground"
                     disabled={isPending || mediaBusy}
                   />
                 </label>
@@ -723,7 +802,7 @@ function ConversationMessage({
     ? researchSourcesFromMetadata(item.structured_metadata)
     : [];
   const visibleContent = item.role === "clarity"
-    ? normalizeClarityVisibleResponse(item.content)
+    ? normalizeClarityVisibleResponse(item.content, sources)
     : item.content;
   const failedAudio = item.attachments.some(
     (media) =>
@@ -859,9 +938,11 @@ function SourceLink({ source }: { source: ClarityResearchSource }) {
       >
         <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">
           <span className="block font-medium text-foreground">
-            {source.domain}
+            {researchPublisherLabel(source)}
           </span>
-          <span className="block">{source.title}</span>
+          {source.title.trim().toLowerCase() !== source.domain.toLowerCase() && (
+            <span className="block">{source.title}</span>
+          )}
         </span>
         <ExternalLink
           className="mt-0.5 size-3 shrink-0"
@@ -934,6 +1015,55 @@ function RetryMessageForm({
   );
 }
 
+function ResearchFallbackResponse({
+  messageId,
+  response,
+}: {
+  messageId: string;
+  response: string;
+}) {
+  const router = useRouter();
+  const [state, formAction] = useActionState(
+    retryClarityResearchAction,
+    initialClarityConversationActionState,
+  );
+
+  useEffect(() => {
+    if (state.success) router.refresh();
+  }, [router, state.success]);
+
+  if (state.success) return null;
+  return (
+    <article className="max-w-[94%] min-w-0 overflow-hidden rounded-2xl rounded-bl-md bg-card px-4 py-3 text-sm leading-6 text-foreground">
+      <p className="mb-1 text-xs font-semibold opacity-70">Clarity</p>
+      <div className="min-w-0 space-y-3 break-words [overflow-wrap:anywhere]">
+        {response.split(/\n{2,}/).map((paragraph, index) => (
+          <p key={`research-fallback-${index}`} className="whitespace-pre-wrap">
+            {paragraph}
+          </p>
+        ))}
+      </div>
+      {state.error && (
+        <p role="alert" className="mt-2 text-xs text-muted-foreground">
+          {state.error}
+        </p>
+      )}
+      <form action={formAction} className="mt-2">
+        <input type="hidden" name="retryMessageId" value={messageId} />
+        <PendingButton
+          type="submit"
+          variant="ghost"
+          size="sm"
+          pendingLabel="Retrying…"
+          className="h-8 px-0 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
+        >
+          Retry research
+        </PendingButton>
+      </form>
+    </article>
+  );
+}
+
 function createAttachment(
   invocation: ClarityInvocationDescriptor,
   subjectLabel: string | null,
@@ -990,4 +1120,12 @@ function audioFileName(mimeType: string) {
 function formatElapsed(durationMs: number) {
   const seconds = Math.floor(durationMs / 1000);
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function resizeComposerTextarea(textarea: HTMLTextAreaElement | null) {
+  if (!textarea) return;
+  textarea.style.height = "auto";
+  const next = clarityComposerHeight(textarea.scrollHeight);
+  textarea.style.height = `${next.height}px`;
+  textarea.style.overflowY = next.scrolls ? "auto" : "hidden";
 }

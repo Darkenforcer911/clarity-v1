@@ -16,7 +16,12 @@ import {
 } from "./clarity-provider";
 import { createClarityModelProvider } from "./clarity-provider-server";
 import { researchCountryCode } from "./clarity-research";
+import {
+  buildClarityResearchFallback,
+  ClarityResearchFallbackError,
+} from "./clarity-research-fallback";
 import { normalizeClarityVisibleResponse } from "./clarity-response-presentation";
+import { runClarityTurnSingleFlight } from "./clarity-turn-single-flight";
 import {
   appendResearchNeedToUserPrompt,
   buildClarityResearchSystemPrompt,
@@ -25,6 +30,30 @@ import {
 } from "./clarity-prompt";
 
 export async function runClarityConversationTurn(input: {
+  userMessageId: string;
+  userMessage: string;
+  invocation: ClarityInvocationDescriptor;
+  images?: import("./clarity-provider").ClarityProviderImage[];
+  provider?: ClarityModelProvider;
+}) {
+  return runClarityTurnSingleFlight(input.userMessageId, () =>
+    executeClarityConversationTurn(input),
+  );
+}
+
+export async function runClarityResearchRetryTurn(input: {
+  userMessageId: string;
+  userMessage: string;
+  invocation: ClarityInvocationDescriptor;
+  images?: import("./clarity-provider").ClarityProviderImage[];
+  provider?: ClarityModelProvider;
+}) {
+  return runClarityTurnSingleFlight(input.userMessageId, () =>
+    executeClarityResearchRetryTurn(input),
+  );
+}
+
+async function executeClarityConversationTurn(input: {
   userMessageId: string;
   userMessage: string;
   invocation: ClarityInvocationDescriptor;
@@ -59,40 +88,37 @@ export async function runClarityConversationTurn(input: {
       images: input.images,
     });
     structuredParseSucceeded = true;
-    const result = initialResult.output.requiresCurrentVerification
-      ? await runResearchStage({
+    let result = initialResult;
+    if (initialResult.output.requiresCurrentVerification) {
+      try {
+        result = await runResearchStage({
           provider,
           initialResult,
           userPrompt,
           images: input.images,
           verificationNeed: initialResult.output.verificationNeed!,
-          location: {
-            city: context.profile.city,
-            countryCode: researchCountryCode(context.profile.country),
-            timezone: context.profile.timezone,
-          },
+          location: researchLocation(context),
           onStart: () => {
             researchAttempted = true;
           },
-        })
-      : initialResult;
-    const presentedResult = {
-      ...result,
-      output: {
-        ...result.output,
-        response: normalizeClarityVisibleResponse(result.output.response),
-      },
-    } satisfies ClarityProviderResult;
-    if (!presentedResult.output.response) {
-      throw new ClarityProviderError(
-        "Clarity returned an empty visible response.",
-        "invalid_output",
-      );
+        });
+      } catch (error) {
+        if (
+          error instanceof ClarityProviderError &&
+          error.code === "research_failure"
+        ) {
+          throw new ClarityResearchFallbackError(
+            buildClarityResearchFallback(
+              normalizeClarityVisibleResponse(initialResult.output.response),
+            ),
+          );
+        }
+        throw error;
+      }
     }
-    await appendClarityResponse(
+    const presentedResult = await persistPresentedResult(
       input.userMessageId,
-      presentedResult.output,
-      presentedResult,
+      result,
     );
     logClarityModelEvent({
       provider: result.provider,
@@ -128,6 +154,88 @@ export async function runClarityConversationTurn(input: {
             ? error.name
             : "UnknownClarityProviderError",
       researchUsed: researchAttempted,
+      sourceCount: 0,
+      webSearchToolCallCount: 0,
+      researchLatencyMs: 0,
+      reasoningEffort: provider.reasoningEffort ?? "provider_default",
+    });
+    throw error;
+  }
+}
+
+async function executeClarityResearchRetryTurn(input: {
+  userMessageId: string;
+  userMessage: string;
+  invocation: ClarityInvocationDescriptor;
+  images?: import("./clarity-provider").ClarityProviderImage[];
+  provider?: ClarityModelProvider;
+}) {
+  const invocation = invocationFromDescriptor(input.invocation);
+  if (input.invocation.type !== "general" && !invocation) {
+    throw new Error("Invalid Clarity invocation.");
+  }
+  const [context, conversation] = await Promise.all([
+    assembleClarityContext(invocation),
+    loadClarityConversation(24),
+  ]);
+  const provider = input.provider ?? createClarityModelProvider();
+  const startedAt = Date.now();
+
+  try {
+    const userPrompt = buildClarityUserPrompt({
+      userMessage: input.userMessage,
+      context,
+      history: conversation.messages.filter(
+        (message) => message.id !== input.userMessageId,
+      ),
+    });
+    const result = await provider.research({
+      systemPrompt: buildClarityResearchSystemPrompt(),
+      userPrompt: appendResearchNeedToUserPrompt(
+        userPrompt,
+        "Identify and verify only the current-world facts that materially affect the user's question.",
+      ),
+      images: input.images,
+      userLocation: researchLocation(context),
+    });
+    const presentedResult = await persistPresentedResult(
+      input.userMessageId,
+      result,
+    );
+    logClarityModelEvent({
+      provider: result.provider,
+      model: result.model,
+      invocationType: input.invocation.type,
+      latencyMs: result.latencyMs,
+      totalTurnLatencyMs: Date.now() - startedAt,
+      success: true,
+      structuredParseSuccess: true,
+      repaired: result.repaired,
+      inputTokens: result.usage.inputTokens,
+      outputTokens: result.usage.outputTokens,
+      researchUsed: true,
+      sourceCount: result.research?.sourceCount ?? 0,
+      webSearchToolCallCount: result.research?.toolCallCount ?? 0,
+      researchLatencyMs: result.research?.latencyMs ?? 0,
+      reasoningEffort: provider.reasoningEffort ?? "provider_default",
+    });
+    return presentedResult.output;
+  } catch (error) {
+    logClarityModelEvent({
+      provider: provider.provider,
+      model: provider.model,
+      invocationType: input.invocation.type,
+      latencyMs: Date.now() - startedAt,
+      totalTurnLatencyMs: Date.now() - startedAt,
+      success: false,
+      structuredParseSuccess: false,
+      errorCode:
+        error instanceof ClarityProviderError
+          ? error.code
+          : error instanceof Error
+            ? error.name
+            : "UnknownClarityProviderError",
+      researchUsed: true,
       sourceCount: 0,
       webSearchToolCallCount: 0,
       researchLatencyMs: 0,
@@ -180,6 +288,44 @@ async function runResearchStage(input: {
 
 function addNullableCounts(left: number | null, right: number | null) {
   return left === null && right === null ? null : (left ?? 0) + (right ?? 0);
+}
+
+async function persistPresentedResult(
+  userMessageId: string,
+  result: ClarityProviderResult,
+) {
+  const presentedResult = {
+    ...result,
+    output: {
+      ...result.output,
+      response: normalizeClarityVisibleResponse(
+        result.output.response,
+        result.research?.sources,
+      ),
+    },
+  } satisfies ClarityProviderResult;
+  if (!presentedResult.output.response) {
+    throw new ClarityProviderError(
+      "Clarity returned an empty visible response.",
+      "invalid_output",
+    );
+  }
+  await appendClarityResponse(
+    userMessageId,
+    presentedResult.output,
+    presentedResult,
+  );
+  return presentedResult;
+}
+
+function researchLocation(
+  context: Awaited<ReturnType<typeof assembleClarityContext>>,
+) {
+  return {
+    city: context.profile.city,
+    countryCode: researchCountryCode(context.profile.country),
+    timezone: context.profile.timezone,
+  };
 }
 
 function logClarityModelEvent(

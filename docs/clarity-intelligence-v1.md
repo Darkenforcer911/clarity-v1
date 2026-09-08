@@ -113,8 +113,26 @@ Research uses a bounded two-stage path. The first normal structured turn sets
 `requiresCurrentVerification` and a precise `verificationNeed`. When true, the
 orchestrator performs a second response with provider-native web search forced,
 up to four tool calls, and asks for the final Clarity synthesis. The preliminary
-answer is never persisted or rendered. Stable knowledge and ordinary personal
-execution questions stay on the existing one-pass path.
+answer is not persisted and is rendered only as the safe fallback if that
+research request fails. Stable knowledge and ordinary personal execution
+questions stay on the existing one-pass path.
+
+Each research stage makes one provider request. There is no application retry
+loop, polling, timed retry, or refresh-triggered retry. If research fails, the
+safe part of the preliminary reasoning is shown with a short disclosure that
+current information was not verified. The original user message remains the
+single persisted input and a compact `Retry research` action reruns only the
+research/final-synthesis stage. It does not append the user message, re-upload
+attachments, or rerun successful dictation. Concurrent attempts for the same
+persisted message are coalesced within one server process, the retry control is
+disabled in flight, and the existing unique response relationship remains the
+cross-process persistence authority.
+
+Fallback reasoning never fills current-world gaps from model memory. When
+turning known context into a plan or recommendation, Clarity also preserves
+consequential confirmed details such as dependencies, deadlines, transport,
+commitments involving other people, and attached execution instructions. It
+does not invent constraints that are missing or uncertain.
 
 The research prompt prioritizes official central banks, governments,
 regulators, company announcements, and filings where appropriate. Breaking
@@ -167,10 +185,13 @@ sources in a compact disclosure after refresh or conversation reload.
 ## Multimodal conversation boundary
 
 Photos attach to the same persistent Clarity conversation and user-message
-record; they do not create media-specific chats. The composer accepts up to four
-JPEG, PNG, WebP, or GIF images of at most 8 MB each. Microphone input is composer
-dictation: one recording of at most 15 MB and five minutes is uploaded as a
-temporary owned draft, transcribed into editable composer text, then removed.
+record; they do not create media-specific chats. The composer accepts up to three
+JPEG, PNG, WebP, or GIF images of at most 15 MB each. HEIC/HEIF selected on a
+supported iPhone is decoded locally, orientation-preserved, bounded to a
+4096-pixel long edge, and normalized to JPEG before validation and upload.
+Microphone input is composer dictation: one recording of at most 15 MB and five
+minutes is uploaded as a temporary owned draft, transcribed into editable
+composer text, then removed.
 Stopping dictation never sends a message. Photo and final edited text are sent
 together only through the ordinary Send action. A failed transcription keeps
 the draft available for Retry or Cancel without fabricating text or persisting
@@ -203,8 +224,10 @@ existing explicit proposal and confirmation boundary.
 Clarity persists research source data separately from answer prose. Source URLs
 are normalized and deduplicated before storage. User-visible prose strips raw
 URLs and literal Markdown decoration, while paragraph breaks remain intact.
-The conversation renders a compact collapsed Sources disclosure with a bounded
-initial list and an explicit View all control. Refreshing the conversation
+The conversation renders a compact collapsed Sources disclosure with a ranked,
+publisher-diverse initial list and an explicit View all control for genuinely
+useful additional sources. Publisher labels replace recognizable raw hostnames.
+Refreshing the conversation
 reconstructs this presentation from stored safe metadata rather than from raw
 provider output.
 

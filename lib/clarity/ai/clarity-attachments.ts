@@ -1,10 +1,10 @@
 import { z } from "zod";
 
 export const CLARITY_MEDIA_BUCKET = "clarity-media";
-export const MAX_CLARITY_IMAGE_BYTES = 8 * 1024 * 1024;
+export const MAX_CLARITY_IMAGE_BYTES = 15 * 1024 * 1024;
 export const MAX_CLARITY_AUDIO_BYTES = 15 * 1024 * 1024;
 export const MAX_CLARITY_AUDIO_DURATION_MS = 5 * 60 * 1000;
-export const MAX_CLARITY_IMAGE_COUNT = 4;
+export const MAX_CLARITY_IMAGE_COUNT = 3;
 
 export const clarityImageMimeTypes = [
   "image/jpeg",
@@ -39,7 +39,7 @@ export const clarityAttachmentPreparationSchema = z
         context.addIssue({ code: "custom", message: "Choose a JPEG, PNG, WebP, or GIF image." });
       }
       if (value.byteSize > MAX_CLARITY_IMAGE_BYTES) {
-        context.addIssue({ code: "custom", message: "Images must be 8 MB or smaller." });
+        context.addIssue({ code: "custom", message: "Images must be 15 MB or smaller." });
       }
       if ((value.width === null) !== (value.height === null) || value.durationMs !== null) {
         context.addIssue({ code: "custom", message: "Invalid image details." });

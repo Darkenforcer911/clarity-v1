@@ -1,6 +1,8 @@
 import { z } from "zod";
 
-const MAX_RESEARCH_SOURCES = 8;
+const MAX_STORED_RESEARCH_SOURCES = 8;
+const DEFAULT_RESEARCH_SOURCE_LIMIT = 4;
+const EXTENDED_RESEARCH_SOURCE_LIMIT = 6;
 
 export const clarityResearchSourceSchema = z
   .object({
@@ -31,6 +33,12 @@ type ResearchSourceCandidate = {
   publication_date?: unknown;
 };
 
+type RankedResearchSource = {
+  source: ClarityResearchSource;
+  cited: boolean;
+  ordinal: number;
+};
+
 type ResearchResponse = {
   output?: Array<{
     type?: unknown;
@@ -45,14 +53,22 @@ export function extractClarityResearchMetadata(
   response: ResearchResponse,
   input: { retrievedAt: string; latencyMs: number },
 ): ClarityResearchMetadata {
-  const candidates: ResearchSourceCandidate[] = [];
+  const candidates: Array<{
+    candidate: ResearchSourceCandidate;
+    cited: boolean;
+  }> = [];
   let toolCallCount = 0;
 
   for (const item of response.output ?? []) {
     if (item.type === "web_search_call") {
       toolCallCount += 1;
       if (Array.isArray(item.action?.sources)) {
-        candidates.push(...item.action.sources);
+        candidates.push(
+          ...item.action.sources.map((candidate) => ({
+            candidate: candidate as ResearchSourceCandidate,
+            cited: false,
+          })),
+        );
       }
     }
 
@@ -63,17 +79,20 @@ export function extractClarityResearchMetadata(
           isRecord(annotation) &&
           annotation.type === "url_citation"
         ) {
-          candidates.push(annotation);
+          candidates.push({ candidate: annotation, cited: true });
         }
       }
     }
   }
 
-  const sources = dedupeSources(
+  const sources = selectRankedSources(
     candidates
-      .map((candidate) => normalizeSource(candidate, input.retrievedAt))
-      .filter((source): source is ClarityResearchSource => source !== null),
-  ).slice(0, MAX_RESEARCH_SOURCES);
+      .map(({ candidate, cited }, ordinal) => {
+        const source = normalizeSource(candidate, input.retrievedAt);
+        return source ? { source, cited, ordinal } : null;
+      })
+      .filter((source): source is RankedResearchSource => source !== null),
+  );
 
   return {
     used: true,
@@ -90,9 +109,35 @@ export function researchSourcesFromMetadata(
   if (!isRecord(metadata) || !isRecord(metadata.research)) return [];
   const result = z
     .array(clarityResearchSourceSchema)
-    .max(MAX_RESEARCH_SOURCES)
+    .max(MAX_STORED_RESEARCH_SOURCES)
     .safeParse(metadata.research.sources);
-  return result.success ? result.data : [];
+  return result.success ? selectClarityResearchSources(result.data) : [];
+}
+
+export function selectClarityResearchSources(
+  sources: ClarityResearchSource[],
+  allowDistinctSamePublisher = false,
+) {
+  return selectRankedSources(
+    sources.map((source, ordinal) => ({
+      source,
+      cited: allowDistinctSamePublisher,
+      ordinal,
+    })),
+  );
+}
+
+export function researchPublisherLabel(source: ClarityResearchSource) {
+  const domain = source.domain.toLowerCase().replace(/^www\./, "");
+  const exact: Record<string, string> = {
+    "apnews.com": "AP News",
+    "reuters.com": "Reuters",
+    "bbc.com": "BBC",
+    "bbc.co.uk": "BBC",
+    "rba.gov.au": "Reserve Bank of Australia",
+    "abs.gov.au": "Australian Bureau of Statistics",
+  };
+  return exact[domain] ?? domain;
 }
 
 export function researchCountryCode(country: string | null) {
@@ -148,31 +193,96 @@ function normalizePublishedAt(value: unknown) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-function dedupeSources(sources: ClarityResearchSource[]) {
-  const seenUrls = new Set<string>();
-  const seenTitles = new Set<string>();
-  return sources.filter((source) => {
-    const titleKey = `${source.domain.toLowerCase()}:${source.title.trim().toLowerCase()}`;
-    if (seenUrls.has(source.url) || seenTitles.has(titleKey)) return false;
-    seenUrls.add(source.url);
-    seenTitles.add(titleKey);
-    return true;
-  });
+function selectRankedSources(candidates: RankedResearchSource[]) {
+  const deduped = dedupeRankedSources(candidates).sort((left, right) =>
+    Number(right.cited) - Number(left.cited) ||
+    authorityScore(right.source.domain) - authorityScore(left.source.domain) ||
+    left.ordinal - right.ordinal,
+  );
+  const cited = deduped.filter((candidate) => candidate.cited);
+  const eligible = cited.length >= 2 ? cited : deduped;
+  const selected: RankedResearchSource[] = [];
+  const domainCounts = new Map<string, number>();
+
+  for (const candidate of eligible) {
+    const domain = candidate.source.domain;
+    if (domainCounts.has(domain)) continue;
+    selected.push(candidate);
+    domainCounts.set(domain, 1);
+    if (selected.length === DEFAULT_RESEARCH_SOURCE_LIMIT) break;
+  }
+
+  // A second article from the same publisher is useful only when the final
+  // answer actually cited it. This prevents search-result floods while still
+  // allowing genuinely distinct supporting evidence.
+  for (const candidate of eligible) {
+    if (!candidate.cited || selected.includes(candidate)) continue;
+    const count = domainCounts.get(candidate.source.domain) ?? 0;
+    if (count >= 2) continue;
+    selected.push(candidate);
+    domainCounts.set(candidate.source.domain, count + 1);
+    if (selected.length === EXTENDED_RESEARCH_SOURCE_LIMIT) break;
+  }
+
+  return selected.map(({ source }) => source);
+}
+
+function dedupeRankedSources(candidates: RankedResearchSource[]) {
+  const byUrl = new Map<string, RankedResearchSource>();
+  const byArticle = new Map<string, RankedResearchSource>();
+
+  for (const candidate of candidates) {
+    const urlKey = canonicalSourceKey(candidate.source.url);
+    const articleKey = `${candidate.source.domain}:${normalizedArticleTitle(candidate.source.title)}`;
+    const previous = byUrl.get(urlKey) ?? byArticle.get(articleKey);
+    if (previous) {
+      previous.cited ||= candidate.cited;
+      continue;
+    }
+    byUrl.set(urlKey, candidate);
+    byArticle.set(articleKey, candidate);
+  }
+  return [...byUrl.values()];
 }
 
 function normalizeSourceUrl(url: URL) {
   url.hash = "";
-  url.hostname = url.hostname.toLowerCase();
+  url.hostname = url.hostname.toLowerCase().replace(/^www\./, "");
   for (const key of [...url.searchParams.keys()]) {
     if (
       key.toLowerCase().startsWith("utm_") ||
-      ["fbclid", "gclid", "mc_cid", "mc_eid"].includes(key.toLowerCase())
+      [
+        "fbclid", "gclid", "dclid", "msclkid", "mc_cid", "mc_eid",
+        "ref", "referrer", "source", "campaign", "cmpid", "igshid",
+      ].includes(key.toLowerCase())
     ) {
       url.searchParams.delete(key);
     }
   }
   url.searchParams.sort();
+  url.pathname = url.pathname.replace(/\/(?:amp|amp\/?)$/i, "");
   if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, "");
+}
+
+function canonicalSourceKey(value: string) {
+  const url = new URL(value);
+  normalizeSourceUrl(url);
+  return `${url.hostname}${url.pathname}${url.search}`.toLowerCase();
+}
+
+function normalizedArticleTitle(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/\s+[|–—-]\s+[^|–—-]+$/, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function authorityScore(domain: string) {
+  if (/\.gov(?:\.[a-z]{2})?$/.test(domain) || domain.endsWith(".gov.au")) return 3;
+  if (/\.edu(?:\.[a-z]{2})?$/.test(domain)) return 2;
+  if (["reuters.com", "apnews.com", "bbc.com", "bbc.co.uk"].includes(domain)) return 2;
+  return 0;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
