@@ -1,17 +1,4 @@
-export const CLARITY_NEAR_BOTTOM_PX = 96;
 export const CLARITY_KEYBOARD_THRESHOLD_PX = 96;
-
-export function isClarityConversationNearBottom(input: {
-  scrollHeight: number;
-  scrollTop: number;
-  clientHeight: number;
-  threshold?: number;
-}) {
-  return (
-    input.scrollHeight - input.scrollTop - input.clientHeight <=
-    (input.threshold ?? CLARITY_NEAR_BOTTOM_PX)
-  );
-}
 
 export function isClarityKeyboardOpen(input: {
   baselineHeight: number;

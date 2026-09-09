@@ -33,6 +33,10 @@ import {
 } from "@/app/(app)/clarity/actions";
 import { Button } from "@/components/ui/button";
 import { useAppShellEditorState } from "@/components/clarity/app-shell-editor-context";
+import {
+  ClarityImageViewer,
+  type ClarityViewerImage,
+} from "@/components/clarity/clarity-image-viewer";
 import { initialClarityConversationActionState } from "@/lib/clarity/ai/clarity-conversation-action-state";
 import {
   appendDictationTranscript,
@@ -55,7 +59,6 @@ import {
   clarityComposerHeight,
 } from "@/lib/clarity/ai/clarity-composer";
 import {
-  isClarityConversationNearBottom,
   isClarityKeyboardOpen,
   resolveClarityConversationViewport,
 } from "@/lib/clarity/ai/clarity-chat-layout";
@@ -96,6 +99,11 @@ type ConversationViewportLayout = {
   top: number;
 };
 
+type ImageViewerState = {
+  images: ClarityViewerImage[];
+  index: number;
+};
+
 const GENERAL_INVOCATION: ClarityInvocationDescriptor = {
   type: "general",
   actionId: null,
@@ -125,6 +133,7 @@ export function ClarityConversation({
   const previousIncomingAttachmentKey = useRef(incomingAttachmentKey);
   const [message, setMessage] = useState("");
   const [draftMedia, setDraftMedia] = useState<DraftMedia[]>([]);
+  const [imageViewer, setImageViewer] = useState<ImageViewerState | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [mediaBusy, setMediaBusy] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -147,9 +156,9 @@ export function ClarityConversation({
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const conversationHostRef = useRef<HTMLDivElement>(null);
   const conversationScrollRef = useRef<HTMLDivElement>(null);
-  const messageContentRef = useRef<HTMLDivElement>(null);
+  const viewerScrollTopRef = useRef<number | null>(null);
   const initialPositionedRef = useRef(false);
-  const followLatestRef = useRef(true);
+  const scrollAfterSendMessageCountRef = useRef<number | null>(null);
   const baselineViewportHeightRef = useRef(0);
   const keyboardWasOpenRef = useRef(false);
   const [composerFocused, setComposerFocused] = useState(false);
@@ -173,7 +182,6 @@ export function ClarityConversation({
     const scroll = conversationScrollRef.current;
     if (!scroll) return;
     scroll.scrollTop = scroll.scrollHeight;
-    followLatestRef.current = true;
   }, []);
 
   const updateConversationViewport = useCallback(() => {
@@ -254,12 +262,27 @@ export function ClarityConversation({
     return () => query.removeEventListener("change", update);
   }, []);
 
+  useLayoutEffect(() => {
+    if (!mobileViewport) return;
+    const root = document.documentElement;
+    const body = document.body;
+    const previous = {
+      rootOverflow: root.style.overflow,
+      bodyOverflow: body.style.overflow,
+    };
+
+    root.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+
+    return () => {
+      root.style.overflow = previous.rootOverflow;
+      body.style.overflow = previous.bodyOverflow;
+    };
+  }, [mobileViewport]);
+
   useEffect(() => {
     const viewport = window.visualViewport;
-    const update = () => {
-      updateConversationViewport();
-      resizeComposerTextarea(composerTextareaRef.current);
-    };
+    const update = () => updateConversationViewport();
     viewport?.addEventListener("resize", update);
     viewport?.addEventListener("scroll", update);
     window.addEventListener("resize", update);
@@ -290,25 +313,14 @@ export function ClarityConversation({
     if (!initialPositionedRef.current) {
       initialPositionedRef.current = true;
       scrollConversationToBottom();
-      const frame = window.requestAnimationFrame(scrollConversationToBottom);
-      return () => window.cancelAnimationFrame(frame);
+      return;
     }
-    if (followLatestRef.current) scrollConversationToBottom();
-  }, [messages, scrollConversationToBottom, state.fallbackResponse]);
-
-  useLayoutEffect(() => {
-    if (followLatestRef.current) scrollConversationToBottom();
-  }, [scrollConversationToBottom, viewportLayout.height]);
-
-  useEffect(() => {
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => {
-      if (followLatestRef.current) scrollConversationToBottom();
-    });
-    if (messageContentRef.current) observer.observe(messageContentRef.current);
-    if (composerFormRef.current) observer.observe(composerFormRef.current);
-    return () => observer.disconnect();
-  }, [scrollConversationToBottom]);
+    const sentFromCount = scrollAfterSendMessageCountRef.current;
+    if (sentFromCount !== null && messages.length > sentFromCount) {
+      scrollAfterSendMessageCountRef.current = null;
+      scrollConversationToBottom();
+    }
+  }, [messages, scrollConversationToBottom]);
 
   useEffect(() => {
     if (incomingAttachmentKey === previousIncomingAttachmentKey.current) return;
@@ -593,54 +605,57 @@ export function ClarityConversation({
     draftMedia.forEach((item) =>
       formData.append("attachmentId", item.attachmentId),
     );
+    scrollAfterSendMessageCountRef.current = messages.length;
     startTransition(() => formAction(formData));
   }
 
   const canSend = Boolean(message.trim() || draftMedia.length > 0);
 
-  function handleConversationScroll() {
-    const scroll = conversationScrollRef.current;
-    if (!scroll) return;
-    followLatestRef.current = isClarityConversationNearBottom({
-      scrollHeight: scroll.scrollHeight,
-      scrollTop: scroll.scrollTop,
-      clientHeight: scroll.clientHeight,
-    });
-  }
-
-  function handleMediaSettled() {
-    if (followLatestRef.current) scrollConversationToBottom();
-  }
-
   function handleComposerFocus() {
     setComposerFocused(true);
+    window.requestAnimationFrame(updateConversationViewport);
+  }
+
+  function openImageViewer(images: ClarityViewerImage[], imageId: string) {
+    const index = images.findIndex((image) => image.id === imageId);
+    if (index < 0) return;
+    viewerScrollTopRef.current = conversationScrollRef.current?.scrollTop ?? null;
+    composerTextareaRef.current?.blur();
+    setComposerFocused(false);
+    setImageViewer({ images, index });
+  }
+
+  function closeImageViewer() {
+    setImageViewer(null);
+    const scrollTop = viewerScrollTopRef.current;
+    viewerScrollTopRef.current = null;
+    if (scrollTop === null) return;
     window.requestAnimationFrame(() => {
-      updateConversationViewport();
-      window.requestAnimationFrame(() => {
-        const composer = composerFormRef.current;
-        const viewport = window.visualViewport;
-        if (!composer || !viewport) return;
-        const rect = composer.getBoundingClientRect();
-        const visibleTop = viewport.offsetTop;
-        const visibleBottom = visibleTop + viewport.height;
-        if (rect.top < visibleTop || rect.bottom > visibleBottom) {
-          composer.scrollIntoView({ block: "nearest" });
-        }
-      });
+      if (conversationScrollRef.current) {
+        conversationScrollRef.current.scrollTop = scrollTop;
+      }
     });
   }
 
   const mobileHostStyle = mobileViewport && viewportLayout.restingHeight
     ? { height: `${viewportLayout.restingHeight}px` }
     : undefined;
-  const conversationPanelStyle = viewportLayout.keyboardOpen
+  const mobilePanelReady = mobileViewport && viewportLayout.height !== null;
+  const conversationPanelStyle = mobilePanelReady
     ? {
-        height: `${viewportLayout.height ?? 1}px`,
-        left: "max(1rem, calc((100vw - 480px) / 2 + 1rem))",
-        right: "max(1rem, calc((100vw - 480px) / 2 + 1rem))",
+        height: `${viewportLayout.height}px`,
+        left: "max(calc(1rem + env(safe-area-inset-left)), calc((100vw - 480px) / 2 + 1rem))",
+        right: "max(calc(1rem + env(safe-area-inset-right)), calc((100vw - 480px) / 2 + 1rem))",
         top: `${viewportLayout.top}px`,
       }
     : undefined;
+  const draftViewerImages = draftMedia
+    .filter((item) => item.kind === "image")
+    .map((item) => ({
+      id: item.attachmentId,
+      src: item.previewUrl,
+      alt: "Photo ready to send",
+    }));
 
   return (
     <div
@@ -651,8 +666,8 @@ export function ClarityConversation({
       <div
         data-clarity-keyboard-open={viewportLayout.keyboardOpen || undefined}
         className={`flex min-w-0 flex-col gap-4 bg-background ${
-          viewportLayout.keyboardOpen
-            ? "fixed z-50"
+          mobilePanelReady
+            ? `fixed ${viewportLayout.keyboardOpen ? "z-50" : "z-30"}`
             : "h-full"
         } ${
           mobileComposerActive && !viewportLayout.keyboardOpen
@@ -664,11 +679,10 @@ export function ClarityConversation({
         <div
           ref={conversationScrollRef}
           data-clarity-conversation-scroll
-          className="min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto overscroll-contain"
+          className="min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto [-webkit-overflow-scrolling:touch]"
           aria-live="polite"
-          onScroll={handleConversationScroll}
         >
-          <div ref={messageContentRef} className="space-y-3">
+          <div className="space-y-3">
             {messages.length === 0 && (
               <p className="max-w-sm text-sm leading-6 text-muted-foreground">
                 Tell me what’s on your mind. I’ll use what Clarity already
@@ -680,7 +694,7 @@ export function ClarityConversation({
                 key={item.id}
                 item={item}
                 formAction={formAction}
-                onMediaSettled={handleMediaSettled}
+                onOpenImages={openImageViewer}
               />
             ))}
             {state.fallbackResponse && state.retryMessageId && (
@@ -736,6 +750,9 @@ export function ClarityConversation({
                   key={item.attachmentId}
                   item={item}
                   onRemove={removeDraft}
+                  onOpen={() =>
+                    openImageViewer(draftViewerImages, item.attachmentId)
+                  }
                 />
               ))}
             </div>
@@ -897,7 +914,7 @@ export function ClarityConversation({
                     rows={1}
                     maxLength={8000}
                     style={{ maxHeight: CLARITY_COMPOSER_MAX_HEIGHT_PX }}
-                    className="block min-h-11 w-full min-w-0 resize-none overflow-y-hidden bg-transparent px-2 py-2.5 text-base leading-6 outline-none placeholder:text-muted-foreground"
+                    className="block min-h-11 w-full min-w-0 resize-none overflow-y-hidden bg-transparent px-2 py-2.5 text-base leading-6 outline-none [-webkit-overflow-scrolling:touch] placeholder:text-muted-foreground"
                     disabled={isPending || mediaBusy}
                   />
                 </label>
@@ -948,6 +965,16 @@ export function ClarityConversation({
           </form>
         </div>
       </div>
+      {imageViewer && (
+        <ClarityImageViewer
+          images={imageViewer.images}
+          index={imageViewer.index}
+          onIndexChange={(index) =>
+            setImageViewer((current) => current ? { ...current, index } : null)
+          }
+          onClose={closeImageViewer}
+        />
+      )}
     </div>
   );
 
@@ -997,11 +1024,11 @@ export function ClarityConversation({
 function ConversationMessage({
   item,
   formAction,
-  onMediaSettled,
+  onOpenImages,
 }: {
   item: ClarityConversationMessage;
   formAction: (payload: FormData) => void;
-  onMediaSettled: () => void;
+  onOpenImages: (images: ClarityViewerImage[], imageId: string) => void;
 }) {
   const sources = item.role === "clarity"
     ? researchSourcesFromMetadata(item.structured_metadata)
@@ -1028,7 +1055,7 @@ function ConversationMessage({
       {item.attachments.length > 0 && (
         <MessageAttachments
           attachments={item.attachments}
-          onMediaSettled={onMediaSettled}
+          onOpenImages={onOpenImages}
         />
       )}
       {visibleContent && (
@@ -1057,28 +1084,38 @@ function ConversationMessage({
 
 function MessageAttachments({
   attachments,
-  onMediaSettled,
+  onOpenImages,
 }: {
   attachments: ClarityMessageAttachment[];
-  onMediaSettled: () => void;
+  onOpenImages: (images: ClarityViewerImage[], imageId: string) => void;
 }) {
+  const images = attachments
+    .filter((item) => item.kind === "image" && item.signedUrl)
+    .map((item) => ({
+      id: item.id,
+      src: item.signedUrl as string,
+      alt: "Attached photo",
+    }));
+
   return (
     <div className="mb-2 min-w-0 space-y-2">
       <div className="grid min-w-0 grid-cols-2 gap-1.5">
-        {attachments
-          .filter((item) => item.kind === "image")
-          .map((item) =>
-            item.signedUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element -- private signed user media has no stable Next Image host.
+        {images.map((image, index) => (
+          <button
+            key={image.id}
+            type="button"
+            className="min-w-0 overflow-hidden rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={`Open attached photo ${index + 1}`}
+            onClick={() => onOpenImages(images, image.id)}
+          >
+              {/* eslint-disable-next-line @next/next/no-img-element -- private signed user media has no stable Next Image host. */}
               <img
-                key={item.id}
-                src={item.signedUrl}
-                alt="Attached photo"
-                className="max-h-64 min-w-0 rounded-xl object-cover"
-                onLoad={onMediaSettled}
+                src={image.src}
+                alt={image.alt}
+                className="max-h-64 w-full min-w-0 object-cover"
               />
-            ) : null,
-          )}
+          </button>
+        ))}
       </div>
       {attachments
         .filter((item) => item.kind === "audio")
@@ -1090,7 +1127,6 @@ function MessageAttachments({
                 preload="metadata"
                 src={item.signedUrl}
                 className="h-10 w-full min-w-0 max-w-full"
-                onLoadedMetadata={onMediaSettled}
               />
             )}
             {item.transcript && (
@@ -1168,19 +1204,28 @@ function SourceLink({ source }: { source: ClarityResearchSource }) {
 function DraftMediaPreview({
   item,
   onRemove,
+  onOpen,
 }: {
   item: DraftMedia;
   onRemove: (item: DraftMedia) => void;
+  onOpen: () => void;
 }) {
   return (
     <div className="relative min-w-0 shrink-0 overflow-hidden rounded-xl border border-border bg-secondary">
       {item.kind === "image" ? (
-        // eslint-disable-next-line @next/next/no-img-element -- local object URL preview.
-        <img
-          src={item.previewUrl}
-          alt="Photo ready to send"
-          className="size-20 object-cover"
-        />
+        <button
+          type="button"
+          className="block size-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          aria-label="Open photo preview"
+          onClick={onOpen}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element -- local object URL preview. */}
+          <img
+            src={item.previewUrl}
+            alt="Photo ready to send"
+            className="size-20 object-cover"
+          />
+        </button>
       ) : (
         <div className="flex w-52 max-w-[70vw] items-center gap-2 p-2 pr-9">
           <audio
@@ -1193,11 +1238,16 @@ function DraftMediaPreview({
       )}
       <button
         type="button"
-        onClick={() => void onRemove(item)}
+        onClick={(event) => {
+          event.stopPropagation();
+          void onRemove(item);
+        }}
         aria-label={`Remove ${item.kind}`}
-        className="absolute right-1 top-1 grid size-7 place-items-center rounded-full bg-background/85 text-foreground shadow-sm"
+        className="absolute right-0 top-0 z-10 grid size-10 place-items-center rounded-full text-white"
       >
-        <X className="size-4" />
+        <span className="grid size-7 place-items-center rounded-full bg-zinc-700/90 shadow-sm ring-1 ring-white/20">
+          <X className="size-4" />
+        </span>
       </button>
     </div>
   );
