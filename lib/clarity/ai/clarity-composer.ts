@@ -16,6 +16,7 @@ const CLARITY_COMPOSER_TOUCH_INTENT_PX = 4;
 const CLARITY_COMPOSER_SCROLL_EDGE_PX = 1;
 
 export function shouldContainClarityComposerTouch(input: {
+  origin: "textarea" | "composer";
   startX: number;
   startY: number;
   lastY: number;
@@ -38,6 +39,7 @@ export function shouldContainClarityComposerTouch(input: {
     return false;
   }
 
+  if (input.origin === "composer") return true;
   if (!input.eventTargetsTextarea) return true;
 
   const maxScrollTop = Math.max(0, input.scrollHeight - input.clientHeight);

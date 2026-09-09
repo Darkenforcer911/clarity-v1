@@ -172,6 +172,7 @@ export function ClarityConversation({
   const keyboardWasOpenRef = useRef(false);
   const keyboardDismissalPendingRef = useRef(false);
   const keyboardDismissalFramesRef = useRef<number[]>([]);
+  const documentBaselineNormalizedRef = useRef(false);
   const preComposerDocumentScrollRef = useRef<{
     left: number;
     top: number;
@@ -453,6 +454,14 @@ export function ClarityConversation({
       bodyOverflow: body.style.overflow,
     };
 
+    if (!documentBaselineNormalizedRef.current) {
+      documentBaselineNormalizedRef.current = true;
+      if (Math.abs(window.scrollX) >= 1 || Math.abs(window.scrollY) >= 1) {
+        // Clarity's history is the mobile scroll owner; page scroll is stale iOS state.
+        window.scrollTo(0, 0);
+      }
+    }
+
     root.style.overflow = "hidden";
     body.style.overflow = "hidden";
 
@@ -492,11 +501,13 @@ export function ClarityConversation({
   }, [message, attachment]);
 
   useEffect(() => {
+    const composer = composerFormRef.current;
     const textarea = composerTextareaRef.current;
-    if (!textarea) return;
+    if (!composer || !textarea) return;
 
     let touch: {
       identifier: number;
+      origin: "textarea" | "composer";
       startX: number;
       startY: number;
       lastY: number;
@@ -518,6 +529,7 @@ export function ClarityConversation({
               identifier: touch.identifier,
               guardInstalled: false,
               guardRan: false,
+              originRegion: touch.origin,
             },
           }),
         );
@@ -558,6 +570,7 @@ export function ClarityConversation({
               guardInstalled: true,
               guardRan: true,
               contained: contain,
+              originRegion: touch.origin,
               eventTargetsTextarea: event.composedPath().includes(textarea),
             },
           }),
@@ -575,10 +588,18 @@ export function ClarityConversation({
     const handleTouchStart = (event: TouchEvent) => {
       if (event.touches.length !== 1) return;
 
+      const startsInTextarea = event.composedPath().includes(textarea);
+      const composerOwnsShellGesture =
+        composer.contains(document.activeElement) ||
+        keyboardWasOpenRef.current ||
+        composerEditorActiveRef.current;
+      if (!startsInTextarea && !composerOwnsShellGesture) return;
+
       resetTouch();
       const point = event.touches[0];
       touch = {
         identifier: point.identifier,
+        origin: startsInTextarea ? "textarea" : "composer",
         startX: point.clientX,
         startY: point.clientY,
         lastY: point.clientY,
@@ -592,6 +613,7 @@ export function ClarityConversation({
               identifier: point.identifier,
               guardInstalled: true,
               guardRan: false,
+              originRegion: touch.origin,
             },
           }),
         );
@@ -601,10 +623,12 @@ export function ClarityConversation({
       window.addEventListener("touchcancel", handleTouchEnd, { passive: true });
     };
 
-    textarea.addEventListener("touchstart", handleTouchStart, { passive: true });
+    composer.addEventListener("touchstart", handleTouchStart, {
+      passive: true,
+    });
 
     return () => {
-      textarea.removeEventListener("touchstart", handleTouchStart);
+      composer.removeEventListener("touchstart", handleTouchStart);
       resetTouch();
     };
   }, [dictationStatus, layoutDebug]);
@@ -919,8 +943,8 @@ export function ClarityConversation({
       !keyboardWasOpenRef.current
     ) {
       preComposerDocumentScrollRef.current = {
-        left: window.scrollX,
-        top: window.scrollY,
+        left: 0,
+        top: 0,
       };
       documentScrollRestoredRef.current = false;
     }
