@@ -57,6 +57,7 @@ import {
 import {
   CLARITY_COMPOSER_MAX_HEIGHT_PX,
   clarityComposerHeight,
+  shouldContainClarityComposerTouch,
 } from "@/lib/clarity/ai/clarity-composer";
 import {
   isClarityKeyboardOpen,
@@ -308,6 +309,63 @@ export function ClarityConversation({
   useLayoutEffect(() => {
     resizeComposerTextarea(composerTextareaRef.current);
   }, [message, attachment]);
+
+  useEffect(() => {
+    const textarea = composerTextareaRef.current;
+    if (!textarea) return;
+
+    let touch: { startX: number; startY: number; lastY: number } | null = null;
+
+    const resetTouch = () => {
+      touch = null;
+    };
+    const handleTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 1) {
+        resetTouch();
+        return;
+      }
+      const point = event.touches[0];
+      touch = {
+        startX: point.clientX,
+        startY: point.clientY,
+        lastY: point.clientY,
+      };
+    };
+    const handleTouchMove = (event: TouchEvent) => {
+      if (
+        !touch ||
+        event.touches.length !== 1 ||
+        document.activeElement !== textarea
+      ) {
+        return;
+      }
+
+      const point = event.touches[0];
+      const contain = shouldContainClarityComposerTouch({
+        ...touch,
+        currentX: point.clientX,
+        currentY: point.clientY,
+        scrollTop: textarea.scrollTop,
+        scrollHeight: textarea.scrollHeight,
+        clientHeight: textarea.clientHeight,
+      });
+      touch.lastY = point.clientY;
+
+      if (contain && event.cancelable) event.preventDefault();
+    };
+
+    textarea.addEventListener("touchstart", handleTouchStart, { passive: true });
+    textarea.addEventListener("touchmove", handleTouchMove, { passive: false });
+    textarea.addEventListener("touchend", resetTouch, { passive: true });
+    textarea.addEventListener("touchcancel", resetTouch, { passive: true });
+
+    return () => {
+      textarea.removeEventListener("touchstart", handleTouchStart);
+      textarea.removeEventListener("touchmove", handleTouchMove);
+      textarea.removeEventListener("touchend", resetTouch);
+      textarea.removeEventListener("touchcancel", resetTouch);
+    };
+  }, [dictationStatus]);
 
   useLayoutEffect(() => {
     if (!initialPositionedRef.current) {
@@ -737,7 +795,7 @@ export function ClarityConversation({
               }, 0);
             }}
             noValidate
-            className="relative min-w-0 rounded-2xl border border-border bg-card p-2 shadow-sm"
+            className="relative min-w-0 rounded-2xl border border-border bg-card p-2 shadow-sm transition-[border-color,background-color,box-shadow] duration-150 focus-within:border-primary/40 focus-within:bg-secondary/20 focus-within:ring-1 focus-within:ring-primary/10"
           >
           <InvocationFields
             invocation={attachment?.invocation ?? GENERAL_INVOCATION}
