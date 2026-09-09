@@ -1,15 +1,31 @@
 export const CLARITY_KEYBOARD_THRESHOLD_PX = 96;
+export const CLARITY_KEYBOARD_CLOSE_THRESHOLD_PX = 32;
 
 export function isClarityKeyboardOpen(input: {
   baselineHeight: number;
   visibleHeight: number;
-  composerFocused: boolean;
+  visibleOffsetTop: number;
+  previouslyOpen?: boolean;
 }) {
+  const threshold = input.previouslyOpen
+    ? CLARITY_KEYBOARD_CLOSE_THRESHOLD_PX
+    : CLARITY_KEYBOARD_THRESHOLD_PX;
   return (
-    input.composerFocused &&
-    input.baselineHeight - input.visibleHeight >=
-      CLARITY_KEYBOARD_THRESHOLD_PX
+    input.baselineHeight - input.visibleHeight >= threshold ||
+    input.visibleOffsetTop >= threshold
   );
+}
+
+export function resolveClarityKeyboardPhase(input: {
+  baselineHeight: number;
+  visibleHeight: number;
+  visibleOffsetTop: number;
+  previouslyOpen: boolean;
+  dismissalPending: boolean;
+}): "closed" | "open" | "closing" {
+  if (isClarityKeyboardOpen(input)) return "open";
+  if (input.previouslyOpen || input.dismissalPending) return "closing";
+  return "closed";
 }
 
 export function resolveClarityConversationViewport(input: {

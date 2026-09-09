@@ -21,6 +21,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type FocusEvent as ReactFocusEvent,
 } from "react";
 import { useRouter } from "next/navigation";
 
@@ -65,6 +66,7 @@ import {
 } from "@/lib/clarity/ai/clarity-composer";
 import {
   isClarityKeyboardOpen,
+  resolveClarityKeyboardPhase,
   resolveClarityConversationViewport,
 } from "@/lib/clarity/ai/clarity-chat-layout";
 import { normalizeClarityImageFile } from "@/lib/clarity/ai/clarity-image-normalization";
@@ -168,6 +170,14 @@ export function ClarityConversation({
   const scrollAfterSendMessageCountRef = useRef<number | null>(null);
   const baselineViewportHeightRef = useRef(0);
   const keyboardWasOpenRef = useRef(false);
+  const keyboardDismissalPendingRef = useRef(false);
+  const keyboardDismissalFramesRef = useRef<number[]>([]);
+  const preComposerDocumentScrollRef = useRef<{
+    left: number;
+    top: number;
+  } | null>(null);
+  const documentScrollRestoredRef = useRef(false);
+  const composerEditorActiveRef = useRef(false);
   const [composerFocused, setComposerFocused] = useState(false);
   const [mobileViewport, setMobileViewport] = useState(false);
   const [viewportLayout, setViewportLayout] =
@@ -177,13 +187,20 @@ export function ClarityConversation({
       restingHeight: null,
       top: 0,
     });
-  const mobileComposerActive = mobileViewport && (
+  const composerEditorActive =
     composerFocused ||
     addMenuOpen ||
     mediaBusy ||
-    !["idle", "transcript_ready"].includes(dictationStatus)
+    !["idle", "transcript_ready"].includes(dictationStatus);
+  // Form focus controls editing; measured viewport geometry owns keyboard layout.
+  const mobileComposerActive = mobileViewport && (
+    composerEditorActive || viewportLayout.keyboardOpen
   );
   useAppShellEditorState(mobileComposerActive);
+
+  useLayoutEffect(() => {
+    composerEditorActiveRef.current = composerEditorActive;
+  }, [composerEditorActive]);
 
   const scrollConversationToBottom = useCallback(() => {
     const scroll = conversationScrollRef.current;
@@ -191,37 +208,191 @@ export function ClarityConversation({
     scroll.scrollTop = scroll.scrollHeight;
   }, []);
 
+  const cancelKeyboardDismissal = useCallback(() => {
+    keyboardDismissalFramesRef.current.forEach((frame) =>
+      window.cancelAnimationFrame(frame),
+    );
+    keyboardDismissalFramesRef.current = [];
+    keyboardDismissalPendingRef.current = false;
+  }, []);
+
+  const measureSettledNormalViewport = useCallback(() => {
+    const host = conversationHostRef.current;
+    if (
+      !host ||
+      !mobileViewport ||
+      composerEditorActiveRef.current ||
+      keyboardWasOpenRef.current ||
+      keyboardDismissalPendingRef.current
+    ) {
+      return;
+    }
+    const navigation = document.querySelector<HTMLElement>(
+      'nav[aria-label="Primary"]',
+    );
+    if (!navigation) return;
+    const visualViewport = window.visualViewport;
+    const visibleHeight = visualViewport?.height ?? window.innerHeight;
+    const visibleOffsetTop = visualViewport?.offsetTop ?? 0;
+    const resolved = resolveClarityConversationViewport({
+      visibleHeight,
+      visibleOffsetTop,
+      hostTop: host.getBoundingClientRect().top,
+      headerBottom: document
+        .querySelector<HTMLElement>("[data-app-shell-header]")
+        ?.getBoundingClientRect().bottom ?? visibleOffsetTop,
+      navigationTop: navigation.getBoundingClientRect().top,
+      keyboardOpen: false,
+    });
+    baselineViewportHeightRef.current = Math.max(
+      visibleHeight,
+      window.innerHeight,
+    );
+    setViewportLayout({
+      height: resolved.height,
+      keyboardOpen: false,
+      restingHeight: resolved.height,
+      top: resolved.top,
+    });
+  }, [mobileViewport]);
+
+  const beginKeyboardDismissal = useCallback(() => {
+    if (keyboardDismissalPendingRef.current) return;
+    keyboardDismissalPendingRef.current = true;
+
+    const scheduleFrame = (callback: () => void) => {
+      const frame = window.requestAnimationFrame(() => {
+        keyboardDismissalFramesRef.current =
+          keyboardDismissalFramesRef.current.filter((item) => item !== frame);
+        callback();
+      });
+      keyboardDismissalFramesRef.current.push(frame);
+    };
+    const viewportStillShowsKeyboard = () => {
+      const visualViewport = window.visualViewport;
+      return isClarityKeyboardOpen({
+        baselineHeight: baselineViewportHeightRef.current,
+        visibleHeight: visualViewport?.height ?? window.innerHeight,
+        visibleOffsetTop: visualViewport?.offsetTop ?? 0,
+        previouslyOpen: true,
+      });
+    };
+    const abandonDismissal = () => {
+      keyboardDismissalPendingRef.current = false;
+    };
+
+    // Require two closed-viewport frames before leaving keyboard layout.
+    scheduleFrame(() => {
+      if (viewportStillShowsKeyboard()) {
+        abandonDismissal();
+        return;
+      }
+      scheduleFrame(() => {
+        if (viewportStillShowsKeyboard()) {
+          abandonDismissal();
+          return;
+        }
+
+        const savedScroll = preComposerDocumentScrollRef.current;
+        if (savedScroll && !documentScrollRestoredRef.current) {
+          // iOS may scroll the document to focus a fixed composer. Undo it once.
+          documentScrollRestoredRef.current = true;
+          if (
+            Math.abs(window.scrollX - savedScroll.left) >= 1 ||
+            Math.abs(window.scrollY - savedScroll.top) >= 1
+          ) {
+            window.scrollTo(savedScroll.left, savedScroll.top);
+          }
+        }
+
+        scheduleFrame(() => {
+          scheduleFrame(() => {
+            if (viewportStillShowsKeyboard()) {
+              abandonDismissal();
+              return;
+            }
+            const host = conversationHostRef.current;
+            const visualViewport = window.visualViewport;
+            if (!host) {
+              abandonDismissal();
+              return;
+            }
+            const visibleHeight =
+              visualViewport?.height ?? window.innerHeight;
+            const visibleOffsetTop = visualViewport?.offsetTop ?? 0;
+            const visibleBottom = visibleOffsetTop + visibleHeight;
+            const hostTop = host.getBoundingClientRect().top;
+
+            // Keep the last valid resting height while the shell restores its nav.
+            setViewportLayout((current) => {
+              const availableHeight = Math.max(
+                1,
+                Math.floor(visibleBottom - hostTop),
+              );
+              const restoredHeight = Math.min(
+                current.restingHeight ?? availableHeight,
+                availableHeight,
+              );
+              return {
+                height: restoredHeight,
+                keyboardOpen: false,
+                restingHeight: restoredHeight,
+                top: hostTop,
+              };
+            });
+            keyboardWasOpenRef.current = false;
+            keyboardDismissalPendingRef.current = false;
+            preComposerDocumentScrollRef.current = null;
+            if (document.activeElement === composerTextareaRef.current) {
+              composerTextareaRef.current?.blur();
+            }
+
+            scheduleFrame(() => {
+              scheduleFrame(measureSettledNormalViewport);
+            });
+          });
+        });
+      });
+    });
+  }, [measureSettledNormalViewport]);
+
   const updateConversationViewport = useCallback(() => {
     const host = conversationHostRef.current;
     if (!host || !mobileViewport) return;
     const visualViewport = window.visualViewport;
     const visibleHeight = visualViewport?.height ?? window.innerHeight;
     const visibleOffsetTop = visualViewport?.offsetTop ?? 0;
-    if (!composerFocused) {
-      baselineViewportHeightRef.current = Math.max(
-        baselineViewportHeightRef.current,
-        visibleHeight,
-        window.innerHeight,
-      );
-    } else if (baselineViewportHeightRef.current === 0) {
+    if (baselineViewportHeightRef.current === 0) {
       baselineViewportHeightRef.current = Math.max(
         visibleHeight,
         window.innerHeight,
       );
     }
-    const keyboardOpen = isClarityKeyboardOpen({
+    const keyboardPhase = resolveClarityKeyboardPhase({
       baselineHeight: baselineViewportHeightRef.current,
       visibleHeight,
-      composerFocused,
+      visibleOffsetTop,
+      previouslyOpen: keyboardWasOpenRef.current,
+      dismissalPending: keyboardDismissalPendingRef.current,
     });
+    if (keyboardPhase === "closing") {
+      beginKeyboardDismissal();
+      return;
+    }
+    const keyboardOpen = keyboardPhase === "open";
+    if (keyboardOpen && keyboardDismissalPendingRef.current) {
+      cancelKeyboardDismissal();
+    }
     const headerBottom = document
       .querySelector<HTMLElement>("[data-app-shell-header]")
       ?.getBoundingClientRect().bottom ?? visibleOffsetTop;
-    const navigationTop = mobileComposerActive
+    const navigation = document.querySelector<HTMLElement>(
+      'nav[aria-label="Primary"]',
+    );
+    if (!keyboardOpen && !composerEditorActive && !navigation) return;
+    const navigationTop = keyboardOpen || composerEditorActive
       ? null
-      : document
-          .querySelector<HTMLElement>('nav[aria-label="Primary"]')
-          ?.getBoundingClientRect().top ?? null;
+      : navigation?.getBoundingClientRect().top ?? null;
     const resolved = resolveClarityConversationViewport({
       visibleHeight,
       visibleOffsetTop,
@@ -232,7 +403,7 @@ export function ClarityConversation({
     });
 
     setViewportLayout((current) => {
-      const restingHeight = keyboardOpen
+      const restingHeight = keyboardOpen || composerEditorActive
         ? (current.restingHeight ?? resolved.height)
         : resolved.height;
       if (
@@ -251,15 +422,19 @@ export function ClarityConversation({
       };
     });
 
-    if (
-      keyboardWasOpenRef.current &&
-      !keyboardOpen &&
-      document.activeElement === composerTextareaRef.current
-    ) {
-      composerTextareaRef.current?.blur();
+    if (!keyboardOpen && !composerEditorActive) {
+      baselineViewportHeightRef.current = Math.max(
+        visibleHeight,
+        window.innerHeight,
+      );
     }
     keyboardWasOpenRef.current = keyboardOpen;
-  }, [composerFocused, mobileComposerActive, mobileViewport]);
+  }, [
+    beginKeyboardDismissal,
+    cancelKeyboardDismissal,
+    composerEditorActive,
+    mobileViewport,
+  ]);
 
   useLayoutEffect(() => {
     const query = window.matchMedia("(max-width: 767px)");
@@ -473,9 +648,10 @@ export function ClarityConversation({
   }, [attachment, router, state.completedAt, state.retryMessageId, state.success]);
 
   useEffect(() => () => {
+    cancelKeyboardDismissal();
     stopRecorderTracks();
     if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-  }, []);
+  }, [cancelKeyboardDismissal]);
 
   function removeAttachment() {
     setAttachment(null);
@@ -736,9 +912,27 @@ export function ClarityConversation({
 
   const canSend = Boolean(message.trim() || draftMedia.length > 0);
 
-  function handleComposerFocus() {
+  function handleComposerFocus(event: ReactFocusEvent) {
+    if (
+      event.target instanceof HTMLTextAreaElement &&
+      event.target === composerTextareaRef.current &&
+      !keyboardWasOpenRef.current
+    ) {
+      preComposerDocumentScrollRef.current = {
+        left: window.scrollX,
+        top: window.scrollY,
+      };
+      documentScrollRestoredRef.current = false;
+    }
     setComposerFocused(true);
     window.requestAnimationFrame(updateConversationViewport);
+  }
+
+  function handleComposerBlur() {
+    window.setTimeout(() => {
+      if (composerFormRef.current?.contains(document.activeElement)) return;
+      setComposerFocused(false);
+    }, 0);
   }
 
   function openImageViewer(images: ClarityViewerImage[], imageId: string) {
@@ -855,15 +1049,7 @@ export function ClarityConversation({
             action={formAction}
             onSubmit={handleSubmit}
             onFocusCapture={handleComposerFocus}
-            onBlurCapture={() => {
-              window.setTimeout(() => {
-                if (
-                  !composerFormRef.current?.contains(document.activeElement)
-                ) {
-                  setComposerFocused(false);
-                }
-              }, 0);
-            }}
+            onBlurCapture={handleComposerBlur}
             noValidate
             className="relative min-w-0 rounded-2xl border border-border bg-card p-2 shadow-sm transition-[border-color,background-color,box-shadow] duration-150 focus-within:border-primary/40 focus-within:bg-secondary/20 focus-within:ring-1 focus-within:ring-primary/10"
           >
