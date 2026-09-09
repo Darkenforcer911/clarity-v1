@@ -914,7 +914,7 @@ export function ClarityConversation({
                     rows={1}
                     maxLength={8000}
                     style={{ maxHeight: CLARITY_COMPOSER_MAX_HEIGHT_PX }}
-                    className="block min-h-11 w-full min-w-0 resize-none overflow-y-hidden bg-transparent px-2 py-2.5 text-base leading-6 outline-none [-webkit-overflow-scrolling:touch] placeholder:text-muted-foreground"
+                    className="block min-h-11 w-full min-w-0 touch-pan-y resize-none overflow-y-hidden overscroll-y-contain bg-transparent px-2 py-2.5 text-base leading-6 outline-none placeholder:text-muted-foreground"
                     disabled={isPending || mediaBusy}
                   />
                 </label>
