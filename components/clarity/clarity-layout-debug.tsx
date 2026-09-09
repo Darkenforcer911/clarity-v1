@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { Button } from "@/components/ui/button";
 
@@ -25,6 +26,12 @@ type TraceEntry = {
   event: string;
   detail: TraceDetail | null;
   snapshot: ReturnType<typeof readLayoutSnapshot>;
+};
+
+type HudPosition = {
+  left: number;
+  top: number;
+  width: number;
 };
 
 type ElementName =
@@ -195,9 +202,16 @@ export function ClarityLayoutDebug() {
     contained: boolean | null;
   } | null>(null);
   const countFrameRef = useRef<number | null>(null);
+  const composerFocusToPreserveRef = useRef<HTMLTextAreaElement | null>(null);
+  const [mounted, setMounted] = useState(false);
   const [recording, setRecording] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [entryCount, setEntryCount] = useState(0);
+  const [hudPosition, setHudPosition] = useState<HudPosition>({
+    left: 8,
+    top: 0,
+    width: 288,
+  });
   const [captureLabel, setCaptureLabel] =
     useState<(typeof CAPTURE_LABELS)[number]>("A_fresh");
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">(
@@ -210,6 +224,32 @@ export function ClarityLayoutDebug() {
       countFrameRef.current = null;
       setEntryCount(entriesRef.current.length);
     });
+  }, []);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const updateHudPosition = () => {
+      const visibleWidth = viewport?.width ?? window.innerWidth;
+      setHudPosition({
+        left: (viewport?.offsetLeft ?? 0) + 8,
+        top: viewport?.offsetTop ?? 0,
+        width: Math.max(0, Math.min(288, visibleWidth - 16)),
+      });
+    };
+
+    const firstFrame = window.requestAnimationFrame(() => {
+      updateHudPosition();
+      setMounted(true);
+    });
+    viewport?.addEventListener("resize", updateHudPosition);
+    viewport?.addEventListener("scroll", updateHudPosition);
+    window.addEventListener("resize", updateHudPosition);
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      viewport?.removeEventListener("resize", updateHudPosition);
+      viewport?.removeEventListener("scroll", updateHudPosition);
+      window.removeEventListener("resize", updateHudPosition);
+    };
   }, []);
 
   const capture = useCallback(
@@ -419,7 +459,9 @@ export function ClarityLayoutDebug() {
     }
   }
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <>
       <span
         data-clarity-safe-area-probe
@@ -435,7 +477,30 @@ export function ClarityLayoutDebug() {
       <aside
         data-clarity-layout-debug
         aria-label="Layout diagnostics"
-        className="fixed right-2 top-[max(0.5rem,env(safe-area-inset-top))] z-[100] w-[min(18rem,calc(100vw-1rem))] rounded-xl border border-border bg-card/95 p-2 text-xs shadow-lg backdrop-blur"
+        className="fixed z-[2147483647] rounded-xl border border-border bg-card/95 p-2 text-xs shadow-lg backdrop-blur"
+        style={{
+          left: `${hudPosition.left}px`,
+          top: `calc(${hudPosition.top}px + max(0.5rem, env(safe-area-inset-top)))`,
+          width: `${hudPosition.width}px`,
+          maxWidth: `calc(100vw - ${hudPosition.left + 8}px)`,
+        }}
+        onPointerDownCapture={() => {
+          const textarea = document.querySelector<HTMLTextAreaElement>(
+            ELEMENT_SELECTORS.textarea,
+          );
+          composerFocusToPreserveRef.current =
+            document.activeElement === textarea ? textarea : null;
+        }}
+        onMouseDownCapture={(event) => {
+          if (composerFocusToPreserveRef.current) event.preventDefault();
+        }}
+        onClickCapture={() => {
+          const textarea = composerFocusToPreserveRef.current;
+          composerFocusToPreserveRef.current = null;
+          if (textarea && document.activeElement !== textarea) {
+            textarea.focus({ preventScroll: true });
+          }
+        }}
       >
         <button
           type="button"
@@ -443,10 +508,13 @@ export function ClarityLayoutDebug() {
           onClick={() => setCollapsed((current) => !current)}
           aria-expanded={!collapsed}
         >
-          <span>Layout debug</span>
+          <span>{collapsed ? "DEBUG" : "Layout debug"}</span>
           <span className="text-muted-foreground">
-            {recording ? "Recording" : `${entryCount} entries`} ·{" "}
-            {collapsed ? "Open" : "Close"}
+            {collapsed
+              ? recording
+                ? "• REC"
+                : `• ${entryCount}`
+              : `${recording ? "Recording" : `${entryCount} entries`} · Close`}
           </span>
         </button>
 
@@ -471,24 +539,30 @@ export function ClarityLayoutDebug() {
                 Stop recording
               </Button>
             </div>
-            <label className="block space-y-1">
+            <div className="space-y-1">
               <span className="text-muted-foreground">State label</span>
-              <select
-                value={captureLabel}
-                onChange={(event) =>
-                  setCaptureLabel(
-                    event.target.value as (typeof CAPTURE_LABELS)[number],
-                  )
-                }
-                className="h-9 w-full min-w-0 rounded-lg border border-border bg-background px-2 text-xs"
+              <div
+                role="group"
+                aria-label="Diagnostic state label"
+                className="grid grid-cols-2 gap-1"
               >
                 {CAPTURE_LABELS.map((label) => (
-                  <option key={label} value={label}>
+                  <button
+                    key={label}
+                    type="button"
+                    aria-pressed={captureLabel === label}
+                    className={`min-w-0 rounded-md border px-1.5 py-1 text-[10px] leading-4 ${
+                      captureLabel === label
+                        ? "border-primary bg-primary/15 text-foreground"
+                        : "border-border bg-background text-muted-foreground"
+                    }`}
+                    onClick={() => setCaptureLabel(label)}
+                  >
                     {label}
-                  </option>
+                  </button>
                 ))}
-              </select>
-            </label>
+              </div>
+            </div>
             <Button
               type="button"
               size="sm"
@@ -530,6 +604,7 @@ export function ClarityLayoutDebug() {
           </div>
         )}
       </aside>
-    </>
+    </>,
+    document.body,
   );
 }
