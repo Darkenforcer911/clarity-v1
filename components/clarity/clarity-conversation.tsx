@@ -62,7 +62,8 @@ import {
 import {
   CLARITY_COMPOSER_MAX_HEIGHT_PX,
   clarityComposerHeight,
-  shouldContainClarityComposerTouch,
+  preventClarityComposerTouchDefault,
+  resolveClarityComposerTouch,
 } from "@/lib/clarity/ai/clarity-composer";
 import {
   isClarityKeyboardOpen,
@@ -163,6 +164,13 @@ export function ClarityConversation({
   const [recordingElapsedMs, setRecordingElapsedMs] = useState(0);
   const composerFormRef = useRef<HTMLFormElement>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const composerTouchRef = useRef<{
+    identifier: number;
+    origin: "textarea" | "composer";
+    startX: number;
+    startY: number;
+    lastY: number;
+  } | null>(null);
   const conversationHostRef = useRef<HTMLDivElement>(null);
   const conversationScrollRef = useRef<HTMLDivElement>(null);
   const viewerScrollTopRef = useRef<number | null>(null);
@@ -505,22 +513,10 @@ export function ClarityConversation({
     const textarea = composerTextareaRef.current;
     if (!composer || !textarea) return;
 
-    let touch: {
-      identifier: number;
-      origin: "textarea" | "composer";
-      startX: number;
-      startY: number;
-      lastY: number;
-    } | null = null;
-
     const findTouch = (touches: TouchList, identifier: number) =>
       Array.from(touches).find((point) => point.identifier === identifier);
-    const removeGestureListeners = () => {
-      window.removeEventListener("touchmove", handleTouchMove);
-      window.removeEventListener("touchend", handleTouchEnd);
-      window.removeEventListener("touchcancel", handleTouchEnd);
-    };
     const resetTouch = () => {
+      const touch = composerTouchRef.current;
       if (layoutDebug && touch) {
         window.dispatchEvent(
           new CustomEvent(CLARITY_COMPOSER_GUARD_DEBUG_EVENT, {
@@ -534,22 +530,53 @@ export function ClarityConversation({
           }),
         );
       }
-      touch = null;
-      removeGestureListeners();
+      composerTouchRef.current = null;
       if (layoutDebug) {
         delete textarea.dataset.clarityComposerGuardInstalled;
       }
     };
     const handleTouchMove = (event: TouchEvent) => {
+      const touch = composerTouchRef.current;
       if (!touch) return;
-      if (event.touches.length !== 1) {
+
+      const point = findTouch(event.touches, touch.identifier);
+      const identifierMatched =
+        event.touches.length === 1 &&
+        event.touches[0]?.identifier === touch.identifier;
+      if (event.touches.length !== 1 || !point) {
+        if (layoutDebug) {
+          window.dispatchEvent(
+            new CustomEvent(CLARITY_COMPOSER_GUARD_DEBUG_EVENT, {
+              detail: {
+                phase: "move",
+                identifier: touch.identifier,
+                guardInstalled: true,
+                guardInvoked: true,
+                guardRan: true,
+                originRegion: touch.origin,
+                matchingTouchFound: Boolean(point),
+                identifierMatched,
+                deltaX: null,
+                deltaY: null,
+                thresholdExceeded: false,
+                verticalDominant: false,
+                textareaScrollable:
+                  textarea.scrollHeight > textarea.clientHeight,
+                textareaAtBoundary: null,
+                skipReason:
+                  event.touches.length !== 1
+                    ? "multiple-touches"
+                    : "active-touch-not-found",
+                preventDefaultCalled: false,
+                defaultPreventedAfter: event.defaultPrevented,
+              },
+            }),
+          );
+        }
         resetTouch();
         return;
       }
-
-      const point = findTouch(event.touches, touch.identifier);
-      if (!point) return;
-      const contain = shouldContainClarityComposerTouch({
+      const decision = resolveClarityComposerTouch({
         ...touch,
         currentX: point.clientX,
         currentY: point.clientY,
@@ -558,9 +585,12 @@ export function ClarityConversation({
         clientHeight: textarea.clientHeight,
         eventTargetsTextarea: event.composedPath().includes(textarea),
       });
-      touch.lastY = point.clientY;
+      composerTouchRef.current = { ...touch, lastY: point.clientY };
 
-      if (contain && event.cancelable) event.preventDefault();
+      const preventDefaultCalled = preventClarityComposerTouchDefault(
+        event,
+        decision.contain,
+      );
       if (layoutDebug) {
         window.dispatchEvent(
           new CustomEvent(CLARITY_COMPOSER_GUARD_DEBUG_EVENT, {
@@ -568,9 +598,24 @@ export function ClarityConversation({
               phase: "move",
               identifier: touch.identifier,
               guardInstalled: true,
+              guardInvoked: true,
               guardRan: true,
-              contained: contain,
+              contained: decision.contain,
               originRegion: touch.origin,
+              matchingTouchFound: true,
+              identifierMatched,
+              deltaX: decision.deltaX,
+              deltaY: decision.deltaY,
+              thresholdExceeded: decision.thresholdExceeded,
+              verticalDominant: decision.verticalDominant,
+              textareaScrollable: decision.textareaScrollable,
+              textareaAtBoundary: decision.textareaAtBoundary,
+              skipReason:
+                decision.contain && !event.cancelable
+                  ? "event-not-cancelable"
+                  : decision.skipReason,
+              preventDefaultCalled,
+              defaultPreventedAfter: event.defaultPrevented,
               eventTargetsTextarea: event.composedPath().includes(textarea),
             },
           }),
@@ -578,10 +623,8 @@ export function ClarityConversation({
       }
     };
     const handleTouchEnd = (event: TouchEvent) => {
-      if (
-        touch &&
-        findTouch(event.changedTouches, touch.identifier)
-      ) {
+      const touch = composerTouchRef.current;
+      if (touch && findTouch(event.changedTouches, touch.identifier)) {
         resetTouch();
       }
     };
@@ -597,7 +640,7 @@ export function ClarityConversation({
 
       resetTouch();
       const point = event.touches[0];
-      touch = {
+      composerTouchRef.current = {
         identifier: point.identifier,
         origin: startsInTextarea ? "textarea" : "composer",
         startX: point.clientX,
@@ -612,23 +655,37 @@ export function ClarityConversation({
               phase: "installed",
               identifier: point.identifier,
               guardInstalled: true,
+              guardInvoked: false,
               guardRan: false,
-              originRegion: touch.origin,
+              originRegion: startsInTextarea ? "textarea" : "composer",
             },
           }),
         );
       }
-      window.addEventListener("touchmove", handleTouchMove, { passive: false });
-      window.addEventListener("touchend", handleTouchEnd, { passive: true });
-      window.addEventListener("touchcancel", handleTouchEnd, { passive: true });
     };
 
     composer.addEventListener("touchstart", handleTouchStart, {
       passive: true,
+      capture: true,
+    });
+    composer.addEventListener("touchmove", handleTouchMove, {
+      passive: false,
+      capture: true,
+    });
+    composer.addEventListener("touchend", handleTouchEnd, {
+      passive: true,
+      capture: true,
+    });
+    composer.addEventListener("touchcancel", handleTouchEnd, {
+      passive: true,
+      capture: true,
     });
 
     return () => {
-      composer.removeEventListener("touchstart", handleTouchStart);
+      composer.removeEventListener("touchstart", handleTouchStart, true);
+      composer.removeEventListener("touchmove", handleTouchMove, true);
+      composer.removeEventListener("touchend", handleTouchEnd, true);
+      composer.removeEventListener("touchcancel", handleTouchEnd, true);
       resetTouch();
     };
   }, [dictationStatus, layoutDebug]);

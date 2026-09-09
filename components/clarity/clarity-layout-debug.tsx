@@ -370,6 +370,7 @@ export function ClarityLayoutDebug() {
           contained:
             typeof detail.contained === "boolean" ? detail.contained : null,
         };
+        capture("composer-guard", detail);
         return;
       }
       capture("composer-guard", detail);
