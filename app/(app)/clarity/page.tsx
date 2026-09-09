@@ -25,14 +25,27 @@ export default function ClarityPage({ searchParams }: ClarityPageProps) {
 }
 
 async function ClarityContent({ searchParams }: ClarityPageProps) {
-  const invocation = parseClarityInvocation(await searchParams);
+  const resolvedSearchParams = await searchParams;
+  const invocation = parseClarityInvocation(resolvedSearchParams);
+  const layoutDebugValue = resolvedSearchParams.layoutDebug;
+  const layoutDebug = Array.isArray(layoutDebugValue)
+    ? layoutDebugValue.includes("1")
+    : layoutDebugValue === "1";
   const { conversation, subject } = await loadClarityPageData(invocation);
 
   return (
     <div className="space-y-5" data-slot="clarity-conversation">
       <header className="space-y-2">
-        <h1 className="text-3xl font-semibold tracking-[-0.04em]">Clarity</h1>
-        <p className="max-w-sm text-sm leading-6 text-muted-foreground">
+        <h1
+          data-clarity-page-title
+          className="text-3xl font-semibold tracking-[-0.04em]"
+        >
+          Clarity
+        </h1>
+        <p
+          data-clarity-page-intro
+          className="max-w-sm text-sm leading-6 text-muted-foreground"
+        >
           Think through what matters, explore your options, and work out what
           to do next.
         </p>
@@ -42,6 +55,7 @@ async function ClarityContent({ searchParams }: ClarityPageProps) {
         messages={conversation.messages}
         invocation={invocationDescriptor(invocation)}
         subjectLabel={subject?.label ?? null}
+        layoutDebug={layoutDebug}
       />
     </div>
   );

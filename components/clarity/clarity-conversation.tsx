@@ -34,6 +34,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { useAppShellEditorState } from "@/components/clarity/app-shell-editor-context";
 import {
+  CLARITY_COMPOSER_GUARD_DEBUG_EVENT,
+  ClarityLayoutDebug,
+} from "@/components/clarity/clarity-layout-debug";
+import {
   ClarityImageViewer,
   type ClarityViewerImage,
 } from "@/components/clarity/clarity-image-viewer";
@@ -116,10 +120,12 @@ export function ClarityConversation({
   messages,
   invocation,
   subjectLabel,
+  layoutDebug = false,
 }: {
   messages: ClarityConversationMessage[];
   invocation: ClarityInvocationDescriptor;
   subjectLabel: string | null;
+  layoutDebug?: boolean;
 }) {
   const router = useRouter();
   const [state, formAction, isPending] = useActionState(
@@ -329,8 +335,23 @@ export function ClarityConversation({
       window.removeEventListener("touchcancel", handleTouchEnd);
     };
     const resetTouch = () => {
+      if (layoutDebug && touch) {
+        window.dispatchEvent(
+          new CustomEvent(CLARITY_COMPOSER_GUARD_DEBUG_EVENT, {
+            detail: {
+              phase: "removed",
+              identifier: touch.identifier,
+              guardInstalled: false,
+              guardRan: false,
+            },
+          }),
+        );
+      }
       touch = null;
       removeGestureListeners();
+      if (layoutDebug) {
+        delete textarea.dataset.clarityComposerGuardInstalled;
+      }
     };
     const handleTouchMove = (event: TouchEvent) => {
       if (!touch) return;
@@ -353,6 +374,20 @@ export function ClarityConversation({
       touch.lastY = point.clientY;
 
       if (contain && event.cancelable) event.preventDefault();
+      if (layoutDebug) {
+        window.dispatchEvent(
+          new CustomEvent(CLARITY_COMPOSER_GUARD_DEBUG_EVENT, {
+            detail: {
+              phase: "move",
+              identifier: touch.identifier,
+              guardInstalled: true,
+              guardRan: true,
+              contained: contain,
+              eventTargetsTextarea: event.composedPath().includes(textarea),
+            },
+          }),
+        );
+      }
     };
     const handleTouchEnd = (event: TouchEvent) => {
       if (
@@ -373,6 +408,19 @@ export function ClarityConversation({
         startY: point.clientY,
         lastY: point.clientY,
       };
+      if (layoutDebug) {
+        textarea.dataset.clarityComposerGuardInstalled = "true";
+        window.dispatchEvent(
+          new CustomEvent(CLARITY_COMPOSER_GUARD_DEBUG_EVENT, {
+            detail: {
+              phase: "installed",
+              identifier: point.identifier,
+              guardInstalled: true,
+              guardRan: false,
+            },
+          }),
+        );
+      }
       window.addEventListener("touchmove", handleTouchMove, { passive: false });
       window.addEventListener("touchend", handleTouchEnd, { passive: true });
       window.addEventListener("touchcancel", handleTouchEnd, { passive: true });
@@ -384,7 +432,7 @@ export function ClarityConversation({
       textarea.removeEventListener("touchstart", handleTouchStart);
       resetTouch();
     };
-  }, [dictationStatus]);
+  }, [dictationStatus, layoutDebug]);
 
   useLayoutEffect(() => {
     if (!initialPositionedRef.current) {
@@ -741,7 +789,9 @@ export function ClarityConversation({
       style={mobileHostStyle}
     >
       <div
+        data-clarity-conversation-panel
         data-clarity-keyboard-open={viewportLayout.keyboardOpen || undefined}
+        data-clarity-editor-active={mobileComposerActive || undefined}
         className={`flex min-w-0 flex-col gap-4 bg-background ${
           mobilePanelReady
             ? `fixed ${viewportLayout.keyboardOpen ? "z-50" : "z-30"}`
@@ -801,6 +851,7 @@ export function ClarityConversation({
 
           <form
             ref={composerFormRef}
+            data-clarity-composer-shell
             action={formAction}
             onSubmit={handleSubmit}
             onFocusCapture={handleComposerFocus}
@@ -1052,6 +1103,7 @@ export function ClarityConversation({
           onClose={closeImageViewer}
         />
       )}
+      {layoutDebug && <ClarityLayoutDebug />}
     </div>
   );
 
