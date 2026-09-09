@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 
 export const CLARITY_COMPOSER_GUARD_DEBUG_EVENT =
   "clarity:composer-guard-debug";
+export const CLARITY_HISTORY_GESTURE_DEBUG_EVENT =
+  "clarity:history-gesture-debug";
 
 const MAX_TRACE_ENTRIES = 400;
 const CAPTURE_LABELS = [
@@ -375,6 +377,11 @@ export function ClarityLayoutDebug() {
       }
       capture("composer-guard", detail);
     };
+    const captureHistoryGesture = (event: Event) => {
+      if (!recordingRef.current) return;
+      const customEvent = event as CustomEvent<TraceDetail>;
+      capture("history-gesture", customEvent.detail ?? null);
+    };
 
     window.addEventListener("resize", captureSimple);
     window.addEventListener("scroll", captureWindowScroll, { passive: true });
@@ -389,6 +396,10 @@ export function ClarityLayoutDebug() {
     window.addEventListener("touchend", captureTouch, { passive: true });
     window.addEventListener("touchcancel", captureTouch, { passive: true });
     window.addEventListener(CLARITY_COMPOSER_GUARD_DEBUG_EVENT, captureGuard);
+    window.addEventListener(
+      CLARITY_HISTORY_GESTURE_DEBUG_EVENT,
+      captureHistoryGesture,
+    );
     viewport?.addEventListener("resize", captureViewport);
     viewport?.addEventListener("scroll", captureViewport);
     history?.addEventListener("scroll", captureHistoryScroll, { passive: true });
@@ -410,6 +421,10 @@ export function ClarityLayoutDebug() {
       window.removeEventListener("touchend", captureTouch);
       window.removeEventListener("touchcancel", captureTouch);
       window.removeEventListener(CLARITY_COMPOSER_GUARD_DEBUG_EVENT, captureGuard);
+      window.removeEventListener(
+        CLARITY_HISTORY_GESTURE_DEBUG_EVENT,
+        captureHistoryGesture,
+      );
       viewport?.removeEventListener("resize", captureViewport);
       viewport?.removeEventListener("scroll", captureViewport);
       history?.removeEventListener("scroll", captureHistoryScroll);

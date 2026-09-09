@@ -36,6 +36,7 @@ import { Button } from "@/components/ui/button";
 import { useAppShellEditorState } from "@/components/clarity/app-shell-editor-context";
 import {
   CLARITY_COMPOSER_GUARD_DEBUG_EVENT,
+  CLARITY_HISTORY_GESTURE_DEBUG_EVENT,
   ClarityLayoutDebug,
 } from "@/components/clarity/clarity-layout-debug";
 import {
@@ -70,6 +71,10 @@ import {
   resolveClarityKeyboardPhase,
   resolveClarityConversationViewport,
 } from "@/lib/clarity/ai/clarity-chat-layout";
+import {
+  preventClarityHistoryGestureDefault,
+  resolveClarityHistoryGesture,
+} from "@/lib/clarity/ai/clarity-history-gesture";
 import { normalizeClarityImageFile } from "@/lib/clarity/ai/clarity-image-normalization";
 import { normalizeClarityVisibleResponse } from "@/lib/clarity/ai/clarity-response-presentation";
 import {
@@ -170,6 +175,16 @@ export function ClarityConversation({
     startX: number;
     startY: number;
     lastY: number;
+  } | null>(null);
+  const historyTouchRef = useRef<{
+    identifier: number;
+    startX: number;
+    startY: number;
+    keyboardOpenAtStart: boolean;
+    textareaFocusedAtStart: boolean;
+    scrollTopAtStart: number;
+    containmentActive: boolean;
+    blurRequested: boolean;
   } | null>(null);
   const conversationHostRef = useRef<HTMLDivElement>(null);
   const conversationScrollRef = useRef<HTMLDivElement>(null);
@@ -690,6 +705,185 @@ export function ClarityConversation({
     };
   }, [dictationStatus, layoutDebug]);
 
+  useEffect(() => {
+    const history = conversationScrollRef.current;
+    const textarea = composerTextareaRef.current;
+    if (!history || !textarea) return;
+
+    const findTouch = (touches: TouchList, identifier: number) =>
+      Array.from(touches).find((point) => point.identifier === identifier);
+    const debugHistoryGesture = (
+      phase: "touchstart" | "touchmove" | "touchend" | "touchcancel",
+      detail: Record<string, boolean | number | string | null>,
+    ) => {
+      if (!layoutDebug) return;
+      const viewport = window.visualViewport;
+      window.dispatchEvent(
+        new CustomEvent(CLARITY_HISTORY_GESTURE_DEBUG_EVENT, {
+          detail: {
+            phase,
+            ...detail,
+            documentScrollY: window.scrollY,
+            visualViewportHeight: viewport?.height ?? window.innerHeight,
+            visualViewportOffsetTop: viewport?.offsetTop ?? 0,
+          },
+        }),
+      );
+    };
+    const resetHistoryTouch = () => {
+      historyTouchRef.current = null;
+    };
+    const handleHistoryTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 1) return;
+      const point = event.touches[0];
+      const textareaFocusedAtStart = document.activeElement === textarea;
+      historyTouchRef.current = {
+        identifier: point.identifier,
+        startX: point.clientX,
+        startY: point.clientY,
+        keyboardOpenAtStart: keyboardWasOpenRef.current,
+        textareaFocusedAtStart,
+        scrollTopAtStart: history.scrollTop,
+        containmentActive: false,
+        blurRequested: false,
+      };
+      debugHistoryGesture("touchstart", {
+        activeTouchIdentifier: point.identifier,
+        keyboardOpenAtStart: keyboardWasOpenRef.current,
+        textareaFocusedAtStart,
+        historyScrollTopBefore: history.scrollTop,
+        historyScrollTopAfter: history.scrollTop,
+        historyScrollHeight: history.scrollHeight,
+        historyClientHeight: history.clientHeight,
+        deltaX: 0,
+        deltaY: 0,
+        direction: "none",
+        blurRequested: false,
+        preventDefaultCalled: false,
+      });
+    };
+    const handleHistoryTouchMove = (event: TouchEvent) => {
+      const touch = historyTouchRef.current;
+      if (!touch) return;
+      const point = findTouch(event.touches, touch.identifier);
+      if (event.touches.length !== 1 || !point) {
+        debugHistoryGesture("touchmove", {
+          activeTouchIdentifier: touch.identifier,
+          keyboardOpenAtStart: touch.keyboardOpenAtStart,
+          textareaFocusedAtStart: touch.textareaFocusedAtStart,
+          historyScrollTopBefore: touch.scrollTopAtStart,
+          historyScrollTopAfter: history.scrollTop,
+          historyScrollHeight: history.scrollHeight,
+          historyClientHeight: history.clientHeight,
+          deltaX: null,
+          deltaY: null,
+          direction: "unknown",
+          blurRequested: touch.blurRequested,
+          preventDefaultCalled: false,
+          skipReason:
+            event.touches.length !== 1
+              ? "multiple-touches"
+              : "active-touch-not-found",
+        });
+        resetHistoryTouch();
+        return;
+      }
+
+      const decision = resolveClarityHistoryGesture({
+        keyboardOpenAtStart: touch.keyboardOpenAtStart,
+        textareaFocusedAtStart: touch.textareaFocusedAtStart,
+        startX: touch.startX,
+        startY: touch.startY,
+        currentX: point.clientX,
+        currentY: point.clientY,
+      });
+      const containmentActive = touch.containmentActive || decision.contain;
+      const preventDefaultCalled = preventClarityHistoryGestureDefault(
+        event,
+        containmentActive,
+      );
+      const blurRequested =
+        touch.blurRequested ||
+        (decision.blurTextarea && document.activeElement === textarea);
+      if (blurRequested && !touch.blurRequested) textarea.blur();
+      historyTouchRef.current = {
+        ...touch,
+        containmentActive,
+        blurRequested,
+      };
+
+      debugHistoryGesture("touchmove", {
+        activeTouchIdentifier: touch.identifier,
+        keyboardOpenAtStart: touch.keyboardOpenAtStart,
+        textareaFocusedAtStart: touch.textareaFocusedAtStart,
+        historyScrollTopBefore: touch.scrollTopAtStart,
+        historyScrollTopAfter: history.scrollTop,
+        historyScrollHeight: history.scrollHeight,
+        historyClientHeight: history.clientHeight,
+        deltaX: decision.deltaX,
+        deltaY: decision.deltaY,
+        direction:
+          decision.deltaY < 0
+            ? "up"
+            : decision.deltaY > 0
+              ? "down"
+              : "none",
+        thresholdExceeded: decision.thresholdExceeded,
+        verticalDominant: decision.verticalDominant,
+        containmentActive,
+        blurRequested,
+        preventDefaultCalled,
+        defaultPreventedAfter: event.defaultPrevented,
+      });
+    };
+    const handleHistoryTouchEnd = (event: TouchEvent) => {
+      const touch = historyTouchRef.current;
+      if (!touch || !findTouch(event.changedTouches, touch.identifier)) return;
+      const phase = event.type === "touchcancel" ? "touchcancel" : "touchend";
+      debugHistoryGesture(phase, {
+        activeTouchIdentifier: touch.identifier,
+        keyboardOpenAtStart: touch.keyboardOpenAtStart,
+        textareaFocusedAtStart: touch.textareaFocusedAtStart,
+        historyScrollTopBefore: touch.scrollTopAtStart,
+        historyScrollTopAfter: history.scrollTop,
+        historyScrollHeight: history.scrollHeight,
+        historyClientHeight: history.clientHeight,
+        deltaX: null,
+        deltaY: null,
+        direction: "none",
+        containmentActive: touch.containmentActive,
+        blurRequested: touch.blurRequested,
+        preventDefaultCalled: false,
+      });
+      resetHistoryTouch();
+    };
+
+    history.addEventListener("touchstart", handleHistoryTouchStart, {
+      passive: true,
+      capture: true,
+    });
+    history.addEventListener("touchmove", handleHistoryTouchMove, {
+      passive: false,
+      capture: true,
+    });
+    history.addEventListener("touchend", handleHistoryTouchEnd, {
+      passive: true,
+      capture: true,
+    });
+    history.addEventListener("touchcancel", handleHistoryTouchEnd, {
+      passive: true,
+      capture: true,
+    });
+
+    return () => {
+      history.removeEventListener("touchstart", handleHistoryTouchStart, true);
+      history.removeEventListener("touchmove", handleHistoryTouchMove, true);
+      history.removeEventListener("touchend", handleHistoryTouchEnd, true);
+      history.removeEventListener("touchcancel", handleHistoryTouchEnd, true);
+      resetHistoryTouch();
+    };
+  }, [dictationStatus, layoutDebug]);
+
   useLayoutEffect(() => {
     if (!initialPositionedRef.current) {
       initialPositionedRef.current = true;
@@ -1081,7 +1275,7 @@ export function ClarityConversation({
         <div
           ref={conversationScrollRef}
           data-clarity-conversation-scroll
-          className="min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto [-webkit-overflow-scrolling:touch]"
+          className="min-h-0 min-w-0 flex-1 touch-pan-y space-y-3 overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]"
           aria-live="polite"
         >
           <div className="space-y-3">
