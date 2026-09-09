@@ -314,33 +314,33 @@ export function ClarityConversation({
     const textarea = composerTextareaRef.current;
     if (!textarea) return;
 
-    let touch: { startX: number; startY: number; lastY: number } | null = null;
+    let touch: {
+      identifier: number;
+      startX: number;
+      startY: number;
+      lastY: number;
+    } | null = null;
 
+    const findTouch = (touches: TouchList, identifier: number) =>
+      Array.from(touches).find((point) => point.identifier === identifier);
+    const removeGestureListeners = () => {
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleTouchEnd);
+      window.removeEventListener("touchcancel", handleTouchEnd);
+    };
     const resetTouch = () => {
       touch = null;
+      removeGestureListeners();
     };
-    const handleTouchStart = (event: TouchEvent) => {
+    const handleTouchMove = (event: TouchEvent) => {
+      if (!touch) return;
       if (event.touches.length !== 1) {
         resetTouch();
         return;
       }
-      const point = event.touches[0];
-      touch = {
-        startX: point.clientX,
-        startY: point.clientY,
-        lastY: point.clientY,
-      };
-    };
-    const handleTouchMove = (event: TouchEvent) => {
-      if (
-        !touch ||
-        event.touches.length !== 1 ||
-        document.activeElement !== textarea
-      ) {
-        return;
-      }
 
-      const point = event.touches[0];
+      const point = findTouch(event.touches, touch.identifier);
+      if (!point) return;
       const contain = shouldContainClarityComposerTouch({
         ...touch,
         currentX: point.clientX,
@@ -348,22 +348,41 @@ export function ClarityConversation({
         scrollTop: textarea.scrollTop,
         scrollHeight: textarea.scrollHeight,
         clientHeight: textarea.clientHeight,
+        eventTargetsTextarea: event.composedPath().includes(textarea),
       });
       touch.lastY = point.clientY;
 
       if (contain && event.cancelable) event.preventDefault();
     };
+    const handleTouchEnd = (event: TouchEvent) => {
+      if (
+        touch &&
+        findTouch(event.changedTouches, touch.identifier)
+      ) {
+        resetTouch();
+      }
+    };
+    const handleTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 1) return;
+
+      resetTouch();
+      const point = event.touches[0];
+      touch = {
+        identifier: point.identifier,
+        startX: point.clientX,
+        startY: point.clientY,
+        lastY: point.clientY,
+      };
+      window.addEventListener("touchmove", handleTouchMove, { passive: false });
+      window.addEventListener("touchend", handleTouchEnd, { passive: true });
+      window.addEventListener("touchcancel", handleTouchEnd, { passive: true });
+    };
 
     textarea.addEventListener("touchstart", handleTouchStart, { passive: true });
-    textarea.addEventListener("touchmove", handleTouchMove, { passive: false });
-    textarea.addEventListener("touchend", resetTouch, { passive: true });
-    textarea.addEventListener("touchcancel", resetTouch, { passive: true });
 
     return () => {
       textarea.removeEventListener("touchstart", handleTouchStart);
-      textarea.removeEventListener("touchmove", handleTouchMove);
-      textarea.removeEventListener("touchend", resetTouch);
-      textarea.removeEventListener("touchcancel", resetTouch);
+      resetTouch();
     };
   }, [dictationStatus]);
 

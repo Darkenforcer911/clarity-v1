@@ -24,6 +24,7 @@ export function shouldContainClarityComposerTouch(input: {
   scrollTop: number;
   scrollHeight: number;
   clientHeight: number;
+  eventTargetsTextarea: boolean;
 }) {
   const horizontalTravel = Math.abs(input.currentX - input.startX);
   const verticalTravel = Math.abs(input.currentY - input.startY);
@@ -36,6 +37,8 @@ export function shouldContainClarityComposerTouch(input: {
   ) {
     return false;
   }
+
+  if (!input.eventTargetsTextarea) return true;
 
   const maxScrollTop = Math.max(0, input.scrollHeight - input.clientHeight);
   if (maxScrollTop <= CLARITY_COMPOSER_SCROLL_EDGE_PX) return true;
