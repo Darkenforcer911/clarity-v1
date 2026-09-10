@@ -5,12 +5,15 @@ import {
   useContext,
   useEffect,
   useId,
+  useLayoutEffect,
   type ReactNode,
 } from "react";
 
 type EditorRegistration = (id: string, active: boolean) => void;
 
 const AppShellEditorContext = createContext<EditorRegistration | null>(null);
+const AppShellConversationRouteContext =
+  createContext<((active: boolean) => void) | null>(null);
 
 export function AppShellEditorProvider({
   register,
@@ -35,4 +38,27 @@ export function useAppShellEditorState(active: boolean) {
 
     return () => register?.(id, false);
   }, [active, id, register]);
+}
+
+export function AppShellConversationRouteProvider({
+  register,
+  children,
+}: {
+  register: (active: boolean) => void;
+  children: ReactNode;
+}) {
+  return (
+    <AppShellConversationRouteContext.Provider value={register}>
+      {children}
+    </AppShellConversationRouteContext.Provider>
+  );
+}
+
+export function useAppShellConversationRoute() {
+  const register = useContext(AppShellConversationRouteContext);
+
+  useLayoutEffect(() => {
+    register?.(true);
+    return () => register?.(false);
+  }, [register]);
 }

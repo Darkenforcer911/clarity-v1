@@ -7,7 +7,10 @@ import { AppActivityTracker } from "./app-activity-tracker";
 import { AccountMenu } from "./account-menu";
 import { BottomNavigation } from "./bottom-navigation";
 import { TransientNotice } from "./transient-notice";
-import { AppShellEditorProvider } from "./app-shell-editor-context";
+import {
+  AppShellConversationRouteProvider,
+  AppShellEditorProvider,
+} from "./app-shell-editor-context";
 
 export function AppShell({
   children,
@@ -31,6 +34,8 @@ export function AppShell({
   const [activeEditorIds, setActiveEditorIds] = useState<Set<string>>(
     () => new Set(),
   );
+  const [clarityConversationRouteActive, setClarityConversationRouteActive] =
+    useState(false);
   const registerEditor = useCallback((id: string, active: boolean) => {
     setActiveEditorIds((current) => {
       const next = new Set(current);
@@ -51,13 +56,20 @@ export function AppShell({
 
   return (
     <AppShellEditorProvider register={registerEditor}>
-      <div
-        className={
-          contained
-            ? "relative h-full min-h-0 overflow-x-clip bg-background text-foreground"
-            : "min-h-svh overflow-x-clip bg-background text-foreground max-md:has-[[data-clarity-conversation-route]]:flex max-md:has-[[data-clarity-conversation-route]]:h-svh max-md:has-[[data-clarity-conversation-route]]:min-h-0 max-md:has-[[data-clarity-conversation-route]]:flex-col max-md:has-[[data-clarity-conversation-route]]:overflow-hidden"
-        }
+      <AppShellConversationRouteProvider
+        register={setClarityConversationRouteActive}
       >
+        <div
+          className={
+            contained
+              ? "relative h-full min-h-0 overflow-x-clip bg-background text-foreground"
+              : `min-h-svh overflow-x-clip bg-background text-foreground ${
+                  clarityConversationRouteActive
+                    ? "max-md:flex max-md:h-svh max-md:min-h-0 max-md:flex-col max-md:overflow-hidden"
+                    : ""
+                }`
+          }
+        >
         {enableActivityTracking && <AppActivityTracker />}
         {enableTransientNotices && (
           <Suspense>
@@ -68,7 +80,11 @@ export function AppShell({
           className={
             contained
               ? "relative mx-auto flex h-full min-h-0 w-full min-w-0 max-w-[480px] flex-col overflow-hidden border-x-0 border-border bg-background"
-              : "mx-auto min-h-svh w-full min-w-0 max-w-[480px] overflow-x-clip border-x-0 border-border bg-background min-[481px]:border-x max-md:has-[[data-clarity-conversation-route]]:flex max-md:has-[[data-clarity-conversation-route]]:h-svh max-md:has-[[data-clarity-conversation-route]]:min-h-0 max-md:has-[[data-clarity-conversation-route]]:flex-col max-md:has-[[data-clarity-conversation-route]]:overflow-hidden"
+              : `mx-auto min-h-svh w-full min-w-0 max-w-[480px] overflow-x-clip border-x-0 border-border bg-background min-[481px]:border-x ${
+                  clarityConversationRouteActive
+                    ? "max-md:flex max-md:h-svh max-md:min-h-0 max-md:flex-col max-md:overflow-hidden"
+                    : ""
+                }`
           }
         >
           <header
@@ -104,7 +120,11 @@ export function AppShell({
             className={
               contained
                 ? "min-h-0 w-full min-w-0 max-w-full flex-1 overflow-y-auto overscroll-contain px-4 pt-5 pb-[var(--clarity-app-bottom-boundary)]"
-                : "w-full min-w-0 max-w-full px-4 pt-5 pb-[var(--clarity-app-bottom-boundary)] sm:px-5 sm:pt-7 max-md:has-[[data-clarity-conversation-route]]:flex max-md:has-[[data-clarity-conversation-route]]:min-h-0 max-md:has-[[data-clarity-conversation-route]]:flex-1 max-md:has-[[data-clarity-conversation-route]]:flex-col max-md:has-[[data-clarity-conversation-route]]:overflow-hidden"
+                : `w-full min-w-0 max-w-full px-4 pt-5 pb-[var(--clarity-app-bottom-boundary)] sm:px-5 sm:pt-7 ${
+                    clarityConversationRouteActive
+                      ? "max-md:flex max-md:min-h-0 max-md:flex-1 max-md:flex-col max-md:overflow-hidden"
+                      : ""
+                  }`
             }
           >
             {children}
@@ -119,7 +139,8 @@ export function AppShell({
             </Suspense>
           )}
         </div>
-      </div>
+        </div>
+      </AppShellConversationRouteProvider>
     </AppShellEditorProvider>
   );
 }

@@ -33,7 +33,10 @@ import {
   transcribeClarityDictationAction,
 } from "@/app/(app)/clarity/actions";
 import { Button } from "@/components/ui/button";
-import { useAppShellEditorState } from "@/components/clarity/app-shell-editor-context";
+import {
+  useAppShellConversationRoute,
+  useAppShellEditorState,
+} from "@/components/clarity/app-shell-editor-context";
 import {
   CLARITY_COMPOSER_GUARD_DEBUG_EVENT,
   CLARITY_HISTORY_GESTURE_DEBUG_EVENT,
@@ -144,6 +147,7 @@ export function ClarityConversation({
   subjectLabel: string | null;
   layoutDebug?: boolean;
 }) {
+  useAppShellConversationRoute();
   const router = useRouter();
   const [state, formAction, isPending] = useActionState(
     sendClarityMessageAction,
@@ -205,6 +209,8 @@ export function ClarityConversation({
   const composerDockRef = useRef<HTMLDivElement>(null);
   const layoutDebugTapTimesRef = useRef<number[]>([]);
   const viewerScrollTopRef = useRef<number | null>(null);
+  const messagesLengthRef = useRef(messages.length);
+  messagesLengthRef.current = messages.length;
   const initialPositionedRef = useRef(messages.length === 0);
   const initialPositionFrameRef = useRef<number | null>(null);
   const initialHistoryObserverRef = useRef<ResizeObserver | null>(null);
@@ -326,6 +332,27 @@ export function ClarityConversation({
   useLayoutEffect(() => {
     composerEditorActiveRef.current = composerEditorActive;
   }, [composerEditorActive]);
+
+  useLayoutEffect(() => {
+    // Next cacheComponents retains this route in an Activity boundary. React
+    // preserves refs/state while hidden, but the native scroll node returns to
+    // zero. Reconnect entry-only positioning on every route activation.
+    const empty = messagesLengthRef.current === 0;
+    initialPositionedRef.current = empty;
+    initialHistoryGeometryRef.current = null;
+    initialHistoryObserverDeliveredRef.current = false;
+    setInitialHistoryReady(empty);
+
+    return () => {
+      initialHistoryObserverRef.current?.disconnect();
+      initialHistoryObserverRef.current = null;
+      scheduleInitialHistoryMeasurementRef.current = null;
+      if (initialPositionFrameRef.current !== null) {
+        window.cancelAnimationFrame(initialPositionFrameRef.current);
+        initialPositionFrameRef.current = null;
+      }
+    };
+  }, []);
 
   const scrollConversationToBottom = useCallback(() => {
     const scroll = conversationScrollRef.current;
@@ -514,10 +541,9 @@ export function ClarityConversation({
     }
 
     const bottomOffset = clarityComposerKeyboardBottomOffset({
-      layoutViewportHeight: Math.max(
-        window.innerHeight,
-        baselineViewportHeightRef.current,
-      ),
+      // CSS fixed positioning resolves against the current layout viewport.
+      // The resting baseline is only for keyboard classification.
+      layoutViewportHeight: window.innerHeight,
       visibleHeight,
       visibleOffsetTop,
     });
