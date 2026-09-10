@@ -34,8 +34,12 @@ async function ClarityContent({ searchParams }: ClarityPageProps) {
   const { conversation, subject } = await loadClarityPageData(invocation);
 
   return (
-    <div className="space-y-5" data-slot="clarity-conversation">
-      <header className="space-y-2">
+    <div
+      data-clarity-conversation-route
+      className="flex min-h-0 flex-1 flex-col gap-5"
+      data-slot="clarity-conversation"
+    >
+      <header className="shrink-0 space-y-2">
         <h1
           data-clarity-page-title
           className="text-3xl font-semibold tracking-[-0.04em]"

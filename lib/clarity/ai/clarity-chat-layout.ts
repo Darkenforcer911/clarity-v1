@@ -5,47 +5,12 @@ export const CLARITY_KEYBOARD_DISMISS_FALLBACK_MS = 450;
 export const CLARITY_KEYBOARD_CLOSE_TRANSITION_MS = 180;
 export const CLARITY_VIEWPORT_RESTING_HEIGHT_TOLERANCE_PX = 8;
 export const CLARITY_VIEWPORT_RESTING_OFFSET_TOLERANCE_PX = 1;
-export const CLARITY_INITIAL_LAYOUT_STABLE_FRAMES = 2;
-
-export type ClarityInitialConversationSnapshot = {
-  headerBottom: number;
-  historyClientHeight: number;
-  historyScrollHeight: number;
-  hostTop: number;
-  navigationTop: number;
-  panelHeight: number;
-  panelTop: number;
-};
 
 export function clarityConversationBottom(input: {
   clientHeight: number;
   scrollHeight: number;
 }) {
   return Math.max(0, input.scrollHeight - input.clientHeight);
-}
-
-export function resolveClarityInitialConversationFrame(input: {
-  contentReady: boolean;
-  current: ClarityInitialConversationSnapshot;
-  positionedAtBottom: boolean;
-  previous: ClarityInitialConversationSnapshot | null;
-  stableFrames: number;
-}) {
-  const stable =
-    input.previous !== null &&
-    Object.keys(input.current).every((key) => {
-      const field = key as keyof ClarityInitialConversationSnapshot;
-      return Math.abs(input.current[field] - input.previous![field]) < 1;
-    });
-  const stableFrames =
-    input.contentReady && input.positionedAtBottom && stable
-      ? input.stableFrames + 1
-      : 0;
-
-  return {
-    ready: stableFrames >= CLARITY_INITIAL_LAYOUT_STABLE_FRAMES,
-    stableFrames,
-  };
 }
 
 export function isClarityViewportNearResting(input: {

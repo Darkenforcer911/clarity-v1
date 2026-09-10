@@ -55,7 +55,7 @@ export function AppShell({
         className={
           contained
             ? "relative h-full min-h-0 overflow-x-clip bg-background text-foreground"
-            : "min-h-svh overflow-x-clip bg-background text-foreground"
+            : "min-h-svh overflow-x-clip bg-background text-foreground max-md:has-[[data-clarity-conversation-route]]:flex max-md:has-[[data-clarity-conversation-route]]:h-svh max-md:has-[[data-clarity-conversation-route]]:min-h-0 max-md:has-[[data-clarity-conversation-route]]:flex-col max-md:has-[[data-clarity-conversation-route]]:overflow-hidden"
         }
       >
         {enableActivityTracking && <AppActivityTracker />}
@@ -68,7 +68,7 @@ export function AppShell({
           className={
             contained
               ? "relative mx-auto flex h-full min-h-0 w-full min-w-0 max-w-[480px] flex-col overflow-hidden border-x-0 border-border bg-background"
-              : "mx-auto min-h-svh w-full min-w-0 max-w-[480px] overflow-x-clip border-x-0 border-border bg-background min-[481px]:border-x"
+              : "mx-auto min-h-svh w-full min-w-0 max-w-[480px] overflow-x-clip border-x-0 border-border bg-background min-[481px]:border-x max-md:has-[[data-clarity-conversation-route]]:flex max-md:has-[[data-clarity-conversation-route]]:h-svh max-md:has-[[data-clarity-conversation-route]]:min-h-0 max-md:has-[[data-clarity-conversation-route]]:flex-col max-md:has-[[data-clarity-conversation-route]]:overflow-hidden"
           }
         >
           <header
@@ -105,7 +105,7 @@ export function AppShell({
                     hideBottomNavigation
                       ? "pb-[max(1.5rem,env(safe-area-inset-bottom))]"
                       : "pb-[calc(6.5rem+env(safe-area-inset-bottom))]"
-                  }`
+                  } max-md:has-[[data-clarity-conversation-route]]:flex max-md:has-[[data-clarity-conversation-route]]:min-h-0 max-md:has-[[data-clarity-conversation-route]]:flex-1 max-md:has-[[data-clarity-conversation-route]]:flex-col max-md:has-[[data-clarity-conversation-route]]:overflow-hidden`
             }
           >
             {children}
