@@ -39,7 +39,7 @@ export function AppShell({
       return next;
     });
   }, []);
-  const navigationHidden = hideBottomNavigation || activeEditorIds.size > 0;
+  const editorNavigationHidden = activeEditorIds.size > 0;
   const brandClassName =
     "flex items-center gap-2 rounded-lg text-lg font-semibold tracking-[-0.03em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
   const brand = (
@@ -97,12 +97,12 @@ export function AppShell({
             className={
               contained
                 ? `min-h-0 w-full min-w-0 max-w-full flex-1 overflow-y-auto overscroll-contain px-4 pt-5 ${
-                    navigationHidden
+                    hideBottomNavigation
                       ? "pb-[max(1.5rem,env(safe-area-inset-bottom))]"
                       : "pb-[calc(6.5rem+env(safe-area-inset-bottom))]"
                   }`
                 : `w-full min-w-0 max-w-full px-4 pt-5 sm:px-5 sm:pt-7 ${
-                    navigationHidden
+                    hideBottomNavigation
                       ? "pb-[max(1.5rem,env(safe-area-inset-bottom))]"
                       : "pb-[calc(6.5rem+env(safe-area-inset-bottom))]"
                   }`
@@ -110,11 +110,12 @@ export function AppShell({
           >
             {children}
           </main>
-          {!navigationHidden && (
+          {!hideBottomNavigation && (
             <Suspense fallback={null}>
               <BottomNavigation
                 contained={contained}
                 allowNavigation={allowProductNavigation}
+                hidden={editorNavigationHidden}
               />
             </Suspense>
           )}

@@ -191,8 +191,10 @@ function readLayoutSnapshot() {
       activeRegion: focusedRegion(),
       textareaFocused: document.activeElement === textarea,
       keyboardActive: panel?.dataset.clarityKeyboardOpen === "true",
+      keyboardPhase: panel?.dataset.clarityKeyboardPhase ?? "unknown",
       editorActive: panel?.dataset.clarityEditorActive === "true",
-      bottomNavHidden: !bottomNav,
+      bottomNavHidden:
+        !bottomNav || bottomNav.getAttribute("aria-hidden") === "true",
     },
     composerGuardInstalled:
       textarea?.dataset.clarityComposerGuardInstalled === "true",

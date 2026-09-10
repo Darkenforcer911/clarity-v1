@@ -7,9 +7,11 @@ import { usePathname } from "next/navigation";
 export function BottomNavigation({
   contained = false,
   allowNavigation = true,
+  hidden = false,
 }: {
   contained?: boolean;
   allowNavigation?: boolean;
+  hidden?: boolean;
 }) {
   const pathname = usePathname();
   const itemClassName =
@@ -24,8 +26,14 @@ export function BottomNavigation({
   return (
     <nav
       aria-label="Primary"
-      className={`inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[480px] border-x-0 border-t border-border bg-card px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 ${
+      aria-hidden={hidden || undefined}
+      inert={hidden || undefined}
+      className={`inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[480px] border-x-0 border-t border-border bg-card px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 transition-[opacity,transform] [transition-duration:180ms] ease-out ${
         contained ? "absolute" : "fixed min-[481px]:border-x"
+      } ${
+        hidden
+          ? "pointer-events-none translate-y-2 opacity-0"
+          : "translate-y-0 opacity-100"
       }`}
     >
       <div className="grid grid-cols-4 gap-1">

@@ -67,6 +67,7 @@ import {
   resolveClarityComposerTouch,
 } from "@/lib/clarity/ai/clarity-composer";
 import {
+  CLARITY_KEYBOARD_CLOSE_TRANSITION_MS,
   isClarityKeyboardOpen,
   resolveClarityKeyboardDismissalDelay,
   resolveClarityKeyboardPhase,
@@ -114,8 +115,9 @@ type PendingDictation = {
 
 type ConversationViewportLayout = {
   height: number | null;
-  keyboardOpen: boolean;
+  phase: "closed" | "open" | "closing";
   restingHeight: number | null;
+  restingTop: number | null;
   top: number;
 };
 
@@ -219,19 +221,22 @@ export function ClarityConversation({
   const [viewportLayout, setViewportLayout] =
     useState<ConversationViewportLayout>({
       height: null,
-      keyboardOpen: false,
+      phase: "closed",
       restingHeight: null,
+      restingTop: null,
       top: 0,
     });
-  const composerEditorActive =
-    composerFocused ||
+  const nonKeyboardComposerActive =
     addMenuOpen ||
     mediaBusy ||
     !["idle", "transcript_ready"].includes(dictationStatus);
+  const composerEditorActive = composerFocused || nonKeyboardComposerActive;
   // Form focus controls editing; measured viewport geometry owns keyboard layout.
-  const mobileComposerActive = mobileViewport && (
-    composerEditorActive || viewportLayout.keyboardOpen
-  );
+  const mobileComposerActive =
+    mobileViewport &&
+    (nonKeyboardComposerActive ||
+      (viewportLayout.phase !== "closing" &&
+        (composerFocused || viewportLayout.phase === "open")));
   useAppShellEditorState(mobileComposerActive);
 
   useEffect(() => {
@@ -363,8 +368,9 @@ export function ClarityConversation({
     );
     setViewportLayout({
       height: resolved.height,
-      keyboardOpen: false,
+      phase: "closed",
       restingHeight: resolved.height,
+      restingTop: resolved.top,
       top: resolved.top,
     });
   }, [mobileViewport]);
@@ -380,6 +386,15 @@ export function ClarityConversation({
     keyboardDismissalPendingRef.current = true;
     const observedAt = window.performance.now();
     keyboardDismissalStartedAtRef.current ??= observedAt;
+    setViewportLayout((current) => {
+      if (current.phase === "closing") return current;
+      return {
+        ...current,
+        height: current.restingHeight ?? current.height,
+        phase: "closing",
+        top: current.restingTop ?? current.top,
+      };
+    });
 
     const scheduleFrame = (callback: () => void) => {
       const frame = window.requestAnimationFrame(() => {
@@ -446,32 +461,18 @@ export function ClarityConversation({
                 return;
               }
               const host = conversationHostRef.current;
-              const visualViewport = window.visualViewport;
               if (!host) {
                 abandonDismissal();
                 return;
               }
-              const visibleHeight =
-                visualViewport?.height ?? window.innerHeight;
-              const visibleOffsetTop = visualViewport?.offsetTop ?? 0;
-              const visibleBottom = visibleOffsetTop + visibleHeight;
-              const hostTop = host.getBoundingClientRect().top;
 
-              // Keep the last valid resting height while the shell restores its nav.
+              // Confirmation changes state only; closing already owns the geometry.
               setViewportLayout((current) => {
-                const availableHeight = Math.max(
-                  1,
-                  Math.floor(visibleBottom - hostTop),
-                );
-                const restoredHeight = Math.min(
-                  current.restingHeight ?? availableHeight,
-                  availableHeight,
-                );
                 return {
-                  height: restoredHeight,
-                  keyboardOpen: false,
-                  restingHeight: restoredHeight,
-                  top: hostTop,
+                  ...current,
+                  height: current.restingHeight ?? current.height,
+                  phase: "closed",
+                  top: current.restingTop ?? current.top,
                 };
               });
               keyboardWasOpenRef.current = false;
@@ -539,21 +540,28 @@ export function ClarityConversation({
     });
 
     setViewportLayout((current) => {
-      const restingHeight = keyboardOpen || composerEditorActive
+      const preserveRestingGeometry = keyboardOpen || composerEditorActive;
+      const restingHeight = preserveRestingGeometry
         ? (current.restingHeight ?? resolved.height)
         : resolved.height;
+      const restingTop = preserveRestingGeometry
+        ? (current.restingTop ?? current.top)
+        : resolved.top;
+      const phase = keyboardOpen ? "open" : "closed";
       if (
         current.height === resolved.height &&
-        current.keyboardOpen === keyboardOpen &&
+        current.phase === phase &&
         current.restingHeight === restingHeight &&
+        current.restingTop === restingTop &&
         current.top === resolved.top
       ) {
         return current;
       }
       return {
         height: resolved.height,
-        keyboardOpen,
+        phase,
         restingHeight,
+        restingTop,
         top: resolved.top,
       };
     });
@@ -1359,6 +1367,10 @@ export function ClarityConversation({
         left: "max(calc(1rem + env(safe-area-inset-left)), calc((100vw - 480px) / 2 + 1rem))",
         right: "max(calc(1rem + env(safe-area-inset-right)), calc((100vw - 480px) / 2 + 1rem))",
         top: `${viewportLayout.top}px`,
+        transition:
+          viewportLayout.phase === "closing"
+            ? `top ${CLARITY_KEYBOARD_CLOSE_TRANSITION_MS}ms ease-out, height ${CLARITY_KEYBOARD_CLOSE_TRANSITION_MS}ms ease-out`
+            : "none",
       }
     : undefined;
   const draftViewerImages = draftMedia
@@ -1377,14 +1389,15 @@ export function ClarityConversation({
     >
       <div
         data-clarity-conversation-panel
-        data-clarity-keyboard-open={viewportLayout.keyboardOpen || undefined}
+        data-clarity-keyboard-open={viewportLayout.phase === "open" || undefined}
+        data-clarity-keyboard-phase={viewportLayout.phase}
         data-clarity-editor-active={mobileComposerActive || undefined}
         className={`flex min-w-0 flex-col bg-background ${
           mobilePanelReady
-            ? `fixed ${viewportLayout.keyboardOpen ? "z-50" : "z-30"}`
+            ? `fixed ${viewportLayout.phase === "open" ? "z-50" : "z-30"}`
             : "h-full"
         } ${
-          mobileComposerActive && !viewportLayout.keyboardOpen
+          mobileComposerActive && viewportLayout.phase !== "open"
             ? "pb-[env(safe-area-inset-bottom)]"
             : ""
         }`}
