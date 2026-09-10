@@ -166,6 +166,7 @@ export function ClarityConversation({
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recorderStreamRef = useRef<MediaStream | null>(null);
   const recorderChunksRef = useRef<Blob[]>([]);
+  const dictationDraftPositionPendingRef = useRef(false);
   const activeRecordingStartedAtRef = useRef(0);
   const recordedDurationMsRef = useRef(0);
   const cancelRecordingRef = useRef(false);
@@ -218,6 +219,8 @@ export function ClarityConversation({
   const [composerFocused, setComposerFocused] = useState(false);
   const [layoutDebugActive, setLayoutDebugActive] = useState(layoutDebug);
   const [mobileViewport, setMobileViewport] = useState(false);
+  const [initialMobileLayoutReady, setInitialMobileLayoutReady] =
+    useState(false);
   const [viewportLayout, setViewportLayout] =
     useState<ConversationViewportLayout>({
       height: null,
@@ -526,8 +529,8 @@ export function ClarityConversation({
     const navigation = document.querySelector<HTMLElement>(
       'nav[aria-label="Primary"]',
     );
-    if (!keyboardOpen && !composerEditorActive && !navigation) return;
-    const navigationTop = keyboardOpen || composerEditorActive
+    if (!keyboardOpen && !nonKeyboardComposerActive && !navigation) return;
+    const navigationTop = keyboardOpen || nonKeyboardComposerActive
       ? null
       : navigation?.getBoundingClientRect().top ?? null;
     const resolved = resolveClarityConversationViewport({
@@ -578,11 +581,15 @@ export function ClarityConversation({
     cancelKeyboardDismissal,
     composerEditorActive,
     mobileViewport,
+    nonKeyboardComposerActive,
   ]);
 
   useLayoutEffect(() => {
     const query = window.matchMedia("(max-width: 767px)");
-    const update = () => setMobileViewport(query.matches);
+    const update = () => {
+      setMobileViewport(query.matches);
+      if (!query.matches) setInitialMobileLayoutReady(false);
+    };
     update();
     query.addEventListener("change", update);
     return () => query.removeEventListener("change", update);
@@ -628,20 +635,34 @@ export function ClarityConversation({
   }, [updateConversationViewport]);
 
   useLayoutEffect(() => {
+    if (!mobileViewport) return;
     updateConversationViewport();
     const firstFrame = window.requestAnimationFrame(updateConversationViewport);
-    const secondFrame = window.requestAnimationFrame(() =>
-      window.requestAnimationFrame(updateConversationViewport),
-    );
+    let finalFrame: number | null = null;
+    const secondFrame = window.requestAnimationFrame(() => {
+      finalFrame = window.requestAnimationFrame(() => {
+        updateConversationViewport();
+        setInitialMobileLayoutReady(true);
+      });
+    });
     return () => {
       window.cancelAnimationFrame(firstFrame);
       window.cancelAnimationFrame(secondFrame);
+      if (finalFrame !== null) window.cancelAnimationFrame(finalFrame);
     };
-  }, [updateConversationViewport]);
+  }, [mobileViewport, updateConversationViewport]);
 
   useLayoutEffect(() => {
-    resizeComposerTextarea(composerTextareaRef.current);
-  }, [message, attachment]);
+    const textarea = composerTextareaRef.current;
+    resizeComposerTextarea(textarea);
+    if (!textarea || !dictationDraftPositionPendingRef.current) return;
+
+    dictationDraftPositionPendingRef.current = false;
+    const end = textarea.value.length;
+    textarea.focus({ preventScroll: true });
+    textarea.setSelectionRange(end, end);
+    textarea.scrollTop = textarea.scrollHeight;
+  }, [message, attachment, dictationStatus]);
 
   useEffect(() => {
     const composer = composerFormRef.current;
@@ -1260,6 +1281,7 @@ export function ClarityConversation({
       if (!result.transcript) {
         throw new Error(result.error ?? "Transcription failed.");
       }
+      dictationDraftPositionPendingRef.current = true;
       setMessage((current) =>
         appendDictationTranscript(current, result.transcript),
       );
@@ -1360,7 +1382,10 @@ export function ClarityConversation({
   const mobileHostStyle = mobileViewport && viewportLayout.restingHeight
     ? { height: `${viewportLayout.restingHeight}px` }
     : undefined;
-  const mobilePanelReady = mobileViewport && viewportLayout.height !== null;
+  const mobilePanelReady =
+    mobileViewport &&
+    initialMobileLayoutReady &&
+    viewportLayout.height !== null;
   const conversationPanelStyle = mobilePanelReady
     ? {
         height: `${viewportLayout.height}px`,
@@ -1396,6 +1421,8 @@ export function ClarityConversation({
           mobilePanelReady
             ? `fixed ${viewportLayout.phase === "open" ? "z-50" : "z-30"}`
             : "h-full"
+        } ${
+          initialMobileLayoutReady ? "" : "max-md:invisible"
         } ${
           mobileComposerActive && viewportLayout.phase !== "open"
             ? "pb-[env(safe-area-inset-bottom)]"
