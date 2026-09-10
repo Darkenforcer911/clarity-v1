@@ -67,8 +67,11 @@ import {
   resolveClarityComposerTouch,
 } from "@/lib/clarity/ai/clarity-composer";
 import {
+  clarityConversationBottom,
+  type ClarityInitialConversationSnapshot,
   CLARITY_KEYBOARD_CLOSE_TRANSITION_MS,
   isClarityKeyboardOpen,
+  resolveClarityInitialConversationFrame,
   resolveClarityKeyboardDismissalDelay,
   resolveClarityKeyboardPhase,
   resolveClarityConversationViewport,
@@ -199,9 +202,14 @@ export function ClarityConversation({
   const conversationHostRef = useRef<HTMLDivElement>(null);
   const conversationScrollRef = useRef<HTMLDivElement>(null);
   const historyComposerGapRef = useRef<HTMLDivElement>(null);
+  const conversationPanelRef = useRef<HTMLDivElement>(null);
   const layoutDebugTapTimesRef = useRef<number[]>([]);
   const viewerScrollTopRef = useRef<number | null>(null);
   const initialPositionedRef = useRef(false);
+  const initialConversationFrameRef = useRef<number | null>(null);
+  const initialConversationSnapshotRef =
+    useRef<ClarityInitialConversationSnapshot | null>(null);
+  const initialConversationStableFramesRef = useRef(0);
   const scrollAfterSendMessageCountRef = useRef<number | null>(null);
   const baselineViewportHeightRef = useRef(0);
   const keyboardWasOpenRef = useRef(false);
@@ -323,7 +331,10 @@ export function ClarityConversation({
   const scrollConversationToBottom = useCallback(() => {
     const scroll = conversationScrollRef.current;
     if (!scroll) return;
-    scroll.scrollTop = scroll.scrollHeight;
+    scroll.scrollTop = clarityConversationBottom({
+      clientHeight: scroll.clientHeight,
+      scrollHeight: scroll.scrollHeight,
+    });
   }, []);
 
   const cancelKeyboardDismissal = useCallback(() => {
@@ -1034,32 +1045,101 @@ export function ClarityConversation({
   }, [dictationStatus, layoutDebugActive]);
 
   useLayoutEffect(() => {
-    if (!initialPositionedRef.current) {
-      const requiresMeasuredMobileLayout = window.matchMedia(
-        "(max-width: 767px)",
-      ).matches;
-      if (
-        requiresMeasuredMobileLayout &&
-        (!initialMobileLayoutReady || viewportLayout.height === null)
-      ) {
-        return;
-      }
+    if (initialPositionedRef.current) return;
+    const requiresMeasuredMobileLayout = window.matchMedia(
+      "(max-width: 767px)",
+    ).matches;
+    if (!requiresMeasuredMobileLayout) {
       initialPositionedRef.current = true;
       scrollConversationToBottom();
-      queueMicrotask(() => setInitialConversationReady(true));
       return;
     }
+    if (!initialMobileLayoutReady || viewportLayout.height === null) return;
+
+    let disposed = false;
+    const verifyInitialConversation = () => {
+      initialConversationFrameRef.current = null;
+      if (disposed || initialPositionedRef.current) return;
+
+      const host = conversationHostRef.current;
+      const panel = conversationPanelRef.current;
+      const history = conversationScrollRef.current;
+      const header = document.querySelector<HTMLElement>(
+        "[data-app-shell-header]",
+      );
+      const navigation = document.querySelector<HTMLElement>(
+        'nav[aria-label="Primary"]',
+      );
+      if (!host || !panel || !history || !header || !navigation) {
+        initialConversationFrameRef.current =
+          window.requestAnimationFrame(verifyInitialConversation);
+        return;
+      }
+
+      const bottom = clarityConversationBottom({
+        clientHeight: history.clientHeight,
+        scrollHeight: history.scrollHeight,
+      });
+      history.scrollTop = bottom;
+      const panelRect = panel.getBoundingClientRect();
+      const snapshot: ClarityInitialConversationSnapshot = {
+        headerBottom: header.getBoundingClientRect().bottom,
+        historyClientHeight: history.clientHeight,
+        historyScrollHeight: history.scrollHeight,
+        hostTop: host.getBoundingClientRect().top,
+        navigationTop: navigation.getBoundingClientRect().top,
+        panelHeight: panelRect.height,
+        panelTop: panelRect.top,
+      };
+      const imagesReady = Array.from(history.querySelectorAll("img")).every(
+        (image) => image.complete,
+      );
+      const fontsReady =
+        !("fonts" in document) || document.fonts.status === "loaded";
+      const frame = resolveClarityInitialConversationFrame({
+        contentReady: imagesReady && fontsReady,
+        current: snapshot,
+        positionedAtBottom: Math.abs(history.scrollTop - bottom) < 1,
+        previous: initialConversationSnapshotRef.current,
+        stableFrames: initialConversationStableFramesRef.current,
+      });
+      initialConversationSnapshotRef.current = snapshot;
+      initialConversationStableFramesRef.current = frame.stableFrames;
+
+      if (frame.ready) {
+        initialPositionedRef.current = true;
+        queueMicrotask(() => {
+          if (!disposed) setInitialConversationReady(true);
+        });
+        return;
+      }
+      initialConversationFrameRef.current =
+        window.requestAnimationFrame(verifyInitialConversation);
+    };
+
+    initialConversationFrameRef.current =
+      window.requestAnimationFrame(verifyInitialConversation);
+    return () => {
+      disposed = true;
+      if (initialConversationFrameRef.current !== null) {
+        window.cancelAnimationFrame(initialConversationFrameRef.current);
+        initialConversationFrameRef.current = null;
+      }
+    };
+  }, [
+    initialMobileLayoutReady,
+    scrollConversationToBottom,
+    viewportLayout.height,
+  ]);
+
+  useLayoutEffect(() => {
+    if (!initialPositionedRef.current) return;
     const sentFromCount = scrollAfterSendMessageCountRef.current;
     if (sentFromCount !== null && messages.length > sentFromCount) {
       scrollAfterSendMessageCountRef.current = null;
       scrollConversationToBottom();
     }
-  }, [
-    initialMobileLayoutReady,
-    messages,
-    scrollConversationToBottom,
-    viewportLayout.height,
-  ]);
+  }, [messages, scrollConversationToBottom]);
 
   useEffect(() => {
     if (incomingAttachmentKey === previousIncomingAttachmentKey.current) return;
@@ -1430,6 +1510,7 @@ export function ClarityConversation({
       style={mobileHostStyle}
     >
       <div
+        ref={conversationPanelRef}
         data-clarity-conversation-panel
         data-clarity-keyboard-open={viewportLayout.phase === "open" || undefined}
         data-clarity-keyboard-phase={viewportLayout.phase}
