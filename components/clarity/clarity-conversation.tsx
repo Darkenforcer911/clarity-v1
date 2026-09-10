@@ -67,8 +67,8 @@ import {
   resolveClarityComposerTouch,
 } from "@/lib/clarity/ai/clarity-composer";
 import {
-  CLARITY_KEYBOARD_DISMISS_SETTLE_MS,
   isClarityKeyboardOpen,
+  resolveClarityKeyboardDismissalDelay,
   resolveClarityKeyboardPhase,
   resolveClarityConversationViewport,
 } from "@/lib/clarity/ai/clarity-chat-layout";
@@ -205,6 +205,7 @@ export function ClarityConversation({
   const keyboardDismissalPendingRef = useRef(false);
   const keyboardDismissalFramesRef = useRef<number[]>([]);
   const keyboardDismissalSettleTimerRef = useRef<number | null>(null);
+  const keyboardDismissalStartedAtRef = useRef<number | null>(null);
   const documentBaselineNormalizedRef = useRef(false);
   const preComposerDocumentScrollRef = useRef<{
     left: number;
@@ -325,6 +326,7 @@ export function ClarityConversation({
     );
     keyboardDismissalFramesRef.current = [];
     keyboardDismissalPendingRef.current = false;
+    keyboardDismissalStartedAtRef.current = null;
   }, []);
 
   const measureSettledNormalViewport = useCallback(() => {
@@ -376,6 +378,8 @@ export function ClarityConversation({
     );
     keyboardDismissalFramesRef.current = [];
     keyboardDismissalPendingRef.current = true;
+    const observedAt = window.performance.now();
+    keyboardDismissalStartedAtRef.current ??= observedAt;
 
     const scheduleFrame = (callback: () => void) => {
       const frame = window.requestAnimationFrame(() => {
@@ -396,7 +400,17 @@ export function ClarityConversation({
     };
     const abandonDismissal = () => {
       keyboardDismissalPendingRef.current = false;
+      keyboardDismissalStartedAtRef.current = null;
     };
+
+    const visualViewport = window.visualViewport;
+    const settleDelay = resolveClarityKeyboardDismissalDelay({
+      dismissalStartedAt: keyboardDismissalStartedAtRef.current,
+      observedAt,
+      baselineHeight: baselineViewportHeightRef.current,
+      visibleHeight: visualViewport?.height ?? window.innerHeight,
+      visibleOffsetTop: visualViewport?.offsetTop ?? 0,
+    });
 
     keyboardDismissalSettleTimerRef.current = window.setTimeout(() => {
       keyboardDismissalSettleTimerRef.current = null;
@@ -462,6 +476,7 @@ export function ClarityConversation({
               });
               keyboardWasOpenRef.current = false;
               keyboardDismissalPendingRef.current = false;
+              keyboardDismissalStartedAtRef.current = null;
               preComposerDocumentScrollRef.current = null;
               if (document.activeElement === composerTextareaRef.current) {
                 composerTextareaRef.current?.blur();
@@ -474,7 +489,7 @@ export function ClarityConversation({
           });
         });
       });
-    }, CLARITY_KEYBOARD_DISMISS_SETTLE_MS);
+    }, settleDelay);
   }, [measureSettledNormalViewport]);
 
   const updateConversationViewport = useCallback(() => {
