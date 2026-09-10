@@ -67,6 +67,7 @@ import {
   resolveClarityComposerTouch,
 } from "@/lib/clarity/ai/clarity-composer";
 import {
+  CLARITY_KEYBOARD_DISMISS_SETTLE_MS,
   isClarityKeyboardOpen,
   resolveClarityKeyboardPhase,
   resolveClarityConversationViewport,
@@ -203,6 +204,7 @@ export function ClarityConversation({
   const keyboardWasOpenRef = useRef(false);
   const keyboardDismissalPendingRef = useRef(false);
   const keyboardDismissalFramesRef = useRef<number[]>([]);
+  const keyboardDismissalSettleTimerRef = useRef<number | null>(null);
   const documentBaselineNormalizedRef = useRef(false);
   const preComposerDocumentScrollRef = useRef<{
     left: number;
@@ -314,6 +316,10 @@ export function ClarityConversation({
   }, []);
 
   const cancelKeyboardDismissal = useCallback(() => {
+    if (keyboardDismissalSettleTimerRef.current !== null) {
+      window.clearTimeout(keyboardDismissalSettleTimerRef.current);
+      keyboardDismissalSettleTimerRef.current = null;
+    }
     keyboardDismissalFramesRef.current.forEach((frame) =>
       window.cancelAnimationFrame(frame),
     );
@@ -362,7 +368,13 @@ export function ClarityConversation({
   }, [mobileViewport]);
 
   const beginKeyboardDismissal = useCallback(() => {
-    if (keyboardDismissalPendingRef.current) return;
+    if (keyboardDismissalSettleTimerRef.current !== null) {
+      window.clearTimeout(keyboardDismissalSettleTimerRef.current);
+    }
+    keyboardDismissalFramesRef.current.forEach((frame) =>
+      window.cancelAnimationFrame(frame),
+    );
+    keyboardDismissalFramesRef.current = [];
     keyboardDismissalPendingRef.current = true;
 
     const scheduleFrame = (callback: () => void) => {
@@ -386,79 +398,83 @@ export function ClarityConversation({
       keyboardDismissalPendingRef.current = false;
     };
 
-    // Require two closed-viewport frames before leaving keyboard layout.
-    scheduleFrame(() => {
-      if (viewportStillShowsKeyboard()) {
-        abandonDismissal();
-        return;
-      }
+    keyboardDismissalSettleTimerRef.current = window.setTimeout(() => {
+      keyboardDismissalSettleTimerRef.current = null;
+
+      // Require two closed-viewport frames after WebKit's resize pulses settle.
       scheduleFrame(() => {
         if (viewportStillShowsKeyboard()) {
           abandonDismissal();
           return;
         }
-
-        const savedScroll = preComposerDocumentScrollRef.current;
-        if (savedScroll && !documentScrollRestoredRef.current) {
-          // iOS may scroll the document to focus a fixed composer. Undo it once.
-          documentScrollRestoredRef.current = true;
-          if (
-            Math.abs(window.scrollX - savedScroll.left) >= 1 ||
-            Math.abs(window.scrollY - savedScroll.top) >= 1
-          ) {
-            window.scrollTo(savedScroll.left, savedScroll.top);
-          }
-        }
-
         scheduleFrame(() => {
+          if (viewportStillShowsKeyboard()) {
+            abandonDismissal();
+            return;
+          }
+
+          const savedScroll = preComposerDocumentScrollRef.current;
+          if (savedScroll && !documentScrollRestoredRef.current) {
+            // iOS may scroll the document to focus a fixed composer. Undo it once.
+            documentScrollRestoredRef.current = true;
+            if (
+              Math.abs(window.scrollX - savedScroll.left) >= 1 ||
+              Math.abs(window.scrollY - savedScroll.top) >= 1
+            ) {
+              window.scrollTo(savedScroll.left, savedScroll.top);
+            }
+          }
+
           scheduleFrame(() => {
-            if (viewportStillShowsKeyboard()) {
-              abandonDismissal();
-              return;
-            }
-            const host = conversationHostRef.current;
-            const visualViewport = window.visualViewport;
-            if (!host) {
-              abandonDismissal();
-              return;
-            }
-            const visibleHeight =
-              visualViewport?.height ?? window.innerHeight;
-            const visibleOffsetTop = visualViewport?.offsetTop ?? 0;
-            const visibleBottom = visibleOffsetTop + visibleHeight;
-            const hostTop = host.getBoundingClientRect().top;
-
-            // Keep the last valid resting height while the shell restores its nav.
-            setViewportLayout((current) => {
-              const availableHeight = Math.max(
-                1,
-                Math.floor(visibleBottom - hostTop),
-              );
-              const restoredHeight = Math.min(
-                current.restingHeight ?? availableHeight,
-                availableHeight,
-              );
-              return {
-                height: restoredHeight,
-                keyboardOpen: false,
-                restingHeight: restoredHeight,
-                top: hostTop,
-              };
-            });
-            keyboardWasOpenRef.current = false;
-            keyboardDismissalPendingRef.current = false;
-            preComposerDocumentScrollRef.current = null;
-            if (document.activeElement === composerTextareaRef.current) {
-              composerTextareaRef.current?.blur();
-            }
-
             scheduleFrame(() => {
-              scheduleFrame(measureSettledNormalViewport);
+              if (viewportStillShowsKeyboard()) {
+                abandonDismissal();
+                return;
+              }
+              const host = conversationHostRef.current;
+              const visualViewport = window.visualViewport;
+              if (!host) {
+                abandonDismissal();
+                return;
+              }
+              const visibleHeight =
+                visualViewport?.height ?? window.innerHeight;
+              const visibleOffsetTop = visualViewport?.offsetTop ?? 0;
+              const visibleBottom = visibleOffsetTop + visibleHeight;
+              const hostTop = host.getBoundingClientRect().top;
+
+              // Keep the last valid resting height while the shell restores its nav.
+              setViewportLayout((current) => {
+                const availableHeight = Math.max(
+                  1,
+                  Math.floor(visibleBottom - hostTop),
+                );
+                const restoredHeight = Math.min(
+                  current.restingHeight ?? availableHeight,
+                  availableHeight,
+                );
+                return {
+                  height: restoredHeight,
+                  keyboardOpen: false,
+                  restingHeight: restoredHeight,
+                  top: hostTop,
+                };
+              });
+              keyboardWasOpenRef.current = false;
+              keyboardDismissalPendingRef.current = false;
+              preComposerDocumentScrollRef.current = null;
+              if (document.activeElement === composerTextareaRef.current) {
+                composerTextareaRef.current?.blur();
+              }
+
+              scheduleFrame(() => {
+                scheduleFrame(measureSettledNormalViewport);
+              });
             });
           });
         });
       });
-    });
+    }, CLARITY_KEYBOARD_DISMISS_SETTLE_MS);
   }, [measureSettledNormalViewport]);
 
   const updateConversationViewport = useCallback(() => {

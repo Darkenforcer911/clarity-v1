@@ -1,5 +1,6 @@
 export const CLARITY_KEYBOARD_THRESHOLD_PX = 96;
 export const CLARITY_KEYBOARD_CLOSE_THRESHOLD_PX = 64;
+export const CLARITY_KEYBOARD_DISMISS_SETTLE_MS = 120;
 
 export function isClarityKeyboardOpen(input: {
   baselineHeight: number;
