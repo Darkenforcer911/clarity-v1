@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { Button } from "@/components/ui/button";
+import { observeClarityTouches } from "@/lib/clarity/ai/clarity-touch-diagnostics";
 
 export const CLARITY_COMPOSER_GUARD_DEBUG_EVENT =
   "clarity:composer-guard-debug";
@@ -434,6 +435,13 @@ export function ClarityLayoutDebug() {
       }
     };
   }, [capture]);
+
+  useEffect(() => {
+    if (!recording) return;
+    return observeClarityTouches(window, document, (event, detail) => {
+      if (recordingRef.current) capture(event, detail);
+    });
+  }, [capture, recording]);
 
   function startRecording() {
     sessionStartedAtRef.current = performance.now();
