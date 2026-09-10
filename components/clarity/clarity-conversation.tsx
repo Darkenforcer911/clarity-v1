@@ -75,6 +75,12 @@ import {
   preventClarityHistoryGestureDefault,
   resolveClarityHistoryGesture,
 } from "@/lib/clarity/ai/clarity-history-gesture";
+import {
+  CLARITY_LAYOUT_DEBUG_STORAGE_KEY,
+  isClarityStandaloneRuntime,
+  recordClarityLayoutDebugTap,
+  shouldEnableClarityLayoutDebug,
+} from "@/lib/clarity/ai/clarity-layout-debug-mode";
 import { normalizeClarityImageFile } from "@/lib/clarity/ai/clarity-image-normalization";
 import { normalizeClarityVisibleResponse } from "@/lib/clarity/ai/clarity-response-presentation";
 import {
@@ -189,6 +195,7 @@ export function ClarityConversation({
   const conversationHostRef = useRef<HTMLDivElement>(null);
   const conversationScrollRef = useRef<HTMLDivElement>(null);
   const historyComposerGapRef = useRef<HTMLDivElement>(null);
+  const layoutDebugTapTimesRef = useRef<number[]>([]);
   const viewerScrollTopRef = useRef<number | null>(null);
   const initialPositionedRef = useRef(false);
   const scrollAfterSendMessageCountRef = useRef<number | null>(null);
@@ -204,6 +211,7 @@ export function ClarityConversation({
   const documentScrollRestoredRef = useRef(false);
   const composerEditorActiveRef = useRef(false);
   const [composerFocused, setComposerFocused] = useState(false);
+  const [layoutDebugActive, setLayoutDebugActive] = useState(layoutDebug);
   const [mobileViewport, setMobileViewport] = useState(false);
   const [viewportLayout, setViewportLayout] =
     useState<ConversationViewportLayout>({
@@ -222,6 +230,78 @@ export function ClarityConversation({
     composerEditorActive || viewportLayout.keyboardOpen
   );
   useAppShellEditorState(mobileComposerActive);
+
+  useEffect(() => {
+    let disposed = false;
+    const standalone = isClarityStandaloneRuntime({
+      displayModeStandalone: window.matchMedia("(display-mode: standalone)").matches,
+      navigatorStandalone:
+        (window.navigator as Navigator & { standalone?: boolean }).standalone ===
+        true,
+    });
+    let persistedValue: string | null = null;
+    try {
+      persistedValue = window.localStorage.getItem(
+        CLARITY_LAYOUT_DEBUG_STORAGE_KEY,
+      );
+    } catch {
+      // Diagnostic activation can still work for the mounted PWA session.
+    }
+    if (
+      shouldEnableClarityLayoutDebug({
+        queryEnabled: layoutDebug,
+        standalone,
+        persistedValue,
+      })
+    ) {
+      queueMicrotask(() => {
+        if (!disposed) setLayoutDebugActive(true);
+      });
+    }
+    if (!standalone) {
+      return () => {
+        disposed = true;
+      };
+    }
+
+    const pageTitle = document.querySelector<HTMLElement>(
+      "[data-clarity-page-title]",
+    );
+    if (!pageTitle) {
+      return () => {
+        disposed = true;
+      };
+    }
+    const handleActivationTap = () => {
+      const next = recordClarityLayoutDebugTap(
+        layoutDebugTapTimesRef.current,
+        Date.now(),
+      );
+      layoutDebugTapTimesRef.current = next.timestamps;
+      if (!next.activate) return;
+      try {
+        window.localStorage.setItem(CLARITY_LAYOUT_DEBUG_STORAGE_KEY, "1");
+      } catch {
+        // The HUD still activates for the mounted PWA session.
+      }
+      setLayoutDebugActive(true);
+    };
+    pageTitle.addEventListener("click", handleActivationTap);
+    return () => {
+      disposed = true;
+      pageTitle.removeEventListener("click", handleActivationTap);
+    };
+  }, [layoutDebug]);
+
+  const disableLayoutDebug = useCallback(() => {
+    try {
+      window.localStorage.removeItem(CLARITY_LAYOUT_DEBUG_STORAGE_KEY);
+    } catch {
+      // The in-memory state can still be disabled.
+    }
+    layoutDebugTapTimesRef.current = [];
+    setLayoutDebugActive(false);
+  }, []);
 
   useLayoutEffect(() => {
     composerEditorActiveRef.current = composerEditorActive;
@@ -533,7 +613,7 @@ export function ClarityConversation({
       Array.from(touches).find((point) => point.identifier === identifier);
     const resetTouch = () => {
       const touch = composerTouchRef.current;
-      if (layoutDebug && touch) {
+      if (layoutDebugActive && touch) {
         window.dispatchEvent(
           new CustomEvent(CLARITY_COMPOSER_GUARD_DEBUG_EVENT, {
             detail: {
@@ -547,7 +627,7 @@ export function ClarityConversation({
         );
       }
       composerTouchRef.current = null;
-      if (layoutDebug) {
+      if (layoutDebugActive) {
         delete textarea.dataset.clarityComposerGuardInstalled;
       }
     };
@@ -560,7 +640,7 @@ export function ClarityConversation({
         event.touches.length === 1 &&
         event.touches[0]?.identifier === touch.identifier;
       if (event.touches.length !== 1 || !point) {
-        if (layoutDebug) {
+        if (layoutDebugActive) {
           window.dispatchEvent(
             new CustomEvent(CLARITY_COMPOSER_GUARD_DEBUG_EVENT, {
               detail: {
@@ -607,7 +687,7 @@ export function ClarityConversation({
         event,
         decision.contain,
       );
-      if (layoutDebug) {
+      if (layoutDebugActive) {
         window.dispatchEvent(
           new CustomEvent(CLARITY_COMPOSER_GUARD_DEBUG_EVENT, {
             detail: {
@@ -663,7 +743,7 @@ export function ClarityConversation({
         startY: point.clientY,
         lastY: point.clientY,
       };
-      if (layoutDebug) {
+      if (layoutDebugActive) {
         textarea.dataset.clarityComposerGuardInstalled = "true";
         window.dispatchEvent(
           new CustomEvent(CLARITY_COMPOSER_GUARD_DEBUG_EVENT, {
@@ -704,7 +784,7 @@ export function ClarityConversation({
       composer.removeEventListener("touchcancel", handleTouchEnd, true);
       resetTouch();
     };
-  }, [dictationStatus, layoutDebug]);
+  }, [dictationStatus, layoutDebugActive]);
 
   useEffect(() => {
     const history = conversationScrollRef.current;
@@ -718,7 +798,7 @@ export function ClarityConversation({
       phase: "touchstart" | "touchmove" | "touchend" | "touchcancel",
       detail: Record<string, boolean | number | string | null>,
     ) => {
-      if (!layoutDebug) return;
+      if (!layoutDebugActive) return;
       const viewport = window.visualViewport;
       window.dispatchEvent(
         new CustomEvent(CLARITY_HISTORY_GESTURE_DEBUG_EVENT, {
@@ -889,7 +969,7 @@ export function ClarityConversation({
       }
       resetHistoryTouch();
     };
-  }, [dictationStatus, layoutDebug]);
+  }, [dictationStatus, layoutDebugActive]);
 
   useLayoutEffect(() => {
     if (!initialPositionedRef.current) {
@@ -1578,7 +1658,9 @@ export function ClarityConversation({
           onClose={closeImageViewer}
         />
       )}
-      {layoutDebug && <ClarityLayoutDebug />}
+      {layoutDebugActive && (
+        <ClarityLayoutDebug onDisable={disableLayoutDebug} />
+      )}
     </div>
   );
 

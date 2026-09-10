@@ -199,7 +199,7 @@ function readLayoutSnapshot() {
   };
 }
 
-export function ClarityLayoutDebug() {
+export function ClarityLayoutDebug({ onDisable }: { onDisable: () => void }) {
   const entriesRef = useRef<TraceEntry[]>([]);
   const recordingRef = useRef(false);
   const sessionStartedAtRef = useRef(0);
@@ -623,6 +623,15 @@ export function ClarityLayoutDebug() {
                 Clear
               </Button>
             </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="w-full"
+              onClick={onDisable}
+            >
+              Disable debug
+            </Button>
             <p aria-live="polite" className="text-muted-foreground">
               {copyStatus === "copied"
                 ? "Trace copied."
