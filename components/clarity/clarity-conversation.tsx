@@ -1362,7 +1362,7 @@ export function ClarityConversation({
         <div
           ref={conversationScrollRef}
           data-clarity-conversation-scroll
-          className="min-h-0 min-w-0 flex-1 touch-pan-y space-y-3 overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]"
+          className="min-h-0 min-w-0 flex-1 touch-pan-y space-y-3 overflow-y-auto overscroll-y-none [-webkit-overflow-scrolling:touch]"
           aria-live="polite"
         >
           <div className="space-y-3">
