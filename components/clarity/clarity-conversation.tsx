@@ -1540,7 +1540,7 @@ export function ClarityConversation({
             onFocusCapture={handleComposerFocus}
             onBlurCapture={handleComposerBlur}
             noValidate
-            className="relative min-w-0 rounded-2xl border border-border bg-card p-2 shadow-sm transition-[border-color,background-color,box-shadow] duration-150 focus-within:border-primary/40 focus-within:bg-secondary/20 focus-within:ring-1 focus-within:ring-primary/10"
+            className="relative min-w-0 rounded-2xl border border-border bg-card p-2 shadow-sm"
           >
           <InvocationFields
             invocation={attachment?.invocation ?? GENERAL_INVOCATION}

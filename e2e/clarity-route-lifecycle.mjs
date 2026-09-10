@@ -182,27 +182,93 @@ test(
           "entry-only positioning must not override later manual scrolling",
         );
 
+        await cdp.evaluate(`(() => {
+          const textarea = document.querySelector(
+            "[data-clarity-composer-shell] textarea",
+          );
+          const setter = Object.getOwnPropertyDescriptor(
+            HTMLTextAreaElement.prototype,
+            "value",
+          ).set;
+          setter.call(
+            textarea,
+            ${JSON.stringify("Long composer text ".repeat(120))},
+          );
+          textarea.dispatchEvent(new Event("input", { bubbles: true }));
+          textarea.focus({ preventScroll: true });
+        })()`);
+        await cdp.waitFor(`(() => {
+          const textarea = document.querySelector(
+            "[data-clarity-composer-shell] textarea",
+          );
+          return textarea.scrollHeight > textarea.clientHeight &&
+            getComputedStyle(textarea).overflowY === "auto";
+        })()`);
         await setMobileViewport(cdp, 400);
         await cdp.waitFor(
           `document.querySelector("[data-clarity-conversation-panel]")?.dataset.clarityKeyboardPhase === "open"`,
         );
         const keyboard = await cdp.evaluate(`(() => {
           const dock = document.querySelector("[data-clarity-composer-dock]");
-          const rect = dock.getBoundingClientRect();
+          const shell = document.querySelector("[data-clarity-composer-shell]");
+          const textarea = shell.querySelector("textarea");
+          const dockRect = dock.getBoundingClientRect();
+          const shellRect = shell.getBoundingClientRect();
+          const textareaRect = textarea.getBoundingClientRect();
+          const shellStyle = getComputedStyle(shell);
+          const textareaStyle = getComputedStyle(textarea);
+          const visualTop = window.visualViewport.offsetTop;
+          const visualBottom = visualTop + window.visualViewport.height;
           return {
             innerHeight: window.innerHeight,
             visibleHeight: window.visualViewport.height,
             visibleOffsetTop: window.visualViewport.offsetTop,
-            top: rect.top,
-            bottom: rect.bottom,
-            height: rect.height,
+            visualTop,
+            visualBottom,
+            dockTop: dockRect.top,
+            dockBottom: dockRect.bottom,
+            shellTop: shellRect.top,
+            shellBottom: shellRect.bottom,
+            shellLeft: shellRect.left,
+            shellRight: shellRect.right,
+            shellBorderTopWidth: shellStyle.borderTopWidth,
+            shellBorderTopStyle: shellStyle.borderTopStyle,
+            shellBorderRadius: shellStyle.borderTopLeftRadius,
+            shellBackground: shellStyle.backgroundColor,
+            textareaTop: textareaRect.top,
+            textareaBottom: textareaRect.bottom,
+            textareaScrollTop: textarea.scrollTop,
+            textareaScrollHeight: textarea.scrollHeight,
+            textareaClientHeight: textarea.clientHeight,
+            textareaOverflowY: textareaStyle.overflowY,
           };
         })()`);
-        assert.ok(keyboard.top >= 0, JSON.stringify(keyboard));
         assert.ok(
-          keyboard.bottom <= keyboard.visibleHeight + 1,
+          keyboard.shellTop >= keyboard.visualTop,
           JSON.stringify(keyboard),
         );
+        assert.ok(
+          keyboard.shellBottom <= keyboard.visualBottom + 1,
+          JSON.stringify(keyboard),
+        );
+        assert.ok(
+          keyboard.textareaTop > keyboard.shellTop,
+          JSON.stringify(keyboard),
+        );
+        assert.ok(
+          keyboard.textareaBottom < keyboard.shellBottom,
+          JSON.stringify(keyboard),
+        );
+        assert.equal(keyboard.shellBorderTopWidth, "1px");
+        assert.equal(keyboard.shellBorderTopStyle, "solid");
+        assert.notEqual(keyboard.shellBorderRadius, "0px");
+        assert.notEqual(keyboard.shellBackground, "rgba(0, 0, 0, 0)");
+        assert.notEqual(keyboard.shellBackground, "transparent");
+        assert.ok(
+          keyboard.textareaScrollHeight > keyboard.textareaClientHeight,
+          JSON.stringify(keyboard),
+        );
+        assert.equal(keyboard.textareaOverflowY, "auto");
 
         console.log(
           JSON.stringify({ initial: first, returns, keyboard }, null, 2),
