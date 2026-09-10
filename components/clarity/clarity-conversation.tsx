@@ -188,6 +188,7 @@ export function ClarityConversation({
   } | null>(null);
   const conversationHostRef = useRef<HTMLDivElement>(null);
   const conversationScrollRef = useRef<HTMLDivElement>(null);
+  const historyComposerGapRef = useRef<HTMLDivElement>(null);
   const viewerScrollTopRef = useRef<number | null>(null);
   const initialPositionedRef = useRef(false);
   const scrollAfterSendMessageCountRef = useRef<number | null>(null);
@@ -707,8 +708,9 @@ export function ClarityConversation({
 
   useEffect(() => {
     const history = conversationScrollRef.current;
+    const historyComposerGap = historyComposerGapRef.current;
     const textarea = composerTextareaRef.current;
-    if (!history || !textarea) return;
+    if (!history || !historyComposerGap || !textarea) return;
 
     const findTouch = (touches: TouchList, identifier: number) =>
       Array.from(touches).find((point) => point.identifier === identifier);
@@ -858,28 +860,33 @@ export function ClarityConversation({
       resetHistoryTouch();
     };
 
-    history.addEventListener("touchstart", handleHistoryTouchStart, {
-      passive: true,
-      capture: true,
-    });
-    history.addEventListener("touchmove", handleHistoryTouchMove, {
-      passive: false,
-      capture: true,
-    });
-    history.addEventListener("touchend", handleHistoryTouchEnd, {
-      passive: true,
-      capture: true,
-    });
-    history.addEventListener("touchcancel", handleHistoryTouchEnd, {
-      passive: true,
-      capture: true,
-    });
+    const gestureTargets = [history, historyComposerGap];
+    for (const target of gestureTargets) {
+      target.addEventListener("touchstart", handleHistoryTouchStart, {
+        passive: true,
+        capture: true,
+      });
+      target.addEventListener("touchmove", handleHistoryTouchMove, {
+        passive: false,
+        capture: true,
+      });
+      target.addEventListener("touchend", handleHistoryTouchEnd, {
+        passive: true,
+        capture: true,
+      });
+      target.addEventListener("touchcancel", handleHistoryTouchEnd, {
+        passive: true,
+        capture: true,
+      });
+    }
 
     return () => {
-      history.removeEventListener("touchstart", handleHistoryTouchStart, true);
-      history.removeEventListener("touchmove", handleHistoryTouchMove, true);
-      history.removeEventListener("touchend", handleHistoryTouchEnd, true);
-      history.removeEventListener("touchcancel", handleHistoryTouchEnd, true);
+      for (const target of gestureTargets) {
+        target.removeEventListener("touchstart", handleHistoryTouchStart, true);
+        target.removeEventListener("touchmove", handleHistoryTouchMove, true);
+        target.removeEventListener("touchend", handleHistoryTouchEnd, true);
+        target.removeEventListener("touchcancel", handleHistoryTouchEnd, true);
+      }
       resetHistoryTouch();
     };
   }, [dictationStatus, layoutDebug]);
@@ -1261,7 +1268,7 @@ export function ClarityConversation({
         data-clarity-conversation-panel
         data-clarity-keyboard-open={viewportLayout.keyboardOpen || undefined}
         data-clarity-editor-active={mobileComposerActive || undefined}
-        className={`flex min-w-0 flex-col gap-4 bg-background ${
+        className={`flex min-w-0 flex-col bg-background ${
           mobilePanelReady
             ? `fixed ${viewportLayout.keyboardOpen ? "z-50" : "z-30"}`
             : "h-full"
@@ -1302,7 +1309,14 @@ export function ClarityConversation({
           </div>
         </div>
 
-        <div className="min-w-0 shrink-0 space-y-2 bg-background/95 pt-2 backdrop-blur">
+        <div
+          ref={historyComposerGapRef}
+          data-clarity-history-composer-gap
+          className="h-6 min-h-6 shrink-0 touch-pan-y"
+          aria-hidden="true"
+        />
+
+        <div className="min-w-0 shrink-0 space-y-2 bg-background/95 backdrop-blur">
           {(state.error || state.fieldError || mediaError) && (
             <div
               role="alert"
