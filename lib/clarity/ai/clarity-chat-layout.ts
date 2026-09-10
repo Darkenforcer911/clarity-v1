@@ -2,9 +2,9 @@ export const CLARITY_KEYBOARD_THRESHOLD_PX = 96;
 export const CLARITY_KEYBOARD_CLOSE_THRESHOLD_PX = 64;
 export const CLARITY_KEYBOARD_DISMISS_SETTLE_MS = 120;
 export const CLARITY_KEYBOARD_DISMISS_FALLBACK_MS = 450;
-export const CLARITY_KEYBOARD_CLOSE_TRANSITION_MS = 180;
 export const CLARITY_VIEWPORT_RESTING_HEIGHT_TOLERANCE_PX = 8;
 export const CLARITY_VIEWPORT_RESTING_OFFSET_TOLERANCE_PX = 1;
+export const CLARITY_HISTORY_GEOMETRY_TOLERANCE_PX = 1;
 
 export function clarityConversationBottom(input: {
   clientHeight: number;
@@ -13,19 +13,62 @@ export function clarityConversationBottom(input: {
   return Math.max(0, input.scrollHeight - input.clientHeight);
 }
 
-export function resolveClarityClosedFlowTarget(input: {
-  currentDocumentScrollTop: number;
-  hostHeight: number;
-  hostTop: number;
-  restingDocumentScrollTop: number;
+export type ClarityHistoryGeometry = {
+  clientHeight: number;
+  contentHeight: number;
+  scrollHeight: number;
+};
+
+export function resolveClarityInitialHistoryMeasurement(input: {
+  actualScrollTop: number;
+  current: ClarityHistoryGeometry;
+  observerDelivered: boolean;
+  previous: ClarityHistoryGeometry | null;
 }) {
+  const expectedBottom = clarityConversationBottom(input.current);
+  const validGeometry =
+    input.current.clientHeight > 0 &&
+    input.current.contentHeight >= 0 &&
+    input.current.scrollHeight >= input.current.clientHeight;
+  const stableGeometry =
+    input.previous !== null &&
+    Math.abs(input.current.clientHeight - input.previous.clientHeight) <
+      CLARITY_HISTORY_GEOMETRY_TOLERANCE_PX &&
+    Math.abs(input.current.contentHeight - input.previous.contentHeight) <
+      CLARITY_HISTORY_GEOMETRY_TOLERANCE_PX &&
+    Math.abs(input.current.scrollHeight - input.previous.scrollHeight) <
+      CLARITY_HISTORY_GEOMETRY_TOLERANCE_PX;
+  const positionedAtBottom =
+    Math.abs(input.actualScrollTop - expectedBottom) <
+    CLARITY_HISTORY_GEOMETRY_TOLERANCE_PX;
+
   return {
-    height: Math.max(1, input.hostHeight),
-    top:
-      input.hostTop +
-      input.currentDocumentScrollTop -
-      input.restingDocumentScrollTop,
+    expectedBottom,
+    ready:
+      input.observerDelivered &&
+      validGeometry &&
+      stableGeometry &&
+      positionedAtBottom,
   };
+}
+
+export function clarityComposerKeyboardBottomOffset(input: {
+  layoutViewportHeight: number;
+  visibleHeight: number;
+  visibleOffsetTop: number;
+}) {
+  return Math.max(
+    0,
+    input.layoutViewportHeight -
+      (input.visibleOffsetTop + input.visibleHeight),
+  );
+}
+
+export function clarityHistoryBottomInset(input: {
+  composerDockTop: number;
+  historyBottom: number;
+}) {
+  return Math.max(0, input.historyBottom - input.composerDockTop);
 }
 
 export function isClarityViewportNearResting(input: {
@@ -82,37 +125,4 @@ export function resolveClarityKeyboardPhase(input: {
   if (isClarityKeyboardOpen(input)) return "open";
   if (input.previouslyOpen || input.dismissalPending) return "closing";
   return "closed";
-}
-
-export function resolveClarityConversationViewport(input: {
-  visibleHeight: number;
-  visibleOffsetTop: number;
-  hostTop: number;
-  headerBottom: number;
-  navigationTop: number | null;
-  keyboardOpen: boolean;
-  navigationGap?: number;
-}) {
-  const visibleBottom = input.visibleOffsetTop + input.visibleHeight;
-  if (input.keyboardOpen) {
-    const top = Math.max(
-      input.visibleOffsetTop,
-      Math.min(input.headerBottom, visibleBottom - 1),
-    );
-    return {
-      top,
-      height: Math.max(1, Math.floor(visibleBottom - top)),
-    };
-  }
-
-  const bottom = input.navigationTop === null
-    ? visibleBottom
-    : Math.min(visibleBottom, input.navigationTop);
-  return {
-    top: input.hostTop,
-    height: Math.max(
-      1,
-      Math.floor(bottom - input.hostTop - (input.navigationGap ?? 8)),
-    ),
-  };
 }

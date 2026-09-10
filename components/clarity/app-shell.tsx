@@ -94,18 +94,17 @@ export function AppShell({
             </div>
           </header>
           <main
+            style={
+              {
+                "--clarity-app-bottom-boundary": hideBottomNavigation
+                  ? "max(1.5rem, env(safe-area-inset-bottom))"
+                  : "calc(6.5rem + env(safe-area-inset-bottom))",
+              } as React.CSSProperties
+            }
             className={
               contained
-                ? `min-h-0 w-full min-w-0 max-w-full flex-1 overflow-y-auto overscroll-contain px-4 pt-5 ${
-                    hideBottomNavigation
-                      ? "pb-[max(1.5rem,env(safe-area-inset-bottom))]"
-                      : "pb-[calc(6.5rem+env(safe-area-inset-bottom))]"
-                  }`
-                : `w-full min-w-0 max-w-full px-4 pt-5 sm:px-5 sm:pt-7 ${
-                    hideBottomNavigation
-                      ? "pb-[max(1.5rem,env(safe-area-inset-bottom))]"
-                      : "pb-[calc(6.5rem+env(safe-area-inset-bottom))]"
-                  } max-md:has-[[data-clarity-conversation-route]]:flex max-md:has-[[data-clarity-conversation-route]]:min-h-0 max-md:has-[[data-clarity-conversation-route]]:flex-1 max-md:has-[[data-clarity-conversation-route]]:flex-col max-md:has-[[data-clarity-conversation-route]]:overflow-hidden`
+                ? "min-h-0 w-full min-w-0 max-w-full flex-1 overflow-y-auto overscroll-contain px-4 pt-5 pb-[var(--clarity-app-bottom-boundary)]"
+                : "w-full min-w-0 max-w-full px-4 pt-5 pb-[var(--clarity-app-bottom-boundary)] sm:px-5 sm:pt-7 max-md:has-[[data-clarity-conversation-route]]:flex max-md:has-[[data-clarity-conversation-route]]:min-h-0 max-md:has-[[data-clarity-conversation-route]]:flex-1 max-md:has-[[data-clarity-conversation-route]]:flex-col max-md:has-[[data-clarity-conversation-route]]:overflow-hidden"
             }
           >
             {children}

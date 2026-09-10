@@ -67,13 +67,14 @@ import {
   resolveClarityComposerTouch,
 } from "@/lib/clarity/ai/clarity-composer";
 import {
+  clarityComposerKeyboardBottomOffset,
   clarityConversationBottom,
-  CLARITY_KEYBOARD_CLOSE_TRANSITION_MS,
+  clarityHistoryBottomInset,
+  type ClarityHistoryGeometry,
   isClarityKeyboardOpen,
-  resolveClarityClosedFlowTarget,
+  resolveClarityInitialHistoryMeasurement,
   resolveClarityKeyboardDismissalDelay,
   resolveClarityKeyboardPhase,
-  resolveClarityConversationViewport,
 } from "@/lib/clarity/ai/clarity-chat-layout";
 import {
   preventClarityHistoryGestureDefault,
@@ -115,12 +116,9 @@ type PendingDictation = {
   attachmentId: string | null;
 };
 
-type ConversationViewportLayout = {
-  height: number | null;
+type ConversationKeyboardLayout = {
+  bottomOffset: number | null;
   phase: "closed" | "open" | "closing";
-  restingHeight: number | null;
-  restingTop: number | null;
-  top: number;
 };
 
 type ImageViewerState = {
@@ -200,13 +198,21 @@ export function ClarityConversation({
   } | null>(null);
   const conversationHostRef = useRef<HTMLDivElement>(null);
   const conversationScrollRef = useRef<HTMLDivElement>(null);
+  const conversationContentRef = useRef<HTMLDivElement>(null);
   const conversationEndRef = useRef<HTMLDivElement>(null);
+  const historyBottomInsetRef = useRef<HTMLDivElement>(null);
   const historyComposerGapRef = useRef<HTMLDivElement>(null);
-  const conversationPanelRef = useRef<HTMLDivElement>(null);
+  const composerDockRef = useRef<HTMLDivElement>(null);
   const layoutDebugTapTimesRef = useRef<number[]>([]);
   const viewerScrollTopRef = useRef<number | null>(null);
-  const initialPositionedRef = useRef(false);
+  const initialPositionedRef = useRef(messages.length === 0);
   const initialPositionFrameRef = useRef<number | null>(null);
+  const initialHistoryObserverRef = useRef<ResizeObserver | null>(null);
+  const initialHistoryGeometryRef = useRef<ClarityHistoryGeometry | null>(null);
+  const initialHistoryObserverDeliveredRef = useRef(false);
+  const scheduleInitialHistoryMeasurementRef = useRef<(() => void) | null>(
+    null,
+  );
   const scrollAfterSendMessageCountRef = useRef<number | null>(null);
   const baselineViewportHeightRef = useRef(0);
   const keyboardWasOpenRef = useRef(false);
@@ -214,10 +220,6 @@ export function ClarityConversation({
   const keyboardDismissalFramesRef = useRef<number[]>([]);
   const keyboardDismissalSettleTimerRef = useRef<number | null>(null);
   const keyboardDismissalStartedAtRef = useRef<number | null>(null);
-  const keyboardDismissalTargetRef = useRef<{
-    height: number;
-    top: number;
-  } | null>(null);
   const documentBaselineNormalizedRef = useRef(false);
   const preComposerDocumentScrollRef = useRef<{
     left: number;
@@ -228,14 +230,13 @@ export function ClarityConversation({
   const [composerFocused, setComposerFocused] = useState(false);
   const [layoutDebugActive, setLayoutDebugActive] = useState(layoutDebug);
   const [mobileViewport, setMobileViewport] = useState(false);
-  const [initialHistoryReady, setInitialHistoryReady] = useState(false);
-  const [viewportLayout, setViewportLayout] =
-    useState<ConversationViewportLayout>({
-      height: null,
+  const [initialHistoryReady, setInitialHistoryReady] = useState(
+    messages.length === 0,
+  );
+  const [keyboardLayout, setKeyboardLayout] =
+    useState<ConversationKeyboardLayout>({
+      bottomOffset: null,
       phase: "closed",
-      restingHeight: null,
-      restingTop: null,
-      top: 0,
     });
   const nonKeyboardComposerActive =
     addMenuOpen ||
@@ -245,9 +246,9 @@ export function ClarityConversation({
   // Form focus controls editing; measured viewport geometry owns keyboard layout.
   const mobileComposerActive =
     mobileViewport &&
-    (nonKeyboardComposerActive ||
-      (viewportLayout.phase !== "closing" &&
-        (composerFocused || viewportLayout.phase === "open")));
+      (nonKeyboardComposerActive ||
+      (keyboardLayout.phase !== "closing" &&
+        (composerFocused || keyboardLayout.phase === "open")));
   useAppShellEditorState(mobileComposerActive);
 
   useEffect(() => {
@@ -334,11 +335,31 @@ export function ClarityConversation({
       clientHeight: scroll.clientHeight,
       scrollHeight: scroll.scrollHeight,
     });
-    scroll.scrollTop = end.offsetTop + end.offsetHeight;
+    scroll.scrollTop = expectedBottom;
     return {
       expectedBottom,
       positionedAtBottom: Math.abs(scroll.scrollTop - expectedBottom) < 1,
     };
+  }, []);
+
+  const syncHistoryBottomInset = useCallback(() => {
+    const history = conversationScrollRef.current;
+    const inset = historyBottomInsetRef.current;
+    const composerDock = composerDockRef.current;
+    if (!history || !inset || !composerDock) return;
+
+    const mobile = window.matchMedia("(max-width: 767px)").matches;
+    const nextInset = mobile
+      ? clarityHistoryBottomInset({
+          composerDockTop: composerDock.getBoundingClientRect().top,
+          historyBottom: history.getBoundingClientRect().bottom,
+        })
+      : 0;
+    const nextHeight = `${nextInset}px`;
+    if (inset.style.height !== nextHeight) {
+      inset.style.height = nextHeight;
+      scheduleInitialHistoryMeasurementRef.current?.();
+    }
   }, []);
 
   const cancelKeyboardDismissal = useCallback(() => {
@@ -352,49 +373,9 @@ export function ClarityConversation({
     keyboardDismissalFramesRef.current = [];
     keyboardDismissalPendingRef.current = false;
     keyboardDismissalStartedAtRef.current = null;
-    keyboardDismissalTargetRef.current = null;
   }, []);
 
-  const measureSettledNormalViewport = useCallback(() => {
-    const panel = conversationPanelRef.current;
-    if (
-      !panel ||
-      !mobileViewport ||
-      composerEditorActiveRef.current ||
-      keyboardWasOpenRef.current ||
-      keyboardDismissalPendingRef.current
-    ) {
-      return;
-    }
-    const visualViewport = window.visualViewport;
-    const visibleHeight = visualViewport?.height ?? window.innerHeight;
-    const restingRect = panel.getBoundingClientRect();
-    baselineViewportHeightRef.current = Math.max(
-      visibleHeight,
-      window.innerHeight,
-    );
-    setViewportLayout((current) => ({
-      ...current,
-      phase: "closed",
-      restingHeight: restingRect.height,
-      restingTop: restingRect.top,
-    }));
-  }, [mobileViewport]);
-
   const beginKeyboardDismissal = useCallback(() => {
-    if (!keyboardDismissalPendingRef.current) {
-      const host = conversationHostRef.current;
-      if (host) {
-        const hostRect = host.getBoundingClientRect();
-        keyboardDismissalTargetRef.current = resolveClarityClosedFlowTarget({
-          currentDocumentScrollTop: window.scrollY,
-          hostHeight: hostRect.height,
-          hostTop: hostRect.top,
-          restingDocumentScrollTop:
-            preComposerDocumentScrollRef.current?.top ?? window.scrollY,
-        });
-      }
-    }
     if (keyboardDismissalSettleTimerRef.current !== null) {
       window.clearTimeout(keyboardDismissalSettleTimerRef.current);
     }
@@ -405,16 +386,11 @@ export function ClarityConversation({
     keyboardDismissalPendingRef.current = true;
     const observedAt = window.performance.now();
     keyboardDismissalStartedAtRef.current ??= observedAt;
-    setViewportLayout((current) => {
-      if (current.phase === "closing") return current;
-      const target = keyboardDismissalTargetRef.current;
-      return {
-        ...current,
-        height: target?.height ?? current.restingHeight ?? current.height,
-        phase: "closing",
-        top: target?.top ?? current.restingTop ?? current.top,
-      };
-    });
+    setKeyboardLayout((current) =>
+      current.phase === "closing" && current.bottomOffset === null
+        ? current
+        : { bottomOffset: null, phase: "closing" },
+    );
 
     const scheduleFrame = (callback: () => void) => {
       const frame = window.requestAnimationFrame(() => {
@@ -436,7 +412,6 @@ export function ClarityConversation({
     const abandonDismissal = () => {
       keyboardDismissalPendingRef.current = false;
       keyboardDismissalStartedAtRef.current = null;
-      keyboardDismissalTargetRef.current = null;
     };
 
     const visualViewport = window.visualViewport;
@@ -481,47 +456,23 @@ export function ClarityConversation({
                 abandonDismissal();
                 return;
               }
-              const host = conversationHostRef.current;
-              if (!host) {
-                abandonDismissal();
-                return;
-              }
-
-              const closingTarget = keyboardDismissalTargetRef.current;
-              // Confirmation changes state only; closing already owns the geometry.
-              setViewportLayout((current) => {
-                return {
-                  ...current,
-                  height:
-                    closingTarget?.height ??
-                    current.restingHeight ??
-                    current.height,
-                  phase: "closed",
-                  top: closingTarget?.top ?? current.restingTop ?? current.top,
-                };
-              });
+              setKeyboardLayout({ bottomOffset: null, phase: "closed" });
               keyboardWasOpenRef.current = false;
               keyboardDismissalPendingRef.current = false;
               keyboardDismissalStartedAtRef.current = null;
-              keyboardDismissalTargetRef.current = null;
               preComposerDocumentScrollRef.current = null;
               if (document.activeElement === composerTextareaRef.current) {
                 composerTextareaRef.current?.blur();
               }
-
-              scheduleFrame(() => {
-                scheduleFrame(measureSettledNormalViewport);
-              });
             });
           });
         });
       });
     }, settleDelay);
-  }, [measureSettledNormalViewport]);
+  }, []);
 
   const updateConversationViewport = useCallback(() => {
-    const host = conversationHostRef.current;
-    if (!host || !mobileViewport) return;
+    if (!conversationHostRef.current || !mobileViewport) return;
     const visualViewport = window.visualViewport;
     const visibleHeight = visualViewport?.height ?? window.innerHeight;
     const visibleOffsetTop = visualViewport?.offsetTop ?? 0;
@@ -554,47 +505,27 @@ export function ClarityConversation({
         );
       }
       keyboardWasOpenRef.current = false;
+      setKeyboardLayout((current) =>
+        current.phase === "closed" && current.bottomOffset === null
+          ? current
+          : { bottomOffset: null, phase: "closed" },
+      );
       return;
     }
 
-    const headerBottom = document
-      .querySelector<HTMLElement>("[data-app-shell-header]")
-      ?.getBoundingClientRect().bottom ?? visibleOffsetTop;
-    const panelRect = conversationPanelRef.current?.getBoundingClientRect();
-    const resolved = resolveClarityConversationViewport({
+    const bottomOffset = clarityComposerKeyboardBottomOffset({
+      layoutViewportHeight: Math.max(
+        window.innerHeight,
+        baselineViewportHeightRef.current,
+      ),
       visibleHeight,
       visibleOffsetTop,
-      hostTop: host.getBoundingClientRect().top,
-      headerBottom,
-      navigationTop: null,
-      keyboardOpen: true,
     });
-
-    setViewportLayout((current) => {
-      const enteringFromClosed = current.phase === "closed";
-      const restingHeight = enteringFromClosed
-        ? (panelRect?.height ?? current.restingHeight ?? resolved.height)
-        : (current.restingHeight ?? panelRect?.height ?? resolved.height);
-      const restingTop = enteringFromClosed
-        ? (panelRect?.top ?? current.restingTop ?? current.top)
-        : (current.restingTop ?? panelRect?.top ?? current.top);
-      if (
-        current.height === resolved.height &&
-        current.phase === "open" &&
-        current.restingHeight === restingHeight &&
-        current.restingTop === restingTop &&
-        current.top === resolved.top
-      ) {
-        return current;
-      }
-      return {
-        height: resolved.height,
-        phase: "open",
-        restingHeight,
-        restingTop,
-        top: resolved.top,
-      };
-    });
+    setKeyboardLayout((current) =>
+      current.phase === "open" && current.bottomOffset === bottomOffset
+        ? current
+        : { bottomOffset, phase: "open" },
+    );
     keyboardWasOpenRef.current = true;
   }, [
     beginKeyboardDismissal,
@@ -612,6 +543,22 @@ export function ClarityConversation({
     query.addEventListener("change", update);
     return () => query.removeEventListener("change", update);
   }, []);
+
+  useLayoutEffect(() => {
+    const history = conversationScrollRef.current;
+    const composerDock = composerDockRef.current;
+    if (!history || !composerDock) return;
+
+    const observer = new ResizeObserver(syncHistoryBottomInset);
+    observer.observe(history);
+    observer.observe(composerDock);
+    syncHistoryBottomInset();
+    return () => observer.disconnect();
+  }, [syncHistoryBottomInset]);
+
+  useLayoutEffect(() => {
+    syncHistoryBottomInset();
+  }, [keyboardLayout.bottomOffset, mobileViewport, syncHistoryBottomInset]);
 
   useLayoutEffect(() => {
     if (!mobileViewport) return;
@@ -1038,29 +985,77 @@ export function ClarityConversation({
 
   useLayoutEffect(() => {
     if (initialPositionedRef.current) return;
-    const positionInitialHistory = () => {
-      const positioned = scrollConversationToBottom();
-      if (!positioned?.positionedAtBottom) return false;
-      initialPositionedRef.current = true;
-      setInitialHistoryReady(true);
-      return true;
-    };
-
     if (messages.length === 0) {
-      positionInitialHistory();
       return;
     }
-    initialPositionFrameRef.current = window.requestAnimationFrame(() => {
-      initialPositionFrameRef.current = null;
-      positionInitialHistory();
-    });
-    return () => {
+
+    const history = conversationScrollRef.current;
+    const content = conversationContentRef.current;
+    if (!history || !content) return;
+    let disposed = false;
+
+    const disconnect = () => {
+      initialHistoryObserverRef.current?.disconnect();
+      initialHistoryObserverRef.current = null;
+      scheduleInitialHistoryMeasurementRef.current = null;
       if (initialPositionFrameRef.current !== null) {
         window.cancelAnimationFrame(initialPositionFrameRef.current);
         initialPositionFrameRef.current = null;
       }
     };
-  }, [messages.length, scrollConversationToBottom]);
+    const measure = () => {
+      initialPositionFrameRef.current = null;
+      if (disposed || initialPositionedRef.current) return;
+      syncHistoryBottomInset();
+
+      const current: ClarityHistoryGeometry = {
+        clientHeight: history.clientHeight,
+        contentHeight: content.getBoundingClientRect().height,
+        scrollHeight: history.scrollHeight,
+      };
+      const expectedBottom = clarityConversationBottom(current);
+      history.scrollTop = expectedBottom;
+      const measurement = resolveClarityInitialHistoryMeasurement({
+        actualScrollTop: history.scrollTop,
+        current,
+        observerDelivered: initialHistoryObserverDeliveredRef.current,
+        previous: initialHistoryGeometryRef.current,
+      });
+      initialHistoryGeometryRef.current = current;
+      if (measurement.ready) {
+        initialPositionedRef.current = true;
+        disconnect();
+        setInitialHistoryReady(true);
+        return;
+      }
+      scheduleMeasurement();
+    };
+    const scheduleMeasurement = () => {
+      if (
+        disposed ||
+        initialPositionedRef.current ||
+        initialPositionFrameRef.current !== null
+      ) {
+        return;
+      }
+      initialPositionFrameRef.current = window.requestAnimationFrame(measure);
+    };
+
+    scheduleInitialHistoryMeasurementRef.current = scheduleMeasurement;
+    const observer = new ResizeObserver(() => {
+      initialHistoryObserverDeliveredRef.current = true;
+      scheduleMeasurement();
+    });
+    initialHistoryObserverRef.current = observer;
+    observer.observe(history);
+    observer.observe(content);
+    measure();
+
+    return () => {
+      disposed = true;
+      disconnect();
+    };
+  }, [messages.length, syncHistoryBottomInset]);
 
   useLayoutEffect(() => {
     if (!initialPositionedRef.current) return;
@@ -1406,22 +1401,14 @@ export function ClarityConversation({
     });
   }
 
-  const fixedKeyboardPanel =
-    mobileViewport &&
-    viewportLayout.phase !== "closed" &&
-    viewportLayout.height !== null;
-  const conversationPanelStyle = fixedKeyboardPanel
-    ? {
-        height: `${viewportLayout.height}px`,
-        left: "max(calc(1rem + env(safe-area-inset-left)), calc((100vw - 480px) / 2 + 1rem))",
-        right: "max(calc(1rem + env(safe-area-inset-right)), calc((100vw - 480px) / 2 + 1rem))",
-        top: `${viewportLayout.top}px`,
-        transition:
-          viewportLayout.phase === "closing"
-            ? `top ${CLARITY_KEYBOARD_CLOSE_TRANSITION_MS}ms ease-out, height ${CLARITY_KEYBOARD_CLOSE_TRANSITION_MS}ms ease-out`
-            : "none",
-      }
-    : undefined;
+  const composerDockStyle = {
+    bottom:
+      keyboardLayout.bottomOffset === null
+        ? "var(--clarity-app-bottom-boundary)"
+        : `${keyboardLayout.bottomOffset}px`,
+    left: "max(calc(1rem + env(safe-area-inset-left)), calc((100vw - 480px) / 2 + 1rem))",
+    right: "max(calc(1rem + env(safe-area-inset-right)), calc((100vw - 480px) / 2 + 1rem))",
+  };
   const draftViewerImages = draftMedia
     .filter((item) => item.kind === "image")
     .map((item) => ({
@@ -1436,31 +1423,25 @@ export function ClarityConversation({
       className="relative min-h-0 min-w-0 flex-1 md:h-[calc(100dvh-13rem)] md:flex-none"
     >
       <div
-        ref={conversationPanelRef}
         data-clarity-conversation-panel
-        data-clarity-keyboard-open={viewportLayout.phase === "open" || undefined}
-        data-clarity-keyboard-phase={viewportLayout.phase}
+        data-clarity-keyboard-open={keyboardLayout.phase === "open" || undefined}
+        data-clarity-keyboard-phase={keyboardLayout.phase}
         data-clarity-editor-active={mobileComposerActive || undefined}
-        className={`flex min-w-0 flex-col bg-background ${
-          fixedKeyboardPanel
-            ? `fixed ${viewportLayout.phase === "open" ? "z-50" : "z-30"}`
-            : "h-full"
-        } ${
-          mobileComposerActive && viewportLayout.phase !== "open"
-            ? "pb-[env(safe-area-inset-bottom)]"
-            : ""
-        }`}
-        style={conversationPanelStyle}
+        className="flex h-full min-w-0 flex-col bg-background"
       >
         <div
           ref={conversationScrollRef}
           data-clarity-conversation-scroll
-          className={`relative min-h-0 min-w-0 flex-1 touch-pan-y space-y-3 overflow-y-auto overscroll-y-none [-webkit-overflow-scrolling:touch] ${
-            initialHistoryReady ? "" : "max-md:invisible"
-          }`}
+          className="relative min-h-0 min-w-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-none [-webkit-overflow-scrolling:touch]"
           aria-live="polite"
         >
-          <div className="relative space-y-3">
+          <div
+            ref={conversationContentRef}
+            data-clarity-history-content
+            className={`space-y-3 ${
+              initialHistoryReady ? "" : "max-md:invisible"
+            }`}
+          >
             {messages.length === 0 && (
               <p className="max-w-sm text-sm leading-6 text-muted-foreground">
                 Tell me what’s on your mind. I’ll use what Clarity already
@@ -1481,23 +1462,35 @@ export function ClarityConversation({
                 response={state.fallbackResponse}
               />
             )}
-            <div
-              ref={conversationEndRef}
-              data-clarity-history-end
-              className="pointer-events-none absolute bottom-0 left-0 size-px"
-              aria-hidden="true"
-            />
           </div>
+          <div
+            ref={historyBottomInsetRef}
+            data-clarity-history-bottom-inset
+            className="pointer-events-none w-full"
+            aria-hidden="true"
+          />
+          <div
+            ref={conversationEndRef}
+            data-clarity-history-end
+            className="pointer-events-none absolute bottom-0 left-0 size-px"
+            aria-hidden="true"
+          />
         </div>
 
         <div
-          ref={historyComposerGapRef}
-          data-clarity-history-composer-gap
-          className="h-6 min-h-6 shrink-0 touch-pan-y"
-          aria-hidden="true"
-        />
+          ref={composerDockRef}
+          data-clarity-composer-dock
+          className="min-w-0 shrink-0 max-md:fixed max-md:z-50"
+          style={composerDockStyle}
+        >
+          <div
+            ref={historyComposerGapRef}
+            data-clarity-history-composer-gap
+            className="h-6 min-h-6 shrink-0 touch-pan-y"
+            aria-hidden="true"
+          />
 
-        <div className="min-w-0 shrink-0 space-y-2 bg-background/95 backdrop-blur">
+          <div className="min-w-0 shrink-0 space-y-2 bg-background/95 backdrop-blur">
           {(state.error || state.fieldError || mediaError) && (
             <div
               role="alert"
@@ -1747,6 +1740,7 @@ export function ClarityConversation({
             </div>
           )}
           </form>
+          </div>
         </div>
       </div>
       {imageViewer && (
