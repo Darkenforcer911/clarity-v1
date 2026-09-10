@@ -221,6 +221,8 @@ export function ClarityConversation({
   const [mobileViewport, setMobileViewport] = useState(false);
   const [initialMobileLayoutReady, setInitialMobileLayoutReady] =
     useState(false);
+  const [initialConversationReady, setInitialConversationReady] =
+    useState(false);
   const [viewportLayout, setViewportLayout] =
     useState<ConversationViewportLayout>({
       height: null,
@@ -1033,8 +1035,18 @@ export function ClarityConversation({
 
   useLayoutEffect(() => {
     if (!initialPositionedRef.current) {
+      const requiresMeasuredMobileLayout = window.matchMedia(
+        "(max-width: 767px)",
+      ).matches;
+      if (
+        requiresMeasuredMobileLayout &&
+        (!initialMobileLayoutReady || viewportLayout.height === null)
+      ) {
+        return;
+      }
       initialPositionedRef.current = true;
       scrollConversationToBottom();
+      queueMicrotask(() => setInitialConversationReady(true));
       return;
     }
     const sentFromCount = scrollAfterSendMessageCountRef.current;
@@ -1042,7 +1054,12 @@ export function ClarityConversation({
       scrollAfterSendMessageCountRef.current = null;
       scrollConversationToBottom();
     }
-  }, [messages, scrollConversationToBottom]);
+  }, [
+    initialMobileLayoutReady,
+    messages,
+    scrollConversationToBottom,
+    viewportLayout.height,
+  ]);
 
   useEffect(() => {
     if (incomingAttachmentKey === previousIncomingAttachmentKey.current) return;
@@ -1422,7 +1439,7 @@ export function ClarityConversation({
             ? `fixed ${viewportLayout.phase === "open" ? "z-50" : "z-30"}`
             : "h-full"
         } ${
-          initialMobileLayoutReady ? "" : "max-md:invisible"
+          initialConversationReady ? "" : "max-md:invisible"
         } ${
           mobileComposerActive && viewportLayout.phase !== "open"
             ? "pb-[env(safe-area-inset-bottom)]"
