@@ -5,12 +5,36 @@ export const CLARITY_KEYBOARD_DISMISS_FALLBACK_MS = 450;
 export const CLARITY_VIEWPORT_RESTING_HEIGHT_TOLERANCE_PX = 8;
 export const CLARITY_VIEWPORT_RESTING_OFFSET_TOLERANCE_PX = 1;
 export const CLARITY_HISTORY_GEOMETRY_TOLERANCE_PX = 1;
+export const CLARITY_HISTORY_NEAR_BOTTOM_PX = 64;
 
 export function clarityConversationBottom(input: {
   clientHeight: number;
   scrollHeight: number;
 }) {
   return Math.max(0, input.scrollHeight - input.clientHeight);
+}
+
+export function clarityHistoryDistanceFromBottom(input: {
+  clientHeight: number;
+  scrollHeight: number;
+  scrollTop: number;
+}) {
+  return Math.max(
+    0,
+    clarityConversationBottom(input) - Math.max(0, input.scrollTop),
+  );
+}
+
+export function isClarityHistoryNearBottom(input: {
+  clientHeight: number;
+  scrollHeight: number;
+  scrollTop: number;
+  threshold?: number;
+}) {
+  return (
+    clarityHistoryDistanceFromBottom(input) <=
+    (input.threshold ?? CLARITY_HISTORY_NEAR_BOTTOM_PX)
+  );
 }
 
 export type ClarityHistoryGeometry = {

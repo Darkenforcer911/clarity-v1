@@ -182,6 +182,64 @@ test(
           "entry-only positioning must not override later manual scrolling",
         );
 
+        await cdp.waitFor(
+          `Boolean(document.querySelector("[data-clarity-jump-to-latest]"))`,
+        );
+        await cdp.evaluate(
+          `document.querySelector("[data-clarity-jump-to-latest]").click()`,
+        );
+        await cdp.waitFor(`(() => {
+          const history = document.querySelector(
+            "[data-clarity-conversation-scroll]",
+          );
+          return Math.abs(
+            history.scrollTop - (history.scrollHeight - history.clientHeight),
+          ) < 1 && !document.querySelector("[data-clarity-jump-to-latest]");
+        })()`);
+        const jumped = await cdp.evaluate(`(() => {
+          const history = document.querySelector(
+            "[data-clarity-conversation-scroll]",
+          );
+          const content = document.querySelector(
+            "[data-clarity-history-content]",
+          );
+          const dock = document.querySelector("[data-clarity-composer-dock]");
+          return {
+            scrollTop: history.scrollTop,
+            clientHeight: history.clientHeight,
+            scrollHeight: history.scrollHeight,
+            max: history.scrollHeight - history.clientHeight,
+            contentBottom: content.getBoundingClientRect().bottom,
+            dockTop: dock.getBoundingClientRect().top,
+          };
+        })()`);
+        assertAtExactBottom(jumped);
+        assert.ok(
+          jumped.contentBottom <= jumped.dockTop + 1,
+          "the latest message must remain fully above the live composer dock",
+        );
+
+        await cdp.evaluate(`(() => {
+          const history = document.querySelector(
+            "[data-clarity-conversation-scroll]",
+          );
+          history.scrollTop = Math.max(0, history.scrollTop - 160);
+        })()`);
+        await cdp.waitFor(
+          `Boolean(document.querySelector("[data-clarity-jump-to-latest]"))`,
+        );
+        await cdp.evaluate(
+          `document.querySelector("[data-clarity-jump-to-latest]").click()`,
+        );
+        await cdp.waitFor(`(() => {
+          const history = document.querySelector(
+            "[data-clarity-conversation-scroll]",
+          );
+          return Math.abs(
+            history.scrollTop - (history.scrollHeight - history.clientHeight),
+          ) < 1;
+        })()`);
+
         await cdp.evaluate(`(() => {
           const textarea = document.querySelector(
             "[data-clarity-composer-shell] textarea",
@@ -204,10 +262,44 @@ test(
           return textarea.scrollHeight > textarea.clientHeight &&
             getComputedStyle(textarea).overflowY === "auto";
         })()`);
+        await cdp.evaluate(`(() => {
+          window.__clarityDockRaceFrames = [];
+          let remaining = 20;
+          const sample = (timestamp) => {
+            const history = document.querySelector(
+              "[data-clarity-conversation-scroll]",
+            );
+            const content = document.querySelector(
+              "[data-clarity-history-content]",
+            );
+            const inset = document.querySelector(
+              "[data-clarity-history-bottom-inset]",
+            );
+            const dock = document.querySelector(
+              "[data-clarity-composer-dock]",
+            );
+            window.__clarityDockRaceFrames.push({
+              timestamp,
+              phase: document.querySelector(
+                "[data-clarity-conversation-panel]",
+              )?.dataset.clarityKeyboardPhase,
+              scrollTop: history?.scrollTop,
+              scrollHeight: history?.scrollHeight,
+              clientHeight: history?.clientHeight,
+              contentBottom: content?.getBoundingClientRect().bottom,
+              dockTop: dock?.getBoundingClientRect().top,
+              insetHeight: inset?.getBoundingClientRect().height,
+            });
+            remaining -= 1;
+            if (remaining > 0) requestAnimationFrame(sample);
+          };
+          requestAnimationFrame(sample);
+        })()`);
         await setMobileViewport(cdp, 400);
         await cdp.waitFor(
           `document.querySelector("[data-clarity-conversation-panel]")?.dataset.clarityKeyboardPhase === "open"`,
         );
+        await cdp.waitFor(`window.__clarityDockRaceFrames?.length >= 12`);
         const keyboard = await cdp.evaluate(`(() => {
           const dock = document.querySelector("[data-clarity-composer-dock]");
           const shell = document.querySelector("[data-clarity-composer-shell]");
@@ -241,6 +333,10 @@ test(
             textareaScrollHeight: textarea.scrollHeight,
             textareaClientHeight: textarea.clientHeight,
             textareaOverflowY: textareaStyle.overflowY,
+            contentBottom: document.querySelector(
+              "[data-clarity-history-content]",
+            ).getBoundingClientRect().bottom,
+            raceFrames: window.__clarityDockRaceFrames,
           };
         })()`);
         assert.ok(
@@ -269,9 +365,20 @@ test(
           JSON.stringify(keyboard),
         );
         assert.equal(keyboard.textareaOverflowY, "auto");
+        assert.equal(
+          keyboard.raceFrames.every(
+            (frame) => frame.contentBottom <= frame.dockTop + 1,
+          ),
+          true,
+          JSON.stringify(keyboard.raceFrames),
+        );
+        assert.ok(
+          keyboard.contentBottom <= keyboard.dockTop + 1,
+          JSON.stringify(keyboard),
+        );
 
         console.log(
-          JSON.stringify({ initial: first, returns, keyboard }, null, 2),
+          JSON.stringify({ initial: first, returns, jumped, keyboard }, null, 2),
         );
       } finally {
         cdp.close();

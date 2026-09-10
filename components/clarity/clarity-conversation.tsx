@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowDown,
   Camera,
   ExternalLink,
   ImagePlus,
@@ -73,6 +74,7 @@ import {
   clarityComposerKeyboardBottomOffset,
   clarityConversationBottom,
   clarityHistoryBottomInset,
+  isClarityHistoryNearBottom,
   type ClarityHistoryGeometry,
   isClarityKeyboardOpen,
   resolveClarityInitialHistoryMeasurement,
@@ -189,6 +191,9 @@ export function ClarityConversation({
     startX: number;
     startY: number;
     lastY: number;
+    keyboardOpenAtStart: boolean;
+    containmentActive: boolean;
+    blurRequested: boolean;
   } | null>(null);
   const historyTouchRef = useRef<{
     identifier: number;
@@ -219,6 +224,7 @@ export function ClarityConversation({
   const scheduleInitialHistoryMeasurementRef = useRef<(() => void) | null>(
     null,
   );
+  const historyNearBottomRef = useRef(true);
   const scrollAfterSendMessageCountRef = useRef<number | null>(null);
   const baselineViewportHeightRef = useRef(0);
   const keyboardWasOpenRef = useRef(false);
@@ -239,6 +245,7 @@ export function ClarityConversation({
   const [initialHistoryReady, setInitialHistoryReady] = useState(
     messages.length === 0,
   );
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [keyboardLayout, setKeyboardLayout] =
     useState<ConversationKeyboardLayout>({
       bottomOffset: null,
@@ -341,7 +348,9 @@ export function ClarityConversation({
     initialPositionedRef.current = empty;
     initialHistoryGeometryRef.current = null;
     initialHistoryObserverDeliveredRef.current = false;
+    historyNearBottomRef.current = true;
     setInitialHistoryReady(empty);
+    setShowJumpToLatest(false);
 
     return () => {
       initialHistoryObserverRef.current?.disconnect();
@@ -363,6 +372,8 @@ export function ClarityConversation({
       scrollHeight: scroll.scrollHeight,
     });
     scroll.scrollTop = expectedBottom;
+    historyNearBottomRef.current = true;
+    setShowJumpToLatest(false);
     return {
       expectedBottom,
       positionedAtBottom: Math.abs(scroll.scrollTop - expectedBottom) < 1,
@@ -376,6 +387,8 @@ export function ClarityConversation({
     if (!history || !inset || !composerDock) return;
 
     const mobile = window.matchMedia("(max-width: 767px)").matches;
+    const keepLatestVisible =
+      initialPositionedRef.current && historyNearBottomRef.current;
     const nextInset = mobile
       ? clarityHistoryBottomInset({
           composerDockTop: composerDock.getBoundingClientRect().top,
@@ -386,6 +399,24 @@ export function ClarityConversation({
     if (inset.style.height !== nextHeight) {
       inset.style.height = nextHeight;
       scheduleInitialHistoryMeasurementRef.current?.();
+    }
+    // A visual/layout viewport resize can change the history's legal bottom
+    // without changing the dock overlap itself. Reconcile that synchronously
+    // while the user's prior position still says to keep latest visible.
+    if (keepLatestVisible) {
+      history.scrollTop = clarityConversationBottom({
+        clientHeight: history.clientHeight,
+        scrollHeight: history.scrollHeight,
+      });
+    }
+    if (initialPositionedRef.current) {
+      const nearBottom = isClarityHistoryNearBottom({
+        clientHeight: history.clientHeight,
+        scrollHeight: history.scrollHeight,
+        scrollTop: history.scrollTop,
+      });
+      historyNearBottomRef.current = nearBottom;
+      setShowJumpToLatest(!nearBottom);
     }
   }, []);
 
@@ -500,6 +531,10 @@ export function ClarityConversation({
 
   const updateConversationViewport = useCallback(() => {
     if (!conversationHostRef.current || !mobileViewport) return;
+    // Viewport events run before paint. Give the fixed dock and its history
+    // reservation one synchronous reconciliation; ResizeObserver remains the
+    // fallback for content-driven dock size changes.
+    syncHistoryBottomInset();
     const visualViewport = window.visualViewport;
     const visibleHeight = visualViewport?.height ?? window.innerHeight;
     const visibleOffsetTop = visualViewport?.offsetTop ?? 0;
@@ -558,6 +593,7 @@ export function ClarityConversation({
     cancelKeyboardDismissal,
     composerEditorActive,
     mobileViewport,
+    syncHistoryBottomInset,
   ]);
 
   useLayoutEffect(() => {
@@ -719,12 +755,24 @@ export function ClarityConversation({
         clientHeight: textarea.clientHeight,
         eventTargetsTextarea: event.composedPath().includes(textarea),
       });
-      composerTouchRef.current = { ...touch, lastY: point.clientY };
+      const containmentActive = touch.containmentActive || decision.contain;
+      const blurRequested =
+        touch.blurRequested ||
+        (touch.keyboardOpenAtStart &&
+          containmentActive &&
+          document.activeElement === textarea);
+      composerTouchRef.current = {
+        ...touch,
+        lastY: point.clientY,
+        containmentActive,
+        blurRequested,
+      };
 
       const preventDefaultCalled = preventClarityComposerTouchDefault(
         event,
-        decision.contain,
+        containmentActive,
       );
+      if (blurRequested && !touch.blurRequested) textarea.blur();
       if (layoutDebugActive) {
         window.dispatchEvent(
           new CustomEvent(CLARITY_COMPOSER_GUARD_DEBUG_EVENT, {
@@ -734,7 +782,7 @@ export function ClarityConversation({
               guardInstalled: true,
               guardInvoked: true,
               guardRan: true,
-              contained: decision.contain,
+              contained: containmentActive,
               originRegion: touch.origin,
               matchingTouchFound: true,
               identifierMatched,
@@ -745,10 +793,11 @@ export function ClarityConversation({
               textareaScrollable: decision.textareaScrollable,
               textareaAtBoundary: decision.textareaAtBoundary,
               skipReason:
-                decision.contain && !event.cancelable
+                containmentActive && !event.cancelable
                   ? "event-not-cancelable"
                   : decision.skipReason,
               preventDefaultCalled,
+              blurRequested,
               defaultPreventedAfter: event.defaultPrevented,
               eventTargetsTextarea: event.composedPath().includes(textarea),
             },
@@ -780,6 +829,9 @@ export function ClarityConversation({
         startX: point.clientX,
         startY: point.clientY,
         lastY: point.clientY,
+        keyboardOpenAtStart: keyboardWasOpenRef.current,
+        containmentActive: false,
+        blurRequested: false,
       };
       if (layoutDebugActive) {
         textarea.dataset.clarityComposerGuardInstalled = "true";
@@ -792,6 +844,7 @@ export function ClarityConversation({
               guardInvoked: false,
               guardRan: false,
               originRegion: startsInTextarea ? "textarea" : "composer",
+              keyboardOpenAtStart: keyboardWasOpenRef.current,
             },
           }),
         );
@@ -1050,6 +1103,7 @@ export function ClarityConversation({
       initialHistoryGeometryRef.current = current;
       if (measurement.ready) {
         initialPositionedRef.current = true;
+        historyNearBottomRef.current = true;
         disconnect();
         setInitialHistoryReady(true);
         return;
@@ -1383,6 +1437,22 @@ export function ClarityConversation({
 
   const canSend = Boolean(message.trim() || draftMedia.length > 0);
 
+  function handleHistoryScroll() {
+    const history = conversationScrollRef.current;
+    if (!history || !initialPositionedRef.current) return;
+    const nearBottom = isClarityHistoryNearBottom({
+      clientHeight: history.clientHeight,
+      scrollHeight: history.scrollHeight,
+      scrollTop: history.scrollTop,
+    });
+    historyNearBottomRef.current = nearBottom;
+    setShowJumpToLatest(!nearBottom);
+  }
+
+  function jumpToLatest() {
+    scrollConversationToBottom();
+  }
+
   function handleComposerFocus(event: ReactFocusEvent) {
     if (
       event.target instanceof HTMLTextAreaElement &&
@@ -1459,6 +1529,7 @@ export function ClarityConversation({
           ref={conversationScrollRef}
           data-clarity-conversation-scroll
           className="relative min-h-0 min-w-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-none [-webkit-overflow-scrolling:touch]"
+          onScroll={handleHistoryScroll}
           aria-live="polite"
         >
           <div
@@ -1506,17 +1577,30 @@ export function ClarityConversation({
         <div
           ref={composerDockRef}
           data-clarity-composer-dock
-          className="min-w-0 shrink-0 max-md:fixed max-md:z-50"
+          className="min-w-0 shrink-0 bg-background max-md:fixed max-md:z-50"
           style={composerDockStyle}
         >
           <div
             ref={historyComposerGapRef}
             data-clarity-history-composer-gap
-            className="h-6 min-h-6 shrink-0 touch-pan-y"
-            aria-hidden="true"
-          />
+            className="relative flex h-10 min-h-10 shrink-0 touch-pan-y items-center justify-center border-t border-border bg-background"
+          >
+            {showJumpToLatest && (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                data-clarity-jump-to-latest
+                className="size-8 rounded-full bg-card shadow-sm"
+                aria-label="Jump to latest"
+                onClick={jumpToLatest}
+              >
+                <ArrowDown className="size-4" aria-hidden="true" />
+              </Button>
+            )}
+          </div>
 
-          <div className="min-w-0 shrink-0 space-y-2 bg-background/95 backdrop-blur">
+          <div className="min-w-0 shrink-0 space-y-2 bg-background pb-1">
           {(state.error || state.fieldError || mediaError) && (
             <div
               role="alert"
