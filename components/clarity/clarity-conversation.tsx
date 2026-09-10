@@ -70,6 +70,7 @@ import {
   clarityConversationBottom,
   CLARITY_KEYBOARD_CLOSE_TRANSITION_MS,
   isClarityKeyboardOpen,
+  resolveClarityClosedFlowTarget,
   resolveClarityKeyboardDismissalDelay,
   resolveClarityKeyboardPhase,
   resolveClarityConversationViewport,
@@ -199,11 +200,13 @@ export function ClarityConversation({
   } | null>(null);
   const conversationHostRef = useRef<HTMLDivElement>(null);
   const conversationScrollRef = useRef<HTMLDivElement>(null);
+  const conversationEndRef = useRef<HTMLDivElement>(null);
   const historyComposerGapRef = useRef<HTMLDivElement>(null);
   const conversationPanelRef = useRef<HTMLDivElement>(null);
   const layoutDebugTapTimesRef = useRef<number[]>([]);
   const viewerScrollTopRef = useRef<number | null>(null);
   const initialPositionedRef = useRef(false);
+  const initialPositionFrameRef = useRef<number | null>(null);
   const scrollAfterSendMessageCountRef = useRef<number | null>(null);
   const baselineViewportHeightRef = useRef(0);
   const keyboardWasOpenRef = useRef(false);
@@ -211,6 +214,10 @@ export function ClarityConversation({
   const keyboardDismissalFramesRef = useRef<number[]>([]);
   const keyboardDismissalSettleTimerRef = useRef<number | null>(null);
   const keyboardDismissalStartedAtRef = useRef<number | null>(null);
+  const keyboardDismissalTargetRef = useRef<{
+    height: number;
+    top: number;
+  } | null>(null);
   const documentBaselineNormalizedRef = useRef(false);
   const preComposerDocumentScrollRef = useRef<{
     left: number;
@@ -221,6 +228,7 @@ export function ClarityConversation({
   const [composerFocused, setComposerFocused] = useState(false);
   const [layoutDebugActive, setLayoutDebugActive] = useState(layoutDebug);
   const [mobileViewport, setMobileViewport] = useState(false);
+  const [initialHistoryReady, setInitialHistoryReady] = useState(false);
   const [viewportLayout, setViewportLayout] =
     useState<ConversationViewportLayout>({
       height: null,
@@ -320,11 +328,17 @@ export function ClarityConversation({
 
   const scrollConversationToBottom = useCallback(() => {
     const scroll = conversationScrollRef.current;
-    if (!scroll) return;
-    scroll.scrollTop = clarityConversationBottom({
+    const end = conversationEndRef.current;
+    if (!scroll || !end?.isConnected) return null;
+    const expectedBottom = clarityConversationBottom({
       clientHeight: scroll.clientHeight,
       scrollHeight: scroll.scrollHeight,
     });
+    scroll.scrollTop = end.offsetTop + end.offsetHeight;
+    return {
+      expectedBottom,
+      positionedAtBottom: Math.abs(scroll.scrollTop - expectedBottom) < 1,
+    };
   }, []);
 
   const cancelKeyboardDismissal = useCallback(() => {
@@ -338,6 +352,7 @@ export function ClarityConversation({
     keyboardDismissalFramesRef.current = [];
     keyboardDismissalPendingRef.current = false;
     keyboardDismissalStartedAtRef.current = null;
+    keyboardDismissalTargetRef.current = null;
   }, []);
 
   const measureSettledNormalViewport = useCallback(() => {
@@ -367,6 +382,19 @@ export function ClarityConversation({
   }, [mobileViewport]);
 
   const beginKeyboardDismissal = useCallback(() => {
+    if (!keyboardDismissalPendingRef.current) {
+      const host = conversationHostRef.current;
+      if (host) {
+        const hostRect = host.getBoundingClientRect();
+        keyboardDismissalTargetRef.current = resolveClarityClosedFlowTarget({
+          currentDocumentScrollTop: window.scrollY,
+          hostHeight: hostRect.height,
+          hostTop: hostRect.top,
+          restingDocumentScrollTop:
+            preComposerDocumentScrollRef.current?.top ?? window.scrollY,
+        });
+      }
+    }
     if (keyboardDismissalSettleTimerRef.current !== null) {
       window.clearTimeout(keyboardDismissalSettleTimerRef.current);
     }
@@ -379,11 +407,12 @@ export function ClarityConversation({
     keyboardDismissalStartedAtRef.current ??= observedAt;
     setViewportLayout((current) => {
       if (current.phase === "closing") return current;
+      const target = keyboardDismissalTargetRef.current;
       return {
         ...current,
-        height: current.restingHeight ?? current.height,
+        height: target?.height ?? current.restingHeight ?? current.height,
         phase: "closing",
-        top: current.restingTop ?? current.top,
+        top: target?.top ?? current.restingTop ?? current.top,
       };
     });
 
@@ -407,6 +436,7 @@ export function ClarityConversation({
     const abandonDismissal = () => {
       keyboardDismissalPendingRef.current = false;
       keyboardDismissalStartedAtRef.current = null;
+      keyboardDismissalTargetRef.current = null;
     };
 
     const visualViewport = window.visualViewport;
@@ -457,18 +487,23 @@ export function ClarityConversation({
                 return;
               }
 
+              const closingTarget = keyboardDismissalTargetRef.current;
               // Confirmation changes state only; closing already owns the geometry.
               setViewportLayout((current) => {
                 return {
                   ...current,
-                  height: current.restingHeight ?? current.height,
+                  height:
+                    closingTarget?.height ??
+                    current.restingHeight ??
+                    current.height,
                   phase: "closed",
-                  top: current.restingTop ?? current.top,
+                  top: closingTarget?.top ?? current.restingTop ?? current.top,
                 };
               });
               keyboardWasOpenRef.current = false;
               keyboardDismissalPendingRef.current = false;
               keyboardDismissalStartedAtRef.current = null;
+              keyboardDismissalTargetRef.current = null;
               preComposerDocumentScrollRef.current = null;
               if (document.activeElement === composerTextareaRef.current) {
                 composerTextareaRef.current?.blur();
@@ -1003,9 +1038,29 @@ export function ClarityConversation({
 
   useLayoutEffect(() => {
     if (initialPositionedRef.current) return;
-    initialPositionedRef.current = true;
-    scrollConversationToBottom();
-  }, [scrollConversationToBottom]);
+    const positionInitialHistory = () => {
+      const positioned = scrollConversationToBottom();
+      if (!positioned?.positionedAtBottom) return false;
+      initialPositionedRef.current = true;
+      setInitialHistoryReady(true);
+      return true;
+    };
+
+    if (messages.length === 0) {
+      positionInitialHistory();
+      return;
+    }
+    initialPositionFrameRef.current = window.requestAnimationFrame(() => {
+      initialPositionFrameRef.current = null;
+      positionInitialHistory();
+    });
+    return () => {
+      if (initialPositionFrameRef.current !== null) {
+        window.cancelAnimationFrame(initialPositionFrameRef.current);
+        initialPositionFrameRef.current = null;
+      }
+    };
+  }, [messages.length, scrollConversationToBottom]);
 
   useLayoutEffect(() => {
     if (!initialPositionedRef.current) return;
@@ -1400,10 +1455,12 @@ export function ClarityConversation({
         <div
           ref={conversationScrollRef}
           data-clarity-conversation-scroll
-          className="min-h-0 min-w-0 flex-1 touch-pan-y space-y-3 overflow-y-auto overscroll-y-none [-webkit-overflow-scrolling:touch]"
+          className={`relative min-h-0 min-w-0 flex-1 touch-pan-y space-y-3 overflow-y-auto overscroll-y-none [-webkit-overflow-scrolling:touch] ${
+            initialHistoryReady ? "" : "max-md:invisible"
+          }`}
           aria-live="polite"
         >
-          <div className="space-y-3">
+          <div className="relative space-y-3">
             {messages.length === 0 && (
               <p className="max-w-sm text-sm leading-6 text-muted-foreground">
                 Tell me what’s on your mind. I’ll use what Clarity already
@@ -1424,6 +1481,12 @@ export function ClarityConversation({
                 response={state.fallbackResponse}
               />
             )}
+            <div
+              ref={conversationEndRef}
+              data-clarity-history-end
+              className="pointer-events-none absolute bottom-0 left-0 size-px"
+              aria-hidden="true"
+            />
           </div>
         </div>
 

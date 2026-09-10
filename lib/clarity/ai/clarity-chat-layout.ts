@@ -13,6 +13,21 @@ export function clarityConversationBottom(input: {
   return Math.max(0, input.scrollHeight - input.clientHeight);
 }
 
+export function resolveClarityClosedFlowTarget(input: {
+  currentDocumentScrollTop: number;
+  hostHeight: number;
+  hostTop: number;
+  restingDocumentScrollTop: number;
+}) {
+  return {
+    height: Math.max(1, input.hostHeight),
+    top:
+      input.hostTop +
+      input.currentDocumentScrollTop -
+      input.restingDocumentScrollTop,
+  };
+}
+
 export function isClarityViewportNearResting(input: {
   baselineHeight: number;
   visibleHeight: number;
