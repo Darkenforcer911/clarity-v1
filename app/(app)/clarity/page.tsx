@@ -27,10 +27,6 @@ export default function ClarityPage({ searchParams }: ClarityPageProps) {
 async function ClarityContent({ searchParams }: ClarityPageProps) {
   const resolvedSearchParams = await searchParams;
   const invocation = parseClarityInvocation(resolvedSearchParams);
-  const layoutDebugValue = resolvedSearchParams.layoutDebug;
-  const layoutDebug = Array.isArray(layoutDebugValue)
-    ? layoutDebugValue.includes("1")
-    : layoutDebugValue === "1";
   const { conversation, subject } = await loadClarityPageData(invocation);
 
   return (
@@ -59,7 +55,6 @@ async function ClarityContent({ searchParams }: ClarityPageProps) {
         messages={conversation.messages}
         invocation={invocationDescriptor(invocation)}
         subjectLabel={subject?.label ?? null}
-        layoutDebug={layoutDebug}
       />
     </div>
   );

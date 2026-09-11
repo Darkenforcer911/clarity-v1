@@ -39,11 +39,6 @@ import {
   useAppShellEditorState,
 } from "@/components/clarity/app-shell-editor-context";
 import {
-  CLARITY_COMPOSER_GUARD_DEBUG_EVENT,
-  CLARITY_HISTORY_GESTURE_DEBUG_EVENT,
-  ClarityLayoutDebug,
-} from "@/components/clarity/clarity-layout-debug";
-import {
   ClarityImageViewer,
   type ClarityViewerImage,
 } from "@/components/clarity/clarity-image-viewer";
@@ -85,12 +80,6 @@ import {
   preventClarityHistoryGestureDefault,
   resolveClarityHistoryGesture,
 } from "@/lib/clarity/ai/clarity-history-gesture";
-import {
-  CLARITY_LAYOUT_DEBUG_STORAGE_KEY,
-  isClarityStandaloneRuntime,
-  recordClarityLayoutDebugTap,
-  shouldEnableClarityLayoutDebug,
-} from "@/lib/clarity/ai/clarity-layout-debug-mode";
 import { normalizeClarityImageFile } from "@/lib/clarity/ai/clarity-image-normalization";
 import { normalizeClarityVisibleResponse } from "@/lib/clarity/ai/clarity-response-presentation";
 import {
@@ -142,12 +131,10 @@ export function ClarityConversation({
   messages,
   invocation,
   subjectLabel,
-  layoutDebug = false,
 }: {
   messages: ClarityConversationMessage[];
   invocation: ClarityInvocationDescriptor;
   subjectLabel: string | null;
-  layoutDebug?: boolean;
 }) {
   useAppShellConversationRoute();
   const router = useRouter();
@@ -201,7 +188,6 @@ export function ClarityConversation({
     startY: number;
     keyboardOpenAtStart: boolean;
     textareaFocusedAtStart: boolean;
-    scrollTopAtStart: number;
     containmentActive: boolean;
     blurRequested: boolean;
   } | null>(null);
@@ -211,7 +197,6 @@ export function ClarityConversation({
   const conversationEndRef = useRef<HTMLDivElement>(null);
   const historyBottomInsetRef = useRef<HTMLDivElement>(null);
   const composerDockRef = useRef<HTMLDivElement>(null);
-  const layoutDebugTapTimesRef = useRef<number[]>([]);
   const viewerScrollTopRef = useRef<number | null>(null);
   const messagesLengthRef = useRef(messages.length);
   messagesLengthRef.current = messages.length;
@@ -239,7 +224,6 @@ export function ClarityConversation({
   const documentScrollRestoredRef = useRef(false);
   const composerEditorActiveRef = useRef(false);
   const [composerFocused, setComposerFocused] = useState(false);
-  const [layoutDebugActive, setLayoutDebugActive] = useState(layoutDebug);
   const [mobileViewport, setMobileViewport] = useState(false);
   const [initialHistoryReady, setInitialHistoryReady] = useState(
     messages.length === 0,
@@ -262,78 +246,6 @@ export function ClarityConversation({
       (keyboardLayout.phase !== "closing" &&
         (composerFocused || keyboardLayout.phase === "open")));
   useAppShellEditorState(mobileComposerActive);
-
-  useEffect(() => {
-    let disposed = false;
-    const standalone = isClarityStandaloneRuntime({
-      displayModeStandalone: window.matchMedia("(display-mode: standalone)").matches,
-      navigatorStandalone:
-        (window.navigator as Navigator & { standalone?: boolean }).standalone ===
-        true,
-    });
-    let persistedValue: string | null = null;
-    try {
-      persistedValue = window.localStorage.getItem(
-        CLARITY_LAYOUT_DEBUG_STORAGE_KEY,
-      );
-    } catch {
-      // Diagnostic activation can still work for the mounted PWA session.
-    }
-    if (
-      shouldEnableClarityLayoutDebug({
-        queryEnabled: layoutDebug,
-        standalone,
-        persistedValue,
-      })
-    ) {
-      queueMicrotask(() => {
-        if (!disposed) setLayoutDebugActive(true);
-      });
-    }
-    if (!standalone) {
-      return () => {
-        disposed = true;
-      };
-    }
-
-    const pageTitle = document.querySelector<HTMLElement>(
-      "[data-clarity-page-title]",
-    );
-    if (!pageTitle) {
-      return () => {
-        disposed = true;
-      };
-    }
-    const handleActivationTap = () => {
-      const next = recordClarityLayoutDebugTap(
-        layoutDebugTapTimesRef.current,
-        Date.now(),
-      );
-      layoutDebugTapTimesRef.current = next.timestamps;
-      if (!next.activate) return;
-      try {
-        window.localStorage.setItem(CLARITY_LAYOUT_DEBUG_STORAGE_KEY, "1");
-      } catch {
-        // The HUD still activates for the mounted PWA session.
-      }
-      setLayoutDebugActive(true);
-    };
-    pageTitle.addEventListener("click", handleActivationTap);
-    return () => {
-      disposed = true;
-      pageTitle.removeEventListener("click", handleActivationTap);
-    };
-  }, [layoutDebug]);
-
-  const disableLayoutDebug = useCallback(() => {
-    try {
-      window.localStorage.removeItem(CLARITY_LAYOUT_DEBUG_STORAGE_KEY);
-    } catch {
-      // The in-memory state can still be disabled.
-    }
-    layoutDebugTapTimesRef.current = [];
-    setLayoutDebugActive(false);
-  }, []);
 
   useLayoutEffect(() => {
     composerEditorActiveRef.current = composerEditorActive;
@@ -685,63 +597,14 @@ export function ClarityConversation({
     const findTouch = (touches: TouchList, identifier: number) =>
       Array.from(touches).find((point) => point.identifier === identifier);
     const resetTouch = () => {
-      const touch = composerTouchRef.current;
-      if (layoutDebugActive && touch) {
-        window.dispatchEvent(
-          new CustomEvent(CLARITY_COMPOSER_GUARD_DEBUG_EVENT, {
-            detail: {
-              phase: "removed",
-              identifier: touch.identifier,
-              guardInstalled: false,
-              guardRan: false,
-              originRegion: touch.origin,
-            },
-          }),
-        );
-      }
       composerTouchRef.current = null;
-      if (layoutDebugActive) {
-        delete textarea.dataset.clarityComposerGuardInstalled;
-      }
     };
     const handleTouchMove = (event: TouchEvent) => {
       const touch = composerTouchRef.current;
       if (!touch) return;
 
       const point = findTouch(event.touches, touch.identifier);
-      const identifierMatched =
-        event.touches.length === 1 &&
-        event.touches[0]?.identifier === touch.identifier;
       if (event.touches.length !== 1 || !point) {
-        if (layoutDebugActive) {
-          window.dispatchEvent(
-            new CustomEvent(CLARITY_COMPOSER_GUARD_DEBUG_EVENT, {
-              detail: {
-                phase: "move",
-                identifier: touch.identifier,
-                guardInstalled: true,
-                guardInvoked: true,
-                guardRan: true,
-                originRegion: touch.origin,
-                matchingTouchFound: Boolean(point),
-                identifierMatched,
-                deltaX: null,
-                deltaY: null,
-                thresholdExceeded: false,
-                verticalDominant: false,
-                textareaScrollable:
-                  textarea.scrollHeight > textarea.clientHeight,
-                textareaAtBoundary: null,
-                skipReason:
-                  event.touches.length !== 1
-                    ? "multiple-touches"
-                    : "active-touch-not-found",
-                preventDefaultCalled: false,
-                defaultPreventedAfter: event.defaultPrevented,
-              },
-            }),
-          );
-        }
         resetTouch();
         return;
       }
@@ -767,42 +630,11 @@ export function ClarityConversation({
         blurRequested,
       };
 
-      const preventDefaultCalled = preventClarityComposerTouchDefault(
+      preventClarityComposerTouchDefault(
         event,
         containmentActive,
       );
       if (blurRequested && !touch.blurRequested) textarea.blur();
-      if (layoutDebugActive) {
-        window.dispatchEvent(
-          new CustomEvent(CLARITY_COMPOSER_GUARD_DEBUG_EVENT, {
-            detail: {
-              phase: "move",
-              identifier: touch.identifier,
-              guardInstalled: true,
-              guardInvoked: true,
-              guardRan: true,
-              contained: containmentActive,
-              originRegion: touch.origin,
-              matchingTouchFound: true,
-              identifierMatched,
-              deltaX: decision.deltaX,
-              deltaY: decision.deltaY,
-              thresholdExceeded: decision.thresholdExceeded,
-              verticalDominant: decision.verticalDominant,
-              textareaScrollable: decision.textareaScrollable,
-              textareaAtBoundary: decision.textareaAtBoundary,
-              skipReason:
-                containmentActive && !event.cancelable
-                  ? "event-not-cancelable"
-                  : decision.skipReason,
-              preventDefaultCalled,
-              blurRequested,
-              defaultPreventedAfter: event.defaultPrevented,
-              eventTargetsTextarea: event.composedPath().includes(textarea),
-            },
-          }),
-        );
-      }
     };
     const handleTouchEnd = (event: TouchEvent) => {
       const touch = composerTouchRef.current;
@@ -832,22 +664,6 @@ export function ClarityConversation({
         containmentActive: false,
         blurRequested: false,
       };
-      if (layoutDebugActive) {
-        textarea.dataset.clarityComposerGuardInstalled = "true";
-        window.dispatchEvent(
-          new CustomEvent(CLARITY_COMPOSER_GUARD_DEBUG_EVENT, {
-            detail: {
-              phase: "installed",
-              identifier: point.identifier,
-              guardInstalled: true,
-              guardInvoked: false,
-              guardRan: false,
-              originRegion: startsInTextarea ? "textarea" : "composer",
-              keyboardOpenAtStart: keyboardWasOpenRef.current,
-            },
-          }),
-        );
-      }
     };
 
     composer.addEventListener("touchstart", handleTouchStart, {
@@ -874,7 +690,7 @@ export function ClarityConversation({
       composer.removeEventListener("touchcancel", handleTouchEnd, true);
       resetTouch();
     };
-  }, [dictationStatus, layoutDebugActive]);
+  }, [dictationStatus]);
 
   useEffect(() => {
     const history = conversationScrollRef.current;
@@ -883,24 +699,6 @@ export function ClarityConversation({
 
     const findTouch = (touches: TouchList, identifier: number) =>
       Array.from(touches).find((point) => point.identifier === identifier);
-    const debugHistoryGesture = (
-      phase: "touchstart" | "touchmove" | "touchend" | "touchcancel",
-      detail: Record<string, boolean | number | string | null>,
-    ) => {
-      if (!layoutDebugActive) return;
-      const viewport = window.visualViewport;
-      window.dispatchEvent(
-        new CustomEvent(CLARITY_HISTORY_GESTURE_DEBUG_EVENT, {
-          detail: {
-            phase,
-            ...detail,
-            documentScrollY: window.scrollY,
-            visualViewportHeight: viewport?.height ?? window.innerHeight,
-            visualViewportOffsetTop: viewport?.offsetTop ?? 0,
-          },
-        }),
-      );
-    };
     const resetHistoryTouch = () => {
       historyTouchRef.current = null;
     };
@@ -914,48 +712,15 @@ export function ClarityConversation({
         startY: point.clientY,
         keyboardOpenAtStart: keyboardWasOpenRef.current,
         textareaFocusedAtStart,
-        scrollTopAtStart: history.scrollTop,
         containmentActive: false,
         blurRequested: false,
       };
-      debugHistoryGesture("touchstart", {
-        activeTouchIdentifier: point.identifier,
-        keyboardOpenAtStart: keyboardWasOpenRef.current,
-        textareaFocusedAtStart,
-        historyScrollTopBefore: history.scrollTop,
-        historyScrollTopAfter: history.scrollTop,
-        historyScrollHeight: history.scrollHeight,
-        historyClientHeight: history.clientHeight,
-        deltaX: 0,
-        deltaY: 0,
-        direction: "none",
-        blurRequested: false,
-        preventDefaultCalled: false,
-      });
     };
     const handleHistoryTouchMove = (event: TouchEvent) => {
       const touch = historyTouchRef.current;
       if (!touch) return;
       const point = findTouch(event.touches, touch.identifier);
       if (event.touches.length !== 1 || !point) {
-        debugHistoryGesture("touchmove", {
-          activeTouchIdentifier: touch.identifier,
-          keyboardOpenAtStart: touch.keyboardOpenAtStart,
-          textareaFocusedAtStart: touch.textareaFocusedAtStart,
-          historyScrollTopBefore: touch.scrollTopAtStart,
-          historyScrollTopAfter: history.scrollTop,
-          historyScrollHeight: history.scrollHeight,
-          historyClientHeight: history.clientHeight,
-          deltaX: null,
-          deltaY: null,
-          direction: "unknown",
-          blurRequested: touch.blurRequested,
-          preventDefaultCalled: false,
-          skipReason:
-            event.touches.length !== 1
-              ? "multiple-touches"
-              : "active-touch-not-found",
-        });
         resetHistoryTouch();
         return;
       }
@@ -969,7 +734,7 @@ export function ClarityConversation({
         currentY: point.clientY,
       });
       const containmentActive = touch.containmentActive || decision.contain;
-      const preventDefaultCalled = preventClarityHistoryGestureDefault(
+      preventClarityHistoryGestureDefault(
         event,
         containmentActive,
       );
@@ -982,50 +747,10 @@ export function ClarityConversation({
         containmentActive,
         blurRequested,
       };
-
-      debugHistoryGesture("touchmove", {
-        activeTouchIdentifier: touch.identifier,
-        keyboardOpenAtStart: touch.keyboardOpenAtStart,
-        textareaFocusedAtStart: touch.textareaFocusedAtStart,
-        historyScrollTopBefore: touch.scrollTopAtStart,
-        historyScrollTopAfter: history.scrollTop,
-        historyScrollHeight: history.scrollHeight,
-        historyClientHeight: history.clientHeight,
-        deltaX: decision.deltaX,
-        deltaY: decision.deltaY,
-        direction:
-          decision.deltaY < 0
-            ? "up"
-            : decision.deltaY > 0
-              ? "down"
-              : "none",
-        thresholdExceeded: decision.thresholdExceeded,
-        verticalDominant: decision.verticalDominant,
-        containmentActive,
-        blurRequested,
-        preventDefaultCalled,
-        defaultPreventedAfter: event.defaultPrevented,
-      });
     };
     const handleHistoryTouchEnd = (event: TouchEvent) => {
       const touch = historyTouchRef.current;
       if (!touch || !findTouch(event.changedTouches, touch.identifier)) return;
-      const phase = event.type === "touchcancel" ? "touchcancel" : "touchend";
-      debugHistoryGesture(phase, {
-        activeTouchIdentifier: touch.identifier,
-        keyboardOpenAtStart: touch.keyboardOpenAtStart,
-        textareaFocusedAtStart: touch.textareaFocusedAtStart,
-        historyScrollTopBefore: touch.scrollTopAtStart,
-        historyScrollTopAfter: history.scrollTop,
-        historyScrollHeight: history.scrollHeight,
-        historyClientHeight: history.clientHeight,
-        deltaX: null,
-        deltaY: null,
-        direction: "none",
-        containmentActive: touch.containmentActive,
-        blurRequested: touch.blurRequested,
-        preventDefaultCalled: false,
-      });
       resetHistoryTouch();
     };
 
@@ -1053,7 +778,7 @@ export function ClarityConversation({
       history.removeEventListener("touchcancel", handleHistoryTouchEnd, true);
       resetHistoryTouch();
     };
-  }, [dictationStatus, layoutDebugActive]);
+  }, [dictationStatus]);
 
   useLayoutEffect(() => {
     if (initialPositionedRef.current) return;
@@ -1864,9 +1589,6 @@ export function ClarityConversation({
           }
           onClose={closeImageViewer}
         />
-      )}
-      {layoutDebugActive && (
-        <ClarityLayoutDebug onDisable={disableLayoutDebug} />
       )}
     </div>
   );
