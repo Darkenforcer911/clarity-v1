@@ -24,6 +24,20 @@ export type ClarityProviderResult = {
   research?: ClarityResearchMetadata;
 };
 
+export type ClarityStructuredProviderResult<Output> = Omit<
+  ClarityProviderResult,
+  "output" | "research"
+> & {
+  output: Output;
+};
+
+export type ClarityStructuredOutputContract<Output> = {
+  name: string;
+  schema: Record<string, unknown>;
+  parse: (value: unknown) => Output;
+  maxOutputTokens?: number;
+};
+
 export type ClarityProviderRequest = {
   systemPrompt: string;
   userPrompt: string;
@@ -130,6 +144,17 @@ export class OpenAIClarityProvider implements ClarityModelProvider {
   async generate(
     request: ClarityProviderRequest,
   ): Promise<ClarityProviderResult> {
+    return this.generateStructured(request, {
+      name: "clarity_conversation_response",
+      schema: clarityConversationResponseJsonSchema,
+      parse: (value) => clarityConversationResponseSchema.parse(value),
+    });
+  }
+
+  async generateStructured<Output>(
+    request: ClarityProviderRequest,
+    contract: ClarityStructuredOutputContract<Output>,
+  ): Promise<ClarityStructuredProviderResult<Output>> {
     const startedAt = Date.now();
     let repairInstruction: string | null = null;
 
@@ -137,9 +162,13 @@ export class OpenAIClarityProvider implements ClarityModelProvider {
       const raw = await this.requestStructuredResponse(
         request,
         repairInstruction,
+        null,
+        contract.name,
+        contract.schema,
+        contract.maxOutputTokens,
       );
       const text = extractOpenAIText(raw);
-      const parsed = parseStructuredResponse(text);
+      const parsed = parseStructuredResponse(text, contract.parse);
 
       if (parsed) {
         return {
@@ -175,8 +204,13 @@ export class OpenAIClarityProvider implements ClarityModelProvider {
         request,
         null,
         request.userLocation,
+        "clarity_conversation_response",
+        clarityConversationResponseJsonSchema,
       );
-      const parsed = parseStructuredResponse(extractOpenAIText(raw));
+      const parsed = parseStructuredResponse(
+        extractOpenAIText(raw),
+        (value) => clarityConversationResponseSchema.parse(value),
+      );
       const research = extractClarityResearchMetadata(raw, {
         retrievedAt: new Date().toISOString(),
         latencyMs: Date.now() - startedAt,
@@ -226,6 +260,9 @@ export class OpenAIClarityProvider implements ClarityModelProvider {
     request: ClarityProviderRequest,
     repairInstruction: string | null,
     researchLocation: ClarityResearchLocation | null = null,
+    outputName = "clarity_conversation_response",
+    outputSchema: Record<string, unknown> = clarityConversationResponseJsonSchema,
+    maxOutputTokens = 2_500,
   ): Promise<OpenAIResponse> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -241,7 +278,7 @@ export class OpenAIClarityProvider implements ClarityModelProvider {
         body: JSON.stringify({
           model: this.model,
           store: false,
-          max_output_tokens: 2_500,
+          max_output_tokens: maxOutputTokens,
           ...(researchLocation
             ? {
                 include: ["web_search_call.action.sources"],
@@ -274,9 +311,9 @@ export class OpenAIClarityProvider implements ClarityModelProvider {
           text: {
             format: {
               type: "json_schema",
-              name: "clarity_conversation_response",
+              name: outputName,
               strict: true,
-              schema: clarityConversationResponseJsonSchema,
+              schema: outputSchema,
             },
           },
         }),
@@ -315,9 +352,12 @@ function extractOpenAIText(response: OpenAIResponse) {
     .join("");
 }
 
-function parseStructuredResponse(value: string) {
+function parseStructuredResponse<Output>(
+  value: string,
+  parse: (value: unknown) => Output,
+) {
   try {
-    return clarityConversationResponseSchema.parse(JSON.parse(value));
+    return parse(JSON.parse(value));
   } catch {
     return null;
   }

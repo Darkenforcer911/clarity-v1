@@ -1,46 +1,38 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, Check, MoreHorizontal, Sparkles } from "lucide-react";
+import { ArrowRight, Check, RotateCcw, Sparkles } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   useActionState,
   useEffect,
+  useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
 
 import {
-  continueFromNameWelcomeAction,
-  moveOnboardingBackAction,
-  saveCurrentRealityAction,
-  saveOnboardingNameAction,
-  startOnboardingAction,
+  confirmOnboardingAction,
+  retryOnboardingMessageAction,
+  sendOnboardingMessageAction,
 } from "@/app/onboarding/actions";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { initialOnboardingActionState } from "@/lib/clarity/onboarding-action-state";
-import type { OnboardingPageState } from "@/lib/clarity/onboarding-service";
-import type { OnboardingStep } from "@/lib/clarity/onboarding";
+import type { OnboardingProgress } from "@/lib/clarity/onboarding-intelligence";
+import type {
+  OnboardingConversationMessage,
+  OnboardingPageState,
+} from "@/lib/clarity/onboarding-service";
 import { PendingButton } from "./pending-button";
 
 type OnboardingMode = "live" | "preview";
-
-const inputClassName =
-  "h-13 rounded-2xl border-white/15 bg-white/[0.07] px-4 shadow-none backdrop-blur-sm focus-visible:ring-[#63c8ff]";
-const simpleStepContentClassName =
-  "flex flex-1 items-start pb-8 pt-[clamp(2.5rem,7svh,4rem)]";
 
 export function OnboardingLoading() {
   return (
     <main className="min-h-svh bg-[#041329] text-foreground">
       <div
-        className="mx-auto grid min-h-svh w-full max-w-[480px] place-items-center border-x-0 border-border bg-background px-5 min-[481px]:border-x"
+        className="mx-auto grid min-h-svh w-full max-w-[560px] place-items-center border-x-0 border-border bg-background px-5 min-[561px]:border-x"
         aria-live="polite"
         aria-busy="true"
       >
@@ -58,569 +50,374 @@ export function OnboardingFlow({
   initialState: OnboardingPageState;
   mode: OnboardingMode;
 }) {
-  const [step, setStep] = useState<OnboardingStep>(initialState.step);
-  const [identity, setIdentity] = useState(initialState.draft.identity);
-  const [currentReality, setCurrentReality] = useState(
-    initialState.draft.responses.currentReality.answer,
-  );
-  const [previewErrors, setPreviewErrors] = useState<{
-    name?: string;
-    currentReality?: string;
-  }>({});
-  const [startState, startAction] = useActionState(
-    startOnboardingAction,
+  const router = useRouter();
+  const preview = mode === "preview";
+  const [previewMessages, setPreviewMessages] = useState(initialState.messages);
+  const [sendState, sendAction] = useActionState(
+    sendOnboardingMessageAction,
     initialOnboardingActionState,
   );
-  const [nameState, nameAction] = useActionState(
-    saveOnboardingNameAction,
+  const [retryState, retryAction] = useActionState(
+    retryOnboardingMessageAction,
     initialOnboardingActionState,
   );
-  const [welcomeState, welcomeAction] = useActionState(
-    continueFromNameWelcomeAction,
+  const [confirmState, confirmAction] = useActionState(
+    confirmOnboardingAction,
     initialOnboardingActionState,
   );
-  const [realityState, realityAction] = useActionState(
-    saveCurrentRealityAction,
-    initialOnboardingActionState,
-  );
-  const [, backAction] = useActionState(
-    moveOnboardingBackAction,
-    initialOnboardingActionState,
-  );
+  const endRef = useRef<HTMLDivElement>(null);
+  const composerFormRef = useRef<HTMLFormElement>(null);
+  const messages = preview ? previewMessages : initialState.messages;
+  const synthesis =
+    initialState.confirmedSnapshot?.synthesis ?? initialState.synthesis;
+  const completed = initialState.status === "completed";
+  const hasSynthesis = Boolean(synthesis);
 
   useEffect(() => {
-    if (initialState.draft.identity.timezone !== "UTC") return;
-    const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    if (!detected) return;
+    if (!sendState.completedAt || sendState.status !== "success") return;
+    composerFormRef.current?.reset();
+    router.refresh();
+  }, [router, sendState.completedAt, sendState.status]);
 
-    const frame = window.requestAnimationFrame(() => {
-      setIdentity((current) => ({ ...current, timezone: detected }));
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [initialState.draft.identity.timezone]);
-
-  const preview = mode === "preview";
-
-  function previewTransition(event: FormEvent<HTMLFormElement>, next: OnboardingStep) {
-    if (!preview) return;
-    event.preventDefault();
-
-    if (step === "name" && next === "name_welcome" && !identity.name.trim()) {
-      setPreviewErrors({ name: "Enter your name to continue." });
-      return;
-    }
-
+  useEffect(() => {
     if (
-      step === "current_reality" &&
-      next === "conversation_shell" &&
-      currentReality.trim().length < 2
+      (!retryState.completedAt || retryState.status !== "success") &&
+      (!confirmState.completedAt || confirmState.status !== "success")
     ) {
-      setPreviewErrors({
-        currentReality:
-          "Tell Clarity a little about what your life looks like right now.",
-      });
       return;
     }
+    router.refresh();
+  }, [
+    confirmState.completedAt,
+    confirmState.status,
+    retryState.completedAt,
+    retryState.status,
+    router,
+  ]);
 
-    setPreviewErrors({});
-    setStep(next);
-  }
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: "nearest" });
+  }, [messages.length, hasSynthesis]);
 
-  function previewBack(event: FormEvent<HTMLFormElement>) {
+  function submitPreview(event: FormEvent<HTMLFormElement>) {
     if (!preview) return;
     event.preventDefault();
-    const value = new FormData(event.currentTarget).get("step");
-    if (value === "entry" || value === "name" || value === "current_reality") {
-      setStep(value);
-    }
-  }
-
-  function previewJump(next: OnboardingStep) {
-    if (!preview) return;
-    setPreviewErrors({});
-    setStep(next);
+    const content = String(new FormData(event.currentTarget).get("message") ?? "").trim();
+    if (!content) return;
+    const now = new Date().toISOString();
+    const userId = crypto.randomUUID();
+    setPreviewMessages((current) => [
+      ...current,
+      previewMessage(userId, "user", content, now),
+      previewMessage(
+        crypto.randomUUID(),
+        "clarity",
+        "What would you most want to be different a year from now?",
+        now,
+        userId,
+      ),
+    ]);
+    event.currentTarget.reset();
   }
 
   return (
     <main className="min-h-svh overflow-x-clip bg-[#041329] text-foreground">
-      <div
-        className="relative mx-auto min-h-svh w-full max-w-[480px] overflow-x-clip border-x-0 border-border bg-background min-[481px]:border-x"
-      >
-        <div className="relative flex min-h-svh flex-col px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[env(safe-area-inset-top)] sm:px-7">
-          <OnboardingTopBar
-            preview={preview}
-            onPreviewJump={previewJump}
-          />
+      <div className="mx-auto flex min-h-svh w-full max-w-[560px] flex-col border-x-0 border-border bg-background min-[561px]:border-x">
+        <header className="shrink-0 px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] sm:px-7">
+          <div className="flex min-h-11 items-center justify-between gap-4">
+            <Link
+              href="/today"
+              className="flex items-center gap-2 rounded-lg text-lg font-semibold tracking-[-0.03em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span className="size-2.5 rounded-full bg-primary" aria-hidden="true" />
+              Clarity
+            </Link>
+            {preview && (
+              <span className="rounded-full border border-border bg-card px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                Preview
+              </span>
+            )}
+          </div>
+          <p className="mt-4 text-xs font-medium tracking-[0.04em] text-[#78d2ff]">
+            ~5–10 min · Just a conversation · Skip anything
+          </p>
+          <h1 className="mt-3 text-[2.3rem] font-semibold leading-[1.08] tracking-[-0.055em] text-white sm:text-[2.65rem]">
+            {completed ? "Your starting picture." : "Tell me about your life right now."}
+          </h1>
+          {!completed && (
+            <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">
+              What’s going well, what feels messy, and what are you trying to
+              figure out? You can answer however you want.
+            </p>
+          )}
+          {!completed && (
+            <p className="mt-2 max-w-md text-xs leading-5 text-muted-foreground">
+              You don’t need to have your life figured out. That’s what I’m here for.
+            </p>
+          )}
+          {!completed && (
+            <OnboardingProgressView progress={initialState.progress} />
+          )}
+        </header>
 
-          {step === "entry" && (
-            <EntryScreen
-              preview={preview}
-              action={startAction}
-              onSubmit={(event) => previewTransition(event, "name")}
-              error={startState.status === "error" ? startState.message : null}
-            />
+        <section
+          className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-y-contain px-5 pb-5 sm:px-7"
+          aria-label="First Understanding conversation"
+        >
+          {messages.length === 0 && !completed && (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
+              <div className="flex gap-3">
+                <Sparkles className="mt-0.5 size-5 shrink-0 text-[#78d2ff]" />
+                <p className="text-sm leading-6 text-muted-foreground">
+                  Start wherever feels most real. You don’t need to organise it,
+                  and nothing is added to your Life until you review and confirm
+                  what I understood.
+                </p>
+              </div>
+            </div>
           )}
 
-          {step === "name" && (
-            <NameScreen
-              name={identity.name}
-              timezone={identity.timezone}
-              onNameChange={(name) => {
-                setIdentity((current) => ({ ...current, name }));
-                if (name.trim()) {
-                  setPreviewErrors((current) => ({ ...current, name: undefined }));
-                }
-              }}
-              previewError={previewErrors.name}
-              preview={preview}
-              action={nameAction}
-              state={nameState}
-              backAction={backAction}
-              onSubmit={(event) => previewTransition(event, "name_welcome")}
-              onBack={previewBack}
-            />
+          <div className="space-y-3" aria-live="polite">
+            {messages.map((message) => (
+              <OnboardingMessage key={message.id} message={message} />
+            ))}
+          </div>
+
+          {synthesis && <OnboardingSynthesisView synthesis={synthesis} />}
+
+          {!completed && synthesis && initialState.sessionId && (
+            <form action={preview ? undefined : confirmAction}>
+              <input
+                type="hidden"
+                name="sessionId"
+                value={initialState.sessionId}
+              />
+              <PendingButton
+                pendingLabel="Confirming…"
+                className="h-13 w-full rounded-2xl text-base"
+                disabled={preview}
+              >
+                <Check /> This is accurate
+              </PendingButton>
+              <p className="mt-2 text-center text-xs leading-5 text-muted-foreground">
+                If something is wrong or missing, just say so below and I’ll
+                update the picture first.
+              </p>
+            </form>
           )}
 
-          {step === "name_welcome" && (
-            <NameWelcomeScreen
-              name={identity.name}
-              preview={preview}
-              action={welcomeAction}
-              error={welcomeState.status === "error" ? welcomeState.message : null}
-              backAction={backAction}
-              onSubmit={(event) => previewTransition(event, "current_reality")}
-              onBack={previewBack}
-            />
+          {completed && (
+            <div className="pb-3 pt-1">
+              <Link
+                href="/today"
+                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary px-4 text-sm font-medium text-primary-foreground"
+              >
+                Continue to Today <ArrowRight className="size-4" />
+              </Link>
+            </div>
           )}
 
-          {step === "current_reality" && (
-            <CurrentRealityScreen
-              name={identity.name}
-              value={currentReality}
-              onChange={(value) => {
-                setCurrentReality(value);
-                if (value.trim().length >= 2) {
-                  setPreviewErrors((current) => ({
-                    ...current,
-                    currentReality: undefined,
-                  }));
-                }
-              }}
-              previewError={previewErrors.currentReality}
-              preview={preview}
-              action={realityAction}
-              state={realityState}
-              backAction={backAction}
-              onSubmit={(event) => previewTransition(event, "conversation_shell")}
-              onBack={previewBack}
-            />
-          )}
+          <div ref={endRef} />
+        </section>
 
-          {step === "conversation_shell" && (
-            <ConversationShellScreen
-              preview={preview}
-              backAction={backAction}
-              onBack={previewBack}
-            />
-          )}
-        </div>
+        {!completed && (
+          <div className="sticky bottom-0 shrink-0 border-t border-border bg-background/95 px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl sm:px-7">
+            {(sendState.fieldError || sendState.message) && (
+              <p role="alert" className="mb-2 text-sm text-destructive">
+                {sendState.fieldError ?? sendState.message}
+              </p>
+            )}
+            {sendState.retryMessageId && sendState.message && (
+              <form action={preview ? undefined : retryAction} className="mb-2">
+                <input
+                  type="hidden"
+                  name="retryMessageId"
+                  value={sendState.retryMessageId}
+                />
+                <PendingButton
+                  variant="secondary"
+                  size="sm"
+                  pendingLabel="Retrying…"
+                  disabled={preview}
+                >
+                  <RotateCcw className="size-4" /> Retry
+                </PendingButton>
+              </form>
+            )}
+            {(retryState.message || confirmState.message) && (
+              <p role="alert" className="mb-2 text-sm text-destructive">
+                {retryState.message ?? confirmState.message}
+              </p>
+            )}
+            <form
+              ref={composerFormRef}
+              action={preview ? undefined : sendAction}
+              onSubmit={submitPreview}
+              className="rounded-2xl border border-border bg-card p-2 shadow-sm"
+            >
+              <Textarea
+                name="message"
+                placeholder="Tell Clarity…"
+                aria-label="Tell Clarity"
+                className="max-h-36 min-h-14 resize-none border-0 bg-transparent px-2 py-2 text-base leading-6 shadow-none focus-visible:ring-0"
+              />
+              <div className="flex items-center justify-between gap-3 px-1 pb-1">
+                <p className="text-[11px] text-muted-foreground">
+                  Only the final picture is confirmed.
+                </p>
+                <PendingButton
+                  size="icon"
+                  pendingLabel="…"
+                  className="size-10 shrink-0 rounded-xl"
+                  aria-label="Send"
+                >
+                  <ArrowRight className="size-4" />
+                </PendingButton>
+              </div>
+            </form>
+          </div>
+        )}
       </div>
     </main>
   );
 }
 
-function OnboardingTopBar({
-  preview,
-  onPreviewJump,
-}: {
-  preview: boolean;
-  onPreviewJump: (step: OnboardingStep) => void;
-}) {
+function OnboardingProgressView({ progress }: { progress: OnboardingProgress }) {
+  const items = useMemo(
+    () => [
+      ["Your situation", progress.situation],
+      ["What matters to you", progress.whatMatters],
+      ["Where you want to go", progress.future],
+      ["What could get in the way", progress.constraints],
+    ] as const,
+    [progress],
+  );
+
   return (
-    <div className="flex min-h-14 items-center justify-between gap-4">
-      <div className="flex items-center gap-2 text-lg font-semibold tracking-[-0.03em] text-white">
-        <span className="size-2.5 rounded-full bg-primary" aria-hidden="true" />
-        Clarity
-      </div>
-      <div className="ml-auto flex items-center gap-1.5">
-        {preview && (
-          <>
-            <span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              Preview
-            </span>
-            <PreviewNavigation onJump={onPreviewJump} />
-          </>
-        )}
+    <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.04] px-3.5 py-3">
+      <p className="text-xs font-medium text-foreground">Building your picture…</p>
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
+        {items.map(([label, state]) => (
+          <span key={label} className="text-[11px] text-muted-foreground">
+            {label} · {progressLabel(state)}
+          </span>
+        ))}
       </div>
     </div>
   );
 }
 
-function PreviewNavigation({
-  onJump,
+function OnboardingMessage({
+  message,
 }: {
-  onJump: (step: OnboardingStep) => void;
+  message: OnboardingConversationMessage;
 }) {
+  const user = message.role === "user";
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-11 rounded-xl"
-          aria-label="Jump to onboarding screen"
-        >
-          <MoreHorizontal />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        className="w-48 rounded-2xl border-border bg-card p-2 text-foreground"
-      >
-        <DropdownMenuItem onSelect={() => onJump("entry")} className="min-h-11 rounded-xl">
-          Welcome
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => onJump("name")} className="min-h-11 rounded-xl">
-          Name
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => onJump("name_welcome")} className="min-h-11 rounded-xl">
-          Personal welcome
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => onJump("current_reality")} className="min-h-11 rounded-xl">
-          Your reality
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => onJump("conversation_shell")} className="min-h-11 rounded-xl">
-          Conversation shell
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <article
+      className={
+        user
+          ? "ml-8 rounded-2xl rounded-br-md bg-primary px-4 py-3 text-sm leading-6 text-primary-foreground"
+          : "mr-5 rounded-2xl rounded-bl-md border border-white/10 bg-white/[0.045] px-4 py-3 text-sm leading-6 text-foreground"
+      }
+    >
+      {message.content}
+    </article>
   );
 }
 
-function EntryScreen({
-  preview,
-  action,
-  onSubmit,
-  error,
+function OnboardingSynthesisView({
+  synthesis,
 }: {
-  preview: boolean;
-  action: (formData: FormData) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  error: string | null;
+  synthesis: NonNullable<OnboardingPageState["synthesis"]>;
 }) {
+  const sections = [
+    ["Where you are", synthesis.whereYouAre],
+    ["What you want", synthesis.whatYouWant],
+    ["What you have going for you", synthesis.whatYouHaveGoingForYou],
+    ["What could get in the way", synthesis.whatCouldGetInTheWay],
+    ["Still unsure", synthesis.stillUnsure],
+    ["What matters first", synthesis.whatMattersFirst],
+  ] as const;
+  const horizons = [
+    ["Long term · 3–5+ years", synthesis.horizons.longTerm],
+    ["Mid term · 6–24 months", synthesis.horizons.midTerm],
+    ["Short term · 30–90 days", synthesis.horizons.shortTerm],
+    ["Current bottleneck", synthesis.horizons.bottleneck],
+    ["Next move", synthesis.horizons.nextMove],
+  ] as const;
+
   return (
-    <section className="flex min-h-0 flex-1 text-center">
-      <div className="w-full pb-8 pt-[clamp(3rem,8svh,4.5rem)]">
-        <div className="mx-auto max-w-sm space-y-4">
-          <h1 className="text-[2.625rem] font-semibold leading-[1.08] tracking-[-0.055em] text-white sm:text-5xl">
-            Turn where you are into where you want to be.
-          </h1>
-          <p className="text-base leading-7 text-muted-foreground">
-            Tell Clarity where you are. It’ll help you work out what matters
-            next.
-          </p>
-        </div>
-        <form
-          action={preview ? undefined : action}
-          onSubmit={onSubmit}
-          className="mx-auto mt-7 w-full max-w-sm"
-        >
-          <PendingButton
-            pendingLabel="Starting…"
-            className="h-14 w-full rounded-2xl text-base shadow-sm"
-          >
-            Start
-          </PendingButton>
-        </form>
-        {error && (
-          <p role="alert" className="mt-4 text-sm text-destructive">
-            {error}
-          </p>
-        )}
+    <section className="space-y-3 rounded-3xl border border-[#78d2ff]/25 bg-[#78d2ff]/[0.055] p-4 sm:p-5">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.13em] text-[#78d2ff]">
+          First Understanding
+        </p>
+        <h2 className="mt-1 text-xl font-semibold tracking-[-0.035em]">
+          The picture so far
+        </h2>
       </div>
-    </section>
-  );
-}
-
-function NameScreen({
-  name,
-  timezone,
-  onNameChange,
-  previewError,
-  preview,
-  action,
-  state,
-  backAction,
-  onSubmit,
-  onBack,
-}: {
-  name: string;
-  timezone: string;
-  onNameChange: (name: string) => void;
-  previewError?: string;
-  preview: boolean;
-  action: (formData: FormData) => void;
-  state: typeof initialOnboardingActionState;
-  backAction: (formData: FormData) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  onBack: (event: FormEvent<HTMLFormElement>) => void;
-}) {
-  const fieldError = previewError ?? state.fieldErrors?.name?.[0];
-
-  return (
-    <section className="flex min-h-0 flex-1 flex-col pt-4">
-      <BackControl step="entry" preview={preview} action={backAction} onSubmit={onBack} />
-      <div className={simpleStepContentClassName}>
-        <div className="w-full">
-          <header>
-            <h1 className="text-4xl font-semibold tracking-[-0.05em]">
-              What should I call you?
-            </h1>
-          </header>
-
-          <form
-            action={preview ? undefined : action}
-            onSubmit={onSubmit}
-            noValidate
-            className="mt-6 space-y-5"
-          >
-            <input type="hidden" name="timezone" value={timezone} />
-            <div className="space-y-2">
-              <Input
-                aria-label="Name"
-                name="name"
-                value={name}
-                onChange={(event) => onNameChange(event.target.value)}
-                className={inputClassName}
-                autoComplete="name"
-                autoFocus
-                aria-invalid={Boolean(fieldError)}
-                aria-describedby={fieldError ? "onboarding-name-error" : undefined}
-              />
-              {fieldError && (
-                <p id="onboarding-name-error" className="text-xs text-destructive">
-                  {fieldError}
-                </p>
-              )}
-            </div>
-            {state.status === "error" && state.message && !state.fieldErrors && (
-              <p role="alert" className="text-sm text-destructive">
-                {state.message}
-              </p>
-            )}
-            <PendingButton
-              pendingLabel="Saving…"
-              className="h-13 w-full rounded-2xl text-base"
-            >
-              Continue <ArrowRight />
-            </PendingButton>
-          </form>
+      <div className="space-y-4">
+        {sections.map(([label, value]) => (
+          <SynthesisSection key={label} label={label} value={value} />
+        ))}
+      </div>
+      <div className="border-t border-white/10 pt-4">
+        <h3 className="text-sm font-semibold">Where this points</h3>
+        <div className="mt-3 space-y-3">
+          {horizons.map(([label, value]) => (
+            <SynthesisSection key={label} label={label} value={value} compact />
+          ))}
         </div>
       </div>
     </section>
   );
 }
 
-function CurrentRealityScreen({
-  name,
+function SynthesisSection({
+  label,
   value,
-  onChange,
-  previewError,
-  preview,
-  action,
-  state,
-  backAction,
-  onSubmit,
-  onBack,
+  compact = false,
 }: {
-  name: string;
+  label: string;
   value: string;
-  onChange: (value: string) => void;
-  previewError?: string;
-  preview: boolean;
-  action: (formData: FormData) => void;
-  state: typeof initialOnboardingActionState;
-  backAction: (formData: FormData) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  onBack: (event: FormEvent<HTMLFormElement>) => void;
+  compact?: boolean;
 }) {
-  const fieldError =
-    previewError ?? state.fieldErrors?.currentReality?.[0];
-
   return (
-    <section className="flex flex-1 flex-col pt-4">
-      <BackControl step="name" preview={preview} action={backAction} onSubmit={onBack} />
-      <header className="mt-7 space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#78d2ff]">Your reality</p>
-        <h1 className="text-3xl font-semibold tracking-[-0.045em]">
-          {name.trim()
-            ? `${name.trim()}, give me the real picture of your life right now.`
-            : "Give me the real picture of your life right now."}
-        </h1>
-        <p className="text-sm leading-6 text-muted-foreground">
-          What do you do for work or money? What takes up most of your week?
-          What else has a real effect on how you live?
-        </p>
-      </header>
-
-      <form
-        action={preview ? undefined : action}
-        onSubmit={onSubmit}
-        noValidate
-        className="mt-7 flex flex-1 flex-col"
-      >
-        <div className="space-y-4">
-          <label className="block">
-            <Textarea
-              name="currentReality"
-              value={value}
-              onChange={(event) => onChange(event.target.value)}
-              className="min-h-52 resize-y rounded-2xl border-white/15 bg-white/[0.07] p-4 text-base leading-7 shadow-none backdrop-blur-sm focus-visible:ring-[#63c8ff]"
-              placeholder="Just tell me normally. I’ll work it out from there."
-              autoFocus
-              aria-invalid={Boolean(fieldError)}
-              aria-describedby={fieldError ? "onboarding-reality-error" : undefined}
-            />
-          </label>
-          {fieldError && (
-            <p id="onboarding-reality-error" className="text-xs text-destructive">
-              {fieldError}
-            </p>
-          )}
-        </div>
-
-        <div className="mt-auto pt-8">
-          {state.status === "error" && state.message && !state.fieldErrors && <p role="alert" className="mb-3 text-sm text-destructive">{state.message}</p>}
-          <PendingButton pendingLabel="Saving…" className="h-13 w-full rounded-2xl text-base">
-            Continue <ArrowRight />
-          </PendingButton>
-          <p className="mt-3 text-center text-xs leading-5 text-muted-foreground">
-            This stays a draft until you review and confirm what Clarity understood.
-          </p>
-        </div>
-      </form>
-    </section>
+    <div>
+      <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+        {label}
+      </h3>
+      <p className={compact ? "mt-1 text-sm leading-5" : "mt-1 text-sm leading-6"}>
+        {value}
+      </p>
+    </div>
   );
 }
 
-function NameWelcomeScreen({
-  name,
-  preview,
-  action,
-  error,
-  backAction,
-  onSubmit,
-  onBack,
-}: {
-  name: string;
-  preview: boolean;
-  action: (formData: FormData) => void;
-  error: string | null;
-  backAction: (formData: FormData) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  onBack: (event: FormEvent<HTMLFormElement>) => void;
-}) {
-  return (
-    <section className="flex min-h-0 flex-1 flex-col pt-4">
-      <BackControl step="name" preview={preview} action={backAction} onSubmit={onBack} />
-      <div className={`${simpleStepContentClassName} text-center`}>
-        <div className="w-full space-y-7">
-          <div className="space-y-3">
-            <h1 className="text-4xl font-semibold tracking-[-0.05em] text-white">
-              Welcome{name.trim() ? `, ${name.trim()}` : ""}.
-            </h1>
-            <p className="mx-auto max-w-sm text-base leading-7 text-muted-foreground">
-              Everyone’s in a different position. Let’s understand yours.
-            </p>
-          </div>
-          <form
-            action={preview ? undefined : action}
-            onSubmit={onSubmit}
-            className="mx-auto w-full max-w-sm"
-          >
-            <PendingButton
-              pendingLabel="Loading…"
-              className="h-13 w-full rounded-2xl text-base"
-            >
-              Next <ArrowRight />
-            </PendingButton>
-          </form>
-          {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          )}
-        </div>
-      </div>
-    </section>
-  );
+function progressLabel(value: OnboardingProgress[keyof OnboardingProgress]) {
+  if (value === "getting_clearer") return "getting clearer";
+  if (value === "clear") return "clear";
+  if (value === true) return "clear";
+  if (value === false) return "learning";
+  return "learning";
 }
 
-function ConversationShellScreen({
-  preview,
-  backAction,
-  onBack,
-}: {
-  preview: boolean;
-  backAction: (formData: FormData) => void;
-  onBack: (event: FormEvent<HTMLFormElement>) => void;
-}) {
-  return (
-    <section className="flex flex-1 flex-col items-center justify-center py-10 text-center">
-      <div className="grid size-20 place-items-center rounded-full border border-[#78d2ff]/35 bg-[#2196f3]/15 shadow-[0_0_40px_rgba(33,150,243,0.28)]">
-        <Check className="size-9 text-[#78d2ff]" />
-      </div>
-      <div className="mt-7 space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#78d2ff]">
-          {preview ? "Conversation shell" : "A clear starting point"}
-        </p>
-        <h1 className="text-3xl font-semibold tracking-[-0.045em]">
-          {preview
-            ? "Adaptive conversation begins here"
-            : "Your starting point is saved"}
-        </h1>
-        <p className="mx-auto max-w-sm text-sm leading-6 text-muted-foreground">
-          {preview
-            ? "This development placeholder marks the handoff to the future adaptive Clarity conversation."
-            : "Your answer is safely saved. Clarity will continue from here when the conversational onboarding stage is ready."}
-        </p>
-      </div>
-      <div className="mt-9 w-full rounded-2xl border border-white/10 bg-white/[0.05] p-4 text-left backdrop-blur-sm">
-        <div className="flex gap-3">
-          <Sparkles className="mt-0.5 size-5 shrink-0 text-[#78d2ff]" />
-          <p className="text-sm leading-6 text-muted-foreground">
-            Nothing has been added to your Life yet. You’ll correct and confirm the full picture first.
-          </p>
-        </div>
-      </div>
-      <form action={preview ? undefined : backAction} onSubmit={onBack} className="mt-7 w-full">
-        <input type="hidden" name="step" value="current_reality" />
-        <Button type="submit" variant="secondary" className="h-12 w-full rounded-2xl">
-          Review my answer
-        </Button>
-      </form>
-    </section>
-  );
-}
-
-function BackControl({
-  step,
-  preview,
-  action,
-  onSubmit,
-}: {
-  step: "entry" | "name" | "current_reality";
-  preview: boolean;
-  action: (formData: FormData) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-}) {
-  return (
-    <form action={preview ? undefined : action} onSubmit={onSubmit}>
-      <input type="hidden" name="step" value={step} />
-      <button type="submit" className="inline-flex min-h-11 items-center gap-2 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <ArrowLeft className="size-4" /> Back
-      </button>
-    </form>
-  );
+function previewMessage(
+  id: string,
+  role: "user" | "clarity",
+  content: string,
+  createdAt: string,
+  responseToMessageId: string | null = null,
+): OnboardingConversationMessage {
+  return {
+    id,
+    onboarding_session_id: "00000000-0000-4000-8000-000000000001",
+    role,
+    content,
+    created_at: createdAt,
+    response_to_message_id: responseToMessageId,
+    mode: role === "clarity" ? "CLARIFY" : null,
+    structured_output: null,
+  };
 }

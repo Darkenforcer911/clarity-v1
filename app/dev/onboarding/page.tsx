@@ -9,7 +9,10 @@ import {
   AuthenticationRequiredError,
   getAuthenticatedUserAndProfile,
 } from "@/lib/clarity/daily-loop-queries";
-import { emptyOnboardingDraft } from "@/lib/clarity/onboarding";
+import {
+  emptyOnboardingProgress,
+  emptyOnboardingUnderstanding,
+} from "@/lib/clarity/onboarding-intelligence";
 import { onboardingPreviewEnabled } from "@/lib/clarity/onboarding-preview";
 
 export default function OnboardingPreviewPage() {
@@ -35,9 +38,15 @@ async function OnboardingPreviewContent() {
   return (
     <OnboardingFlow
       initialState={{
-        completed: false,
-        step: "entry",
-        draft: emptyOnboardingDraft(profile),
+        sessionId: null,
+        status: "not_started",
+        messages: [],
+        understanding: emptyOnboardingUnderstanding(),
+        progress: emptyOnboardingProgress(),
+        synthesis: null,
+        confirmedSnapshot: null,
+        turnCount: 0,
+        profile: { name: profile.name, timezone: profile.timezone },
       }}
       mode="preview"
     />

@@ -1823,16 +1823,87 @@ export type Database = {
           },
         ]
       }
+      onboarding_messages: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          input_tokens: number | null
+          latency_ms: number | null
+          mode: string | null
+          model_provider: string | null
+          model_version: string | null
+          onboarding_session_id: string
+          output_tokens: number | null
+          response_to_message_id: string | null
+          role: string
+          structured_output: Json | null
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          input_tokens?: number | null
+          latency_ms?: number | null
+          mode?: string | null
+          model_provider?: string | null
+          model_version?: string | null
+          onboarding_session_id: string
+          output_tokens?: number | null
+          response_to_message_id?: string | null
+          role: string
+          structured_output?: Json | null
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          input_tokens?: number | null
+          latency_ms?: number | null
+          mode?: string | null
+          model_provider?: string | null
+          model_version?: string | null
+          onboarding_session_id?: string
+          output_tokens?: number | null
+          response_to_message_id?: string | null
+          role?: string
+          structured_output?: Json | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_messages_response_fkey"
+            columns: ["response_to_message_id"]
+            isOneToOne: true
+            referencedRelation: "onboarding_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_messages_session_owner_fkey"
+            columns: ["onboarding_session_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_sessions"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
+      }
       onboarding_sessions: {
         Row: {
           abandoned_at: string | null
           completed_at: string | null
+          confirmed_snapshot: Json | null
           created_at: string
           current_step: string
           id: string
           onboarding_version: number
+          progress: Json
           started_at: string
           status: Database["public"]["Enums"]["onboarding_session_status"]
+          synthesis: Json | null
+          turn_count: number
+          understanding: Json
           updated_at: string
           user_draft: Json
           user_id: string
@@ -1840,12 +1911,17 @@ export type Database = {
         Insert: {
           abandoned_at?: string | null
           completed_at?: string | null
+          confirmed_snapshot?: Json | null
           created_at?: string
           current_step: string
           id?: string
           onboarding_version: number
+          progress?: Json
           started_at?: string
           status?: Database["public"]["Enums"]["onboarding_session_status"]
+          synthesis?: Json | null
+          turn_count?: number
+          understanding?: Json
           updated_at?: string
           user_draft?: Json
           user_id: string
@@ -1853,12 +1929,17 @@ export type Database = {
         Update: {
           abandoned_at?: string | null
           completed_at?: string | null
+          confirmed_snapshot?: Json | null
           created_at?: string
           current_step?: string
           id?: string
           onboarding_version?: number
+          progress?: Json
           started_at?: string
           status?: Database["public"]["Enums"]["onboarding_session_status"]
+          synthesis?: Json | null
+          turn_count?: number
+          understanding?: Json
           updated_at?: string
           user_draft?: Json
           user_id?: string
@@ -2401,6 +2482,32 @@ export type Database = {
           message_id: string
         }[]
       }
+      append_onboarding_response_v1: {
+        Args: {
+          p_content: string
+          p_input_tokens?: number
+          p_latency_ms: number
+          p_mode: string
+          p_model_provider: string
+          p_model_version: string
+          p_output_tokens?: number
+          p_structured_output: Json
+          p_user_message_id: string
+        }
+        Returns: {
+          created_at: string
+          message_id: string
+          onboarding_session_id: string
+        }[]
+      }
+      append_onboarding_user_message_v1: {
+        Args: { p_content: string }
+        Returns: {
+          created_at: string
+          message_id: string
+          onboarding_session_id: string
+        }[]
+      }
       approve_daily_plan: {
         Args: { p_daily_plan_id: string }
         Returns: undefined
@@ -2408,6 +2515,10 @@ export type Database = {
       approve_daily_plan_v2: {
         Args: { p_allow_empty?: boolean; p_daily_plan_id: string }
         Returns: undefined
+      }
+      confirm_onboarding_understanding_v1: {
+        Args: { p_onboarding_session_id: string }
+        Returns: Json
       }
       archive_life_area: {
         Args: { p_life_area_id: string }

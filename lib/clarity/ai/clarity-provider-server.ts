@@ -9,6 +9,14 @@ import {
 } from "./clarity-provider";
 
 export function createClarityModelProvider(): ClarityModelProvider {
+  return createConfiguredOpenAIProvider();
+}
+
+export function createClarityStructuredProvider() {
+  return createConfiguredOpenAIProvider();
+}
+
+function createConfiguredOpenAIProvider() {
   const provider = process.env.CLARITY_MODEL_PROVIDER ?? "openai";
   if (provider !== "openai") {
     throw new ClarityProviderError(

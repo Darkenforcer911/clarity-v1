@@ -25,7 +25,5 @@ async function OnboardingContent() {
     throw error;
   }
 
-  if (state.completed) redirect("/today");
-
   return <OnboardingFlow initialState={state} mode="live" />;
 }

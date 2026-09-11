@@ -1,173 +1,96 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import type { OnboardingActionState } from "@/lib/clarity/onboarding-action-state";
+import { runOnboardingConversationTurn } from "@/lib/clarity/onboarding-orchestrator";
 import {
-  CURRENT_REALITY_QUESTION_ID,
-  isExplicitUnknown,
-  type OnboardingStep,
-} from "@/lib/clarity/onboarding";
-import {
-  getOnboardingPageState,
-  saveOnboardingStep,
+  appendOnboardingUserMessage,
+  confirmOnboardingUnderstanding,
+  loadOnboardingTurnContext,
 } from "@/lib/clarity/onboarding-service";
 
-const nameFormSchema = z.object({
-  name: z.string().trim().min(1, "Enter your name to continue.").max(200),
-});
+const messageSchema = z
+  .string()
+  .trim()
+  .min(1, "Tell Clarity what’s going on first.")
+  .max(10_000, "Keep this message under 10,000 characters.");
 
-const realityFormSchema = z.object({
-  currentReality: z
-    .string()
-    .max(10_000, "Keep this answer under 10,000 characters.")
-    .refine(
-      (value) => value.trim().length >= 2,
-      "Tell Clarity a little about what your life looks like right now.",
-    ),
-});
+export async function sendOnboardingMessageAction(
+  _previous: OnboardingActionState,
+  formData: FormData,
+): Promise<OnboardingActionState> {
+  let persistedMessageId: string | undefined;
 
-function validTimezone(value: string) {
   try {
-    new Intl.DateTimeFormat("en-AU", { timeZone: value }).format();
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function actionError(error: unknown): OnboardingActionState {
-  if (error instanceof z.ZodError) {
+    const content = messageSchema.parse(formData.get("message"));
+    const persisted = await appendOnboardingUserMessage(content);
+    persistedMessageId = persisted.message_id;
+    await runOnboardingConversationTurn({ userMessageId: persistedMessageId });
+    revalidatePath("/onboarding");
+    return { status: "success", message: null, completedAt: Date.now() };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return {
+        status: "error",
+        message: null,
+        fieldError: error.issues[0]?.message,
+        completedAt: Date.now(),
+      };
+    }
+    console.error("Onboarding turn failed", error);
+    if (persistedMessageId) revalidatePath("/onboarding");
     return {
       status: "error",
-      step: null,
-      message: "Check the highlighted fields and try again.",
-      fieldErrors: error.flatten().fieldErrors as Record<string, string[]>,
+      message: persistedMessageId
+        ? "Clarity couldn’t respond just now. Your answer is saved, so you can retry."
+        : "Clarity couldn’t save that yet. Try again.",
+      ...(persistedMessageId ? { retryMessageId: persistedMessageId } : {}),
+      completedAt: Date.now(),
     };
   }
-
-  console.error("Onboarding step failed", error);
-  return {
-    status: "error",
-    step: null,
-    message: "Clarity couldn’t save that yet. Try again.",
-  };
 }
 
-export async function startOnboardingAction(
-  _previous: OnboardingActionState,
-  _formData: FormData,
-): Promise<OnboardingActionState> {
-  void _previous;
-  void _formData;
-  try {
-    const state = await getOnboardingPageState();
-    await saveOnboardingStep("name", state.draft);
-    revalidatePath("/onboarding");
-  } catch (error) {
-    return actionError(error);
-  }
-
-  redirect("/onboarding");
-}
-
-export async function saveOnboardingNameAction(
+export async function retryOnboardingMessageAction(
   _previous: OnboardingActionState,
   formData: FormData,
 ): Promise<OnboardingActionState> {
   try {
-    const { name } = nameFormSchema.parse({ name: formData.get("name") });
-    const submittedTimezone = String(formData.get("timezone") ?? "");
-    const state = await getOnboardingPageState();
-    const draft = {
-      ...state.draft,
-      identity: {
-        ...state.draft.identity,
-        name,
-        timezone: validTimezone(submittedTimezone)
-          ? submittedTimezone
-          : state.draft.identity.timezone,
-      },
+    const messageId = z.string().uuid().parse(formData.get("retryMessageId"));
+    const context = await loadOnboardingTurnContext(messageId);
+    if (!context.alreadyAnswered) {
+      await runOnboardingConversationTurn({ userMessageId: messageId });
+    }
+    revalidatePath("/onboarding");
+    return { status: "success", message: null, completedAt: Date.now() };
+  } catch (error) {
+    console.error("Onboarding retry failed", error);
+    return {
+      status: "error",
+      message: "Clarity still couldn’t respond. Try again when you’re ready.",
+      retryMessageId: String(formData.get("retryMessageId") ?? ""),
+      completedAt: Date.now(),
     };
-    await saveOnboardingStep("name_welcome", draft);
-    revalidatePath("/onboarding");
-  } catch (error) {
-    return actionError(error);
   }
-
-  redirect("/onboarding");
 }
 
-export async function continueFromNameWelcomeAction(
-  _previous: OnboardingActionState,
-  _formData: FormData,
-): Promise<OnboardingActionState> {
-  void _previous;
-  void _formData;
-  try {
-    const state = await getOnboardingPageState();
-    await saveOnboardingStep("current_reality", state.draft);
-    revalidatePath("/onboarding");
-  } catch (error) {
-    return actionError(error);
-  }
-
-  redirect("/onboarding");
-}
-
-export async function saveCurrentRealityAction(
+export async function confirmOnboardingAction(
   _previous: OnboardingActionState,
   formData: FormData,
 ): Promise<OnboardingActionState> {
   try {
-    const { currentReality: answer } = realityFormSchema.parse({
-      currentReality: formData.get("currentReality"),
-    });
-    const state = await getOnboardingPageState();
-    const explicitUnknown = isExplicitUnknown(answer);
-    const draft = {
-      ...state.draft,
-      responses: {
-        ...state.draft.responses,
-        currentReality: {
-          questionId: CURRENT_REALITY_QUESTION_ID,
-          answer,
-          explicitUnknown,
-          answeredAt: new Date().toISOString(),
-        },
-      },
-      explicitUnknowns: explicitUnknown
-        ? [...new Set([...state.draft.explicitUnknowns, CURRENT_REALITY_QUESTION_ID])]
-        : state.draft.explicitUnknowns.filter(
-            (questionId) => questionId !== CURRENT_REALITY_QUESTION_ID,
-          ),
+    const sessionId = z.string().uuid().parse(formData.get("sessionId"));
+    await confirmOnboardingUnderstanding(sessionId);
+    revalidatePath("/onboarding");
+    revalidatePath("/today");
+    return { status: "success", message: null, completedAt: Date.now() };
+  } catch (error) {
+    console.error("Onboarding confirmation failed", error);
+    return {
+      status: "error",
+      message: "Clarity couldn’t confirm that yet. Try again.",
+      completedAt: Date.now(),
     };
-
-    await saveOnboardingStep("conversation_shell", draft);
-    revalidatePath("/onboarding");
-  } catch (error) {
-    return actionError(error);
   }
-
-  redirect("/onboarding");
-}
-
-export async function moveOnboardingBackAction(
-  _previous: OnboardingActionState,
-  formData: FormData,
-): Promise<OnboardingActionState> {
-  try {
-    const step = z
-      .enum(["entry", "name", "current_reality"])
-      .parse(formData.get("step")) as OnboardingStep;
-    const state = await getOnboardingPageState();
-    await saveOnboardingStep(step, state.draft);
-    revalidatePath("/onboarding");
-  } catch (error) {
-    return actionError(error);
-  }
-
-  redirect("/onboarding");
 }
