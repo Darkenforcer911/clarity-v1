@@ -185,6 +185,17 @@ test(
         await cdp.waitFor(
           `Boolean(document.querySelector("[data-clarity-jump-to-latest]"))`,
         );
+        const jumpHit = await cdp.evaluate(`(() => {
+          const button = document.querySelector(
+            "[data-clarity-jump-to-latest]",
+          );
+          const rect = button.getBoundingClientRect();
+          return document.elementFromPoint(
+            rect.left + rect.width / 2,
+            rect.top + rect.height / 2,
+          )?.closest("[data-clarity-jump-to-latest]") === button;
+        })()`);
+        assert.equal(jumpHit, true, "the floating latest button remains interactive");
         await cdp.evaluate(
           `document.querySelector("[data-clarity-jump-to-latest]").click()`,
         );
@@ -239,6 +250,169 @@ test(
             history.scrollTop - (history.scrollHeight - history.clientHeight),
           ) < 1;
         })()`);
+
+        await cdp.evaluate(`document.querySelector(
+          "[data-clarity-composer-shell] textarea",
+        ).focus({ preventScroll: true })`);
+        await setMobileViewport(cdp, 400);
+        await cdp.waitFor(
+          `document.querySelector("[data-clarity-conversation-panel]")?.dataset.clarityKeyboardPhase === "open"`,
+        );
+        await cdp.waitFor(`(() => {
+          const history = document.querySelector(
+            "[data-clarity-conversation-scroll]",
+          );
+          return Math.abs(
+            history.scrollTop - (history.scrollHeight - history.clientHeight),
+          ) < 1;
+        })()`);
+        const canvasHitTesting = await cdp.evaluate(`(() => {
+          const history = document.querySelector(
+            "[data-clarity-conversation-scroll]",
+          );
+          const content = document.querySelector(
+            "[data-clarity-history-content]",
+          );
+          const inset = document.querySelector(
+            "[data-clarity-history-bottom-inset]",
+          );
+          const dock = document.querySelector("[data-clarity-composer-dock]");
+          const scrim = document.querySelector("[data-clarity-composer-scrim]");
+          const historyRect = history.getBoundingClientRect();
+          const contentRect = content.getBoundingClientRect();
+          const insetRect = inset.getBoundingClientRect();
+          const dockRect = dock.getBoundingClientRect();
+          const messages = [...document.querySelectorAll(
+            "[data-clarity-conversation-message]",
+          )].map((element) => ({
+            element,
+            rect: element.getBoundingClientRect(),
+          }));
+          const visible = messages.filter(
+            ({ rect }) =>
+              rect.bottom > historyRect.top && rect.top < dockRect.top,
+          );
+          const last = messages.at(-1);
+          const text = last?.element.querySelector("p, div");
+          const textRect = text?.getBoundingClientRect();
+          const visibleGapPair = visible.slice(0, -1).map((item, index) => ({
+            before: item,
+            after: visible[index + 1],
+          })).find(({ before, after }) => after.rect.top - before.rect.bottom >= 4);
+          const describePoint = (x, y) => {
+            const target = document.elementFromPoint(x, y);
+            return {
+              x,
+              y,
+              tag: target?.tagName?.toLowerCase() ?? null,
+              historyOwned:
+                target === history || Boolean(target && history.contains(target)),
+              messageOwned: Boolean(
+                target?.closest("[data-clarity-conversation-message]"),
+              ),
+            };
+          };
+          const x = historyRect.left + 8;
+          const describeMessageGap = () => {
+            if (visibleGapPair) {
+              return describePoint(
+                x,
+                (visibleGapPair.before.rect.bottom +
+                  visibleGapPair.after.rect.top) / 2,
+              );
+            }
+            const pair = messages.slice(0, -1).map((item, index) => ({
+              before: item,
+              after: messages[index + 1],
+            })).find(({ before, after }) =>
+              after.rect.top - before.rect.bottom >= 4,
+            );
+            if (!pair) return null;
+            const originalScrollTop = history.scrollTop;
+            const currentGap = (pair.before.rect.bottom + pair.after.rect.top) / 2;
+            const targetY = historyRect.top + historyRect.height / 2;
+            history.scrollTop = Math.max(
+              0,
+              Math.min(
+                history.scrollHeight - history.clientHeight,
+                originalScrollTop + currentGap - targetY,
+              ),
+            );
+            const beforeRect = pair.before.element.getBoundingClientRect();
+            const afterRect = pair.after.element.getBoundingClientRect();
+            const point = describePoint(
+              x,
+              (beforeRect.bottom + afterRect.top) / 2,
+            );
+            history.scrollTop = originalScrollTop;
+            return point;
+          };
+          const points = {
+            messageText: textRect
+              ? describePoint(
+                  textRect.left + Math.min(8, textRect.width / 2),
+                  Math.max(
+                    historyRect.top + 4,
+                    Math.min(
+                      dockRect.top - 4,
+                      textRect.top + Math.min(8, textRect.height / 2),
+                    ),
+                  ),
+                )
+              : null,
+            messageCard: last
+              ? describePoint(
+                  last.rect.right - 8,
+                  Math.max(historyRect.top + 4, last.rect.top + 8),
+                )
+              : null,
+            betweenMessages: describeMessageGap(),
+            blankAfterLast:
+              last && contentRect.bottom - last.rect.bottom >= 4
+                ? describePoint(x, (last.rect.bottom + contentRect.bottom) / 2)
+                : null,
+            behindScrim: describePoint(x, dockRect.top - 6),
+          };
+          return {
+            points,
+            historyRect: { top: historyRect.top, bottom: historyRect.bottom },
+            contentBottom: contentRect.bottom,
+            lastMessageBottom: last?.rect.bottom ?? null,
+            dockTop: dockRect.top,
+            insetHeight: insetRect.height,
+            insetOwnedByHistory: history.contains(inset),
+            insetPointerEvents: getComputedStyle(inset).pointerEvents,
+            scrimPointerEvents: getComputedStyle(scrim).pointerEvents,
+          };
+        })()`);
+        assert.equal(canvasHitTesting.scrimPointerEvents, "none");
+        assert.equal(canvasHitTesting.insetOwnedByHistory, true);
+        assert.equal(canvasHitTesting.insetPointerEvents, "none");
+        assert.ok(canvasHitTesting.insetHeight > 0, JSON.stringify(canvasHitTesting));
+        assert.ok(
+          canvasHitTesting.contentBottom <= canvasHitTesting.dockTop + 1,
+          JSON.stringify(canvasHitTesting),
+        );
+        assert.ok(
+          canvasHitTesting.contentBottom - canvasHitTesting.lastMessageBottom >= 8,
+          JSON.stringify(canvasHitTesting),
+        );
+        for (const [label, point] of Object.entries(canvasHitTesting.points)) {
+          assert.ok(point, `${label} must have a physical test coordinate`);
+          assert.equal(
+            point.historyOwned,
+            true,
+            `${label} must resolve to the single history owner: ${JSON.stringify(point)}`,
+          );
+        }
+
+        await setMobileViewport(cdp, 844);
+        await cdp.evaluate(`document.querySelector(
+          "[data-clarity-composer-shell] textarea",
+        ).blur()`);
+        await cdp.waitFor(
+          `document.querySelector("[data-clarity-conversation-panel]")?.dataset.clarityKeyboardPhase === "closed"`,
+        );
 
         await cdp.evaluate(`(() => {
           const textarea = document.querySelector(

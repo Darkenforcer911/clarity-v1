@@ -210,7 +210,6 @@ export function ClarityConversation({
   const conversationContentRef = useRef<HTMLDivElement>(null);
   const conversationEndRef = useRef<HTMLDivElement>(null);
   const historyBottomInsetRef = useRef<HTMLDivElement>(null);
-  const historyComposerGapRef = useRef<HTMLDivElement>(null);
   const composerDockRef = useRef<HTMLDivElement>(null);
   const layoutDebugTapTimesRef = useRef<number[]>([]);
   const viewerScrollTopRef = useRef<number | null>(null);
@@ -879,9 +878,8 @@ export function ClarityConversation({
 
   useEffect(() => {
     const history = conversationScrollRef.current;
-    const historyComposerGap = historyComposerGapRef.current;
     const textarea = composerTextareaRef.current;
-    if (!history || !historyComposerGap || !textarea) return;
+    if (!history || !textarea) return;
 
     const findTouch = (touches: TouchList, identifier: number) =>
       Array.from(touches).find((point) => point.identifier === identifier);
@@ -1031,33 +1029,28 @@ export function ClarityConversation({
       resetHistoryTouch();
     };
 
-    const gestureTargets = [history, historyComposerGap];
-    for (const target of gestureTargets) {
-      target.addEventListener("touchstart", handleHistoryTouchStart, {
-        passive: true,
-        capture: true,
-      });
-      target.addEventListener("touchmove", handleHistoryTouchMove, {
-        passive: false,
-        capture: true,
-      });
-      target.addEventListener("touchend", handleHistoryTouchEnd, {
-        passive: true,
-        capture: true,
-      });
-      target.addEventListener("touchcancel", handleHistoryTouchEnd, {
-        passive: true,
-        capture: true,
-      });
-    }
+    history.addEventListener("touchstart", handleHistoryTouchStart, {
+      passive: true,
+      capture: true,
+    });
+    history.addEventListener("touchmove", handleHistoryTouchMove, {
+      passive: false,
+      capture: true,
+    });
+    history.addEventListener("touchend", handleHistoryTouchEnd, {
+      passive: true,
+      capture: true,
+    });
+    history.addEventListener("touchcancel", handleHistoryTouchEnd, {
+      passive: true,
+      capture: true,
+    });
 
     return () => {
-      for (const target of gestureTargets) {
-        target.removeEventListener("touchstart", handleHistoryTouchStart, true);
-        target.removeEventListener("touchmove", handleHistoryTouchMove, true);
-        target.removeEventListener("touchend", handleHistoryTouchEnd, true);
-        target.removeEventListener("touchcancel", handleHistoryTouchEnd, true);
-      }
+      history.removeEventListener("touchstart", handleHistoryTouchStart, true);
+      history.removeEventListener("touchmove", handleHistoryTouchMove, true);
+      history.removeEventListener("touchend", handleHistoryTouchEnd, true);
+      history.removeEventListener("touchcancel", handleHistoryTouchEnd, true);
       resetHistoryTouch();
     };
   }, [dictationStatus, layoutDebugActive]);
@@ -1516,7 +1509,7 @@ export function ClarityConversation({
   return (
     <div
       ref={conversationHostRef}
-      className="relative min-h-0 min-w-0 flex-1 md:h-[calc(100dvh-13rem)] md:flex-none"
+      className="relative min-h-0 min-w-0 flex-1 max-md:-mb-[var(--clarity-app-bottom-boundary)] md:h-[calc(100dvh-13rem)] md:flex-none"
     >
       <div
         data-clarity-conversation-panel
@@ -1535,7 +1528,7 @@ export function ClarityConversation({
           <div
             ref={conversationContentRef}
             data-clarity-history-content
-            className={`space-y-3 ${
+            className={`space-y-3 pb-3 ${
               initialHistoryReady ? "" : "max-md:invisible"
             }`}
           >
@@ -1577,30 +1570,35 @@ export function ClarityConversation({
         <div
           ref={composerDockRef}
           data-clarity-composer-dock
-          className="min-w-0 shrink-0 bg-background max-md:fixed max-md:z-50"
+          className="relative min-w-0 shrink-0 max-md:fixed max-md:z-50"
           style={composerDockStyle}
         >
           <div
-            ref={historyComposerGapRef}
-            data-clarity-history-composer-gap
-            className="relative flex h-10 min-h-10 shrink-0 touch-pan-y items-center justify-center border-t border-border bg-background"
-          >
-            {showJumpToLatest && (
+            data-clarity-composer-scrim
+            className="pointer-events-none absolute -inset-x-4 -top-12 bottom-0 bg-gradient-to-b from-transparent via-background to-background opacity-90"
+            aria-hidden="true"
+          />
+          {showJumpToLatest && (
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex -translate-y-[calc(100%+0.5rem)] justify-center">
               <Button
                 type="button"
                 variant="outline"
                 size="icon"
                 data-clarity-jump-to-latest
-                className="size-8 rounded-full bg-card shadow-sm"
+                className="pointer-events-auto size-8 rounded-full border-border bg-card shadow-md backdrop-blur-md"
+                style={{
+                  backgroundColor:
+                    "color-mix(in srgb, var(--card) 95%, transparent)",
+                }}
                 aria-label="Jump to latest"
                 onClick={jumpToLatest}
               >
                 <ArrowDown className="size-4" aria-hidden="true" />
               </Button>
-            )}
-          </div>
+            </div>
+          )}
 
-          <div className="min-w-0 shrink-0 space-y-2 bg-background pb-1">
+          <div className="relative z-10 min-w-0 shrink-0 space-y-2 pb-1">
           {(state.error || state.fieldError || mediaError) && (
             <div
               role="alert"
@@ -1624,7 +1622,11 @@ export function ClarityConversation({
             onFocusCapture={handleComposerFocus}
             onBlurCapture={handleComposerBlur}
             noValidate
-            className="relative min-w-0 rounded-2xl border border-border bg-card p-2 shadow-sm"
+            className="relative min-w-0 rounded-2xl border border-border bg-card p-2 shadow-md backdrop-blur-md"
+            style={{
+              backgroundColor:
+                "color-mix(in srgb, var(--card) 95%, transparent)",
+            }}
           >
           <InvocationFields
             invocation={attachment?.invocation ?? GENERAL_INVOCATION}
@@ -1934,6 +1936,8 @@ function ConversationMessage({
 
   return (
     <article
+      data-clarity-conversation-message
+      data-clarity-message-role={item.role}
       className={
         item.role === "user"
           ? "ml-auto max-w-[88%] min-w-0 overflow-hidden rounded-2xl rounded-br-md bg-primary px-4 py-3 text-sm leading-6 text-primary-foreground"

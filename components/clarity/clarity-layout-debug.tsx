@@ -43,7 +43,7 @@ type ElementName =
   | "pageIntro"
   | "conversationPanel"
   | "history"
-  | "historyComposerGap"
+  | "composerScrim"
   | "composerShell"
   | "textarea"
   | "bottomNav";
@@ -54,7 +54,7 @@ const ELEMENT_SELECTORS: Record<ElementName, string> = {
   pageIntro: "[data-clarity-page-intro]",
   conversationPanel: "[data-clarity-conversation-panel]",
   history: "[data-clarity-conversation-scroll]",
-  historyComposerGap: "[data-clarity-history-composer-gap]",
+  composerScrim: "[data-clarity-composer-scrim]",
   composerShell: "[data-clarity-composer-shell]",
   textarea: 'textarea[name="message"]',
   bottomNav: 'nav[aria-label="Primary"]',
@@ -95,9 +95,6 @@ function elementRegion(target: EventTarget | null) {
   if (target.closest('[data-clarity-layout-debug]')) return "diagnostic-hud";
   if (target.closest('textarea[name="message"]')) return "textarea";
   if (target.closest("[data-clarity-composer-shell]")) return "composer";
-  if (target.closest("[data-clarity-history-composer-gap]")) {
-    return "history-composer-gap";
-  }
   if (target.closest("[data-clarity-conversation-scroll]")) return "history";
   if (target.closest("[data-app-shell-header]")) return "app-header";
   if (target.closest('nav[aria-label="Primary"]')) return "bottom-nav";
