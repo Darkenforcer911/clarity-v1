@@ -423,6 +423,7 @@ export type Database = {
           kind: string
           message_id: string | null
           mime_type: string
+          onboarding_message_id: string | null
           position: number | null
           storage_path: string
           transcript: string | null
@@ -440,6 +441,7 @@ export type Database = {
           kind: string
           message_id?: string | null
           mime_type: string
+          onboarding_message_id?: string | null
           position?: number | null
           storage_path: string
           transcript?: string | null
@@ -457,6 +459,7 @@ export type Database = {
           kind?: string
           message_id?: string | null
           mime_type?: string
+          onboarding_message_id?: string | null
           position?: number | null
           storage_path?: string
           transcript?: string | null
@@ -471,6 +474,13 @@ export type Database = {
             columns: ["message_id", "user_id"]
             isOneToOne: false
             referencedRelation: "clarity_messages"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "clarity_message_attachments_onboarding_message_owner_fkey"
+            columns: ["onboarding_message_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_messages"
             referencedColumns: ["id", "user_id"]
           },
           {
@@ -2502,6 +2512,14 @@ export type Database = {
       }
       append_onboarding_user_message_v1: {
         Args: { p_content: string }
+        Returns: {
+          created_at: string
+          message_id: string
+          onboarding_session_id: string
+        }[]
+      }
+      append_onboarding_user_message_v2: {
+        Args: { p_attachment_ids?: string[]; p_content: string }
         Returns: {
           created_at: string
           message_id: string

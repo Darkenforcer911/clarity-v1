@@ -15,6 +15,7 @@ import type { ClarityProviderImage } from "./clarity-provider";
 const attachmentRowSchema = z.object({
   id: z.string().uuid(),
   message_id: z.string().uuid().nullable(),
+  onboarding_message_id: z.string().uuid().nullable(),
   kind: z.enum(["image", "audio"]),
   storage_path: z.string().min(1),
   mime_type: z.string().min(1),
@@ -84,6 +85,7 @@ export async function discardClarityDraftAttachment(attachmentIdInput: string) {
     .eq("id", attachmentId)
     .eq("user_id", user.id)
     .is("message_id", null)
+    .is("onboarding_message_id", null)
     .maybeSingle();
   if (attachmentError) throw new Error(attachmentError.message);
   if (!attachment) throw new Error("Draft attachment not found.");
@@ -100,16 +102,29 @@ export async function discardClarityDraftAttachment(attachmentIdInput: string) {
 }
 
 export async function loadClarityAttachmentsForMessages(messageIds: string[]) {
+  return loadAttachmentsForMessages(messageIds, "message_id");
+}
+
+export async function loadOnboardingAttachmentsForMessages(
+  messageIds: string[],
+) {
+  return loadAttachmentsForMessages(messageIds, "onboarding_message_id");
+}
+
+async function loadAttachmentsForMessages(
+  messageIds: string[],
+  target: "message_id" | "onboarding_message_id",
+) {
   if (messageIds.length === 0) return new Map<string, ClarityMessageAttachment[]>();
   const ids = z.array(z.string().uuid()).max(80).parse(messageIds);
   const { supabase, user } = await getAuthenticatedUserAndProfile();
   const { data, error } = await supabase
     .from("clarity_message_attachments")
     .select(
-      "id, message_id, kind, storage_path, mime_type, byte_size, width, height, duration_ms, transcript, transcription_status, position",
+      "id, message_id, onboarding_message_id, kind, storage_path, mime_type, byte_size, width, height, duration_ms, transcript, transcription_status, position",
     )
     .eq("user_id", user.id)
-    .in("message_id", ids)
+    .in(target, ids)
     .order("position", { ascending: true });
   if (error) throw new Error(error.message);
 
@@ -126,10 +141,11 @@ export async function loadClarityAttachmentsForMessages(messageIds: string[]) {
   const byMessage = new Map<string, ClarityMessageAttachment[]>();
 
   for (const row of rows) {
-    if (!row.message_id || row.position === null) continue;
+    const messageId = row[target];
+    if (!messageId || row.position === null) continue;
     const attachment = publicAttachment(row, signedByPath.get(row.storage_path) ?? null);
-    byMessage.set(row.message_id, [
-      ...(byMessage.get(row.message_id) ?? []),
+    byMessage.set(messageId, [
+      ...(byMessage.get(messageId) ?? []),
       attachment,
     ]);
   }
@@ -174,7 +190,11 @@ export async function prepareClarityMessageForReasoning(input: {
 export async function transcribeClarityDraftAudio(attachmentIdInput: string) {
   const startedAt = Date.now();
   const row = await loadOwnedAttachment(attachmentIdInput);
-  if (row.kind !== "audio" || row.message_id !== null) {
+  if (
+    row.kind !== "audio" ||
+    row.message_id !== null ||
+    row.onboarding_message_id !== null
+  ) {
     throw new ClarityTranscriptionError("That dictation is no longer available.");
   }
 
@@ -253,7 +273,7 @@ async function loadOwnedAttachment(attachmentId: string) {
   const { data, error } = await supabase
     .from("clarity_message_attachments")
     .select(
-      "id, message_id, kind, storage_path, mime_type, byte_size, width, height, duration_ms, transcript, transcription_status, position",
+      "id, message_id, onboarding_message_id, kind, storage_path, mime_type, byte_size, width, height, duration_ms, transcript, transcription_status, position",
     )
     .eq("id", parsedId)
     .eq("user_id", user.id)

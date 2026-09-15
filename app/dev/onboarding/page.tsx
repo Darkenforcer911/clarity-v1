@@ -46,7 +46,15 @@ async function OnboardingPreviewContent() {
         synthesis: null,
         confirmedSnapshot: null,
         turnCount: 0,
-        profile: { name: profile.name, timezone: profile.timezone },
+        basicContextComplete: false,
+        profile: {
+          preferredName: profile.name?.trim() ?? "",
+          dateOfBirth: profile.date_of_birth,
+          age: null,
+          city: profile.city?.trim() ?? "",
+          country: profile.country?.trim() ?? "",
+          timezone: profile.timezone,
+        },
       }}
       mode="preview"
     />

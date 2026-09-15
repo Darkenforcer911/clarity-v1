@@ -3,8 +3,13 @@ import "server-only";
 import { z } from "zod";
 
 import type { Json } from "@/lib/supabase/database.types";
+import {
+  loadOnboardingAttachmentsForMessages,
+} from "./ai/clarity-attachment-service";
+import type { ClarityMessageAttachment } from "./ai/clarity-attachments";
 import type { ClarityStructuredProviderResult } from "./ai/clarity-provider";
 import { getAuthenticatedUserAndProfile } from "./daily-loop-queries";
+import { getLocalDate } from "./date-time";
 import {
   emptyOnboardingProgress,
   emptyOnboardingUnderstanding,
@@ -28,10 +33,39 @@ const storedSessionSchema = z.object({
   progress: z.unknown(),
   synthesis: z.unknown().nullable(),
   confirmed_snapshot: z.unknown().nullable(),
+  user_draft: z.unknown(),
   turn_count: z.number().int().nonnegative(),
   started_at: z.string(),
   completed_at: z.string().nullable(),
 });
+
+const onboardingBasicContextSchema = z.object({
+  preferredName: z.string().trim().min(1).max(200),
+  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  city: z.string().trim().min(1).max(120),
+  country: z.string().trim().min(1).max(120),
+  timezone: z.string().trim().min(1).max(100),
+});
+
+const storedBasicContextSchema = z.object({
+  preferred_name: z.string().trim().min(1).max(200),
+  date_of_birth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  city: z.string().trim().min(1).max(120),
+  country: z.string().trim().min(1).max(120),
+  timezone: z.string().trim().min(1).max(100),
+});
+
+const legacyOnboardingIdentitySchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  city: z.string().trim().min(1).max(120),
+  country: z.string().trim().min(1).max(120),
+  timezone: z.string().trim().min(1).max(100),
+});
+
+export type OnboardingBasicContext = z.infer<
+  typeof onboardingBasicContextSchema
+>;
 
 const storedMessageSchema = z.object({
   id: z.string().uuid(),
@@ -52,7 +86,9 @@ const confirmedSnapshotSchema = z.object({
   confirmedAt: z.string(),
 });
 
-export type OnboardingConversationMessage = z.infer<typeof storedMessageSchema>;
+export type OnboardingConversationMessage = z.infer<typeof storedMessageSchema> & {
+  attachments: ClarityMessageAttachment[];
+};
 
 export type OnboardingPageState = {
   sessionId: string | null;
@@ -63,16 +99,29 @@ export type OnboardingPageState = {
   synthesis: OnboardingSynthesis | null;
   confirmedSnapshot: z.infer<typeof confirmedSnapshotSchema> | null;
   turnCount: number;
+  basicContextComplete: boolean;
   profile: {
-    name: string | null;
+    preferredName: string;
+    dateOfBirth: string | null;
+    age: number | null;
+    city: string;
+    country: string;
     timezone: string;
   };
 };
 
-export async function getOnboardingPageState(): Promise<OnboardingPageState> {
+export type OnboardingStateLoadTimingEvent = {
+  phase: "session_messages" | "attachment_resolution";
+  durationMs: number;
+};
+
+export async function getOnboardingPageState(options?: {
+  onTiming?: (event: OnboardingStateLoadTimingEvent) => void;
+}): Promise<OnboardingPageState> {
+  const stateLoadStartedAt = performance.now();
   const { supabase, user, profile } = await getAuthenticatedUserAndProfile();
   const columns =
-    "id, status, current_step, understanding, progress, synthesis, confirmed_snapshot, turn_count, started_at, completed_at";
+    "id, status, current_step, understanding, progress, synthesis, confirmed_snapshot, user_draft, turn_count, started_at, completed_at";
 
   const { data: activeSession, error: activeError } = await supabase
     .from("onboarding_sessions")
@@ -97,6 +146,11 @@ export async function getOnboardingPageState(): Promise<OnboardingPageState> {
   }
 
   if (!rawSession) {
+    emitStateLoadTiming(options, {
+      phase: "session_messages",
+      durationMs: performance.now() - stateLoadStartedAt,
+    });
+    const basicContext = profileBasicContext(profile);
     return {
       sessionId: null,
       status: "not_started",
@@ -106,7 +160,8 @@ export async function getOnboardingPageState(): Promise<OnboardingPageState> {
       synthesis: null,
       confirmedSnapshot: null,
       turnCount: 0,
-      profile: { name: profile.name, timezone: profile.timezone },
+      basicContextComplete: false,
+      profile: promptProfile(basicContext),
     };
   }
 
@@ -122,10 +177,30 @@ export async function getOnboardingPageState(): Promise<OnboardingPageState> {
     .order("id", { ascending: true });
   if (messagesError) throw new Error(messagesError.message);
 
+  const storedBasicContext = basicContextFromDraft(session.user_draft);
+  const basicContext = storedBasicContext ?? profileBasicContext(profile);
+  const storedMessages = storedMessageSchema.array().parse(rawMessages ?? []);
+  emitStateLoadTiming(options, {
+    phase: "session_messages",
+    durationMs: performance.now() - stateLoadStartedAt,
+  });
+  const attachmentResolutionStartedAt = performance.now();
+  const attachmentsByMessage = await loadOnboardingAttachmentsForMessages(
+    storedMessages.map((message) => message.id),
+  );
+  emitStateLoadTiming(options, {
+    phase: "attachment_resolution",
+    durationMs: performance.now() - attachmentResolutionStartedAt,
+  });
+  const messages = storedMessages.map((message) => ({
+    ...message,
+    attachments: attachmentsByMessage.get(message.id) ?? [],
+  }));
+
   return {
     sessionId: session.id,
     status: session.status === "completed" ? "completed" : "in_progress",
-    messages: storedMessageSchema.array().parse(rawMessages ?? []),
+    messages,
     understanding: parseOrFallback(
       onboardingUnderstandingSchema,
       session.understanding,
@@ -142,15 +217,56 @@ export async function getOnboardingPageState(): Promise<OnboardingPageState> {
       session.confirmed_snapshot,
     ),
     turnCount: session.turn_count,
-    profile: { name: profile.name, timezone: profile.timezone },
+    basicContextComplete:
+      storedBasicContext !== null ||
+      messages.length > 0 ||
+      session.status === "completed",
+    profile: promptProfile(basicContext),
   };
 }
 
-export async function appendOnboardingUserMessage(content: string) {
+export async function saveOnboardingBasicContext(
+  input: OnboardingBasicContext,
+) {
+  const basicContext = onboardingBasicContextSchema.parse(input);
+  const { supabase, user } = await getAuthenticatedUserAndProfile();
+  const { data: session, error: sessionError } = await supabase
+    .from("onboarding_sessions")
+    .select("user_draft")
+    .eq("user_id", user.id)
+    .eq("status", "in_progress")
+    .maybeSingle();
+  if (sessionError) throw new Error(sessionError.message);
+
+  const existingDraft = isJsonObject(session?.user_draft)
+    ? session.user_draft
+    : {};
+  const { data, error } = await supabase.rpc("save_onboarding_session", {
+    p_onboarding_version: 2,
+    p_current_step: "conversation",
+    p_user_draft: {
+      ...existingDraft,
+      basic_context: {
+        preferred_name: basicContext.preferredName,
+        date_of_birth: basicContext.dateOfBirth,
+        city: basicContext.city,
+        country: basicContext.country,
+        timezone: basicContext.timezone,
+      },
+    } as Json,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function appendOnboardingUserMessage(
+  content: string,
+  attachmentIds: string[] = [],
+) {
   const { supabase } = await getAuthenticatedUserAndProfile();
   const { data, error } = await supabase.rpc(
-    "append_onboarding_user_message_v1",
-    { p_content: content },
+    "append_onboarding_user_message_v2",
+    { p_content: content, p_attachment_ids: attachmentIds },
   );
   if (error) throw new Error(error.message);
   const result = data?.[0];
@@ -184,9 +300,14 @@ export async function appendOnboardingResponse(
   return data?.[0] ?? null;
 }
 
-export async function loadOnboardingTurnContext(userMessageId: string) {
+export async function loadOnboardingTurnContext(
+  userMessageId: string,
+  options?: {
+    onTiming?: (event: OnboardingStateLoadTimingEvent) => void;
+  },
+) {
   const parsedId = z.string().uuid().parse(userMessageId);
-  const state = await getOnboardingPageState();
+  const state = await getOnboardingPageState(options);
   if (state.status !== "in_progress" || !state.sessionId) {
     throw new Error("Onboarding session is not active.");
   }
@@ -205,6 +326,19 @@ export async function loadOnboardingTurnContext(userMessageId: string) {
   }
 
   return { state, userMessage, alreadyAnswered };
+}
+
+function emitStateLoadTiming(
+  options: {
+    onTiming?: (event: OnboardingStateLoadTimingEvent) => void;
+  } | undefined,
+  event: OnboardingStateLoadTimingEvent,
+) {
+  try {
+    options?.onTiming?.(event);
+  } catch {
+    // Diagnostics must never affect onboarding state loading.
+  }
 }
 
 export async function confirmOnboardingUnderstanding(sessionId: string) {
@@ -231,4 +365,81 @@ function parseNullable<Output>(schema: z.ZodType<Output>, value: unknown) {
   if (value === null || value === undefined) return null;
   const parsed = schema.safeParse(value);
   return parsed.success ? parsed.data : null;
+}
+
+function basicContextFromDraft(value: unknown): OnboardingBasicContext | null {
+  if (!isJsonObject(value)) return null;
+  const current = storedBasicContextSchema.safeParse(value.basic_context);
+  if (current.success) {
+    return {
+      preferredName: current.data.preferred_name,
+      dateOfBirth: current.data.date_of_birth,
+      city: current.data.city,
+      country: current.data.country,
+      timezone: current.data.timezone,
+    };
+  }
+
+  const legacy = legacyOnboardingIdentitySchema.safeParse(value.identity);
+  if (!legacy.success) return null;
+  return {
+    preferredName: legacy.data.name,
+    dateOfBirth: legacy.data.dateOfBirth,
+    city: legacy.data.city,
+    country: legacy.data.country,
+    timezone: legacy.data.timezone,
+  };
+}
+
+function profileBasicContext(profile: {
+  name: string | null;
+  date_of_birth: string | null;
+  city: string | null;
+  country: string | null;
+  timezone: string;
+}): OnboardingBasicContext {
+  return {
+    preferredName: profile.name?.trim() ?? "",
+    dateOfBirth: profile.date_of_birth ?? "",
+    city: profile.city?.trim() ?? "",
+    country: profile.country?.trim() ?? "",
+    timezone: profile.timezone,
+  };
+}
+
+function promptProfile(basicContext: OnboardingBasicContext) {
+  return {
+    ...basicContext,
+    dateOfBirth: basicContext.dateOfBirth || null,
+    age: basicContext.dateOfBirth
+      ? ageOnDate(
+          basicContext.dateOfBirth,
+          getLocalDate(basicContext.timezone),
+        )
+      : null,
+  };
+}
+
+function ageOnDate(dateOfBirth: string, localDate: string) {
+  const [birthYear, birthMonth, birthDay] = dateOfBirth.split("-").map(Number);
+  const [year, month, day] = localDate.split("-").map(Number);
+  if (
+    !birthYear ||
+    !birthMonth ||
+    !birthDay ||
+    !year ||
+    !month ||
+    !day
+  ) {
+    return null;
+  }
+  return (
+    year -
+    birthYear -
+    (month < birthMonth || (month === birthMonth && day < birthDay) ? 1 : 0)
+  );
+}
+
+function isJsonObject(value: unknown): value is Record<string, Json> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

@@ -1,6 +1,14 @@
 "use client";
 
-import { Download, Eye, LogOut, MoreHorizontal, Share, Smartphone } from "lucide-react";
+import {
+  Download,
+  Eye,
+  LogOut,
+  MoreHorizontal,
+  Share,
+  Smartphone,
+  UserRound,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -80,6 +88,13 @@ export function AccountMenu({
         </div>
         <DropdownMenuSeparator className="bg-border" />
         <NotificationControl />
+        <DropdownMenuSeparator className="bg-border" />
+        <DropdownMenuItem asChild className="min-h-11 cursor-pointer rounded-xl px-3 text-foreground focus:bg-secondary focus:text-foreground">
+          <Link href="/onboarding" prefetch={false}>
+            <UserRound />
+            Onboarding
+          </Link>
+        </DropdownMenuItem>
         {showOnboardingPreview && (
           <>
             <DropdownMenuSeparator className="bg-border" />

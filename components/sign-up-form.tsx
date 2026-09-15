@@ -40,7 +40,7 @@ export function SignUpForm({
     }
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -48,6 +48,10 @@ export function SignUpForm({
         },
       });
       if (error) throw error;
+      if (data.session) {
+        router.push("/onboarding");
+        return;
+      }
       router.push("/auth/sign-up-success");
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");

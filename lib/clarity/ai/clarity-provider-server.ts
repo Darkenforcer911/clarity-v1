@@ -12,11 +12,15 @@ export function createClarityModelProvider(): ClarityModelProvider {
   return createConfiguredOpenAIProvider();
 }
 
-export function createClarityStructuredProvider() {
-  return createConfiguredOpenAIProvider();
+export function createClarityStructuredProvider(options?: {
+  minimumTimeoutMs?: number;
+}) {
+  return createConfiguredOpenAIProvider(options);
 }
 
-function createConfiguredOpenAIProvider() {
+function createConfiguredOpenAIProvider(options?: {
+  minimumTimeoutMs?: number;
+}) {
   const provider = process.env.CLARITY_MODEL_PROVIDER ?? "openai";
   if (provider !== "openai") {
     throw new ClarityProviderError(
@@ -37,7 +41,10 @@ function createConfiguredOpenAIProvider() {
   return new OpenAIClarityProvider(
     model,
     apiKey,
-    parseClarityProviderTimeout(process.env.CLARITY_MODEL_TIMEOUT_MS),
+    parseClarityProviderTimeout(
+      process.env.CLARITY_MODEL_TIMEOUT_MS,
+      options?.minimumTimeoutMs,
+    ),
     fetch,
     parseClarityReasoningEffort(process.env.CLARITY_REASONING_EFFORT),
   );

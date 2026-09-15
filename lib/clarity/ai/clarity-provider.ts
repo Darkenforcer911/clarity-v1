@@ -36,6 +36,15 @@ export type ClarityStructuredOutputContract<Output> = {
   schema: Record<string, unknown>;
   parse: (value: unknown) => Output;
   maxOutputTokens?: number;
+  onTiming?: (event: ClarityStructuredProviderTimingEvent) => void;
+};
+
+export type ClarityStructuredProviderTimingEvent = {
+  phase: "provider_request" | "structured_parse";
+  attempt: number;
+  repairAttempt: boolean;
+  durationMs: number;
+  success: boolean;
 };
 
 export type ClarityProviderRequest = {
@@ -159,16 +168,45 @@ export class OpenAIClarityProvider implements ClarityModelProvider {
     let repairInstruction: string | null = null;
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const raw = await this.requestStructuredResponse(
-        request,
-        repairInstruction,
-        null,
-        contract.name,
-        contract.schema,
-        contract.maxOutputTokens,
-      );
+      const providerRequestStartedAt = performance.now();
+      let raw: OpenAIResponse;
+      try {
+        raw = await this.requestStructuredResponse(
+          request,
+          repairInstruction,
+          null,
+          contract.name,
+          contract.schema,
+          contract.maxOutputTokens,
+        );
+        emitStructuredTiming(contract, {
+          phase: "provider_request",
+          attempt: attempt + 1,
+          repairAttempt: attempt === 1,
+          durationMs: performance.now() - providerRequestStartedAt,
+          success: true,
+        });
+      } catch (error) {
+        emitStructuredTiming(contract, {
+          phase: "provider_request",
+          attempt: attempt + 1,
+          repairAttempt: attempt === 1,
+          durationMs: performance.now() - providerRequestStartedAt,
+          success: false,
+        });
+        throw error;
+      }
+
+      const parseStartedAt = performance.now();
       const text = extractOpenAIText(raw);
       const parsed = parseStructuredResponse(text, contract.parse);
+      emitStructuredTiming(contract, {
+        phase: "structured_parse",
+        attempt: attempt + 1,
+        repairAttempt: attempt === 1,
+        durationMs: performance.now() - parseStartedAt,
+        success: parsed !== null,
+      });
 
       if (parsed) {
         return {
@@ -342,6 +380,17 @@ export class OpenAIClarityProvider implements ClarityModelProvider {
   }
 }
 
+function emitStructuredTiming<Output>(
+  contract: ClarityStructuredOutputContract<Output>,
+  event: ClarityStructuredProviderTimingEvent,
+) {
+  try {
+    contract.onTiming?.(event);
+  } catch {
+    // Diagnostics must never affect provider behavior.
+  }
+}
+
 function extractOpenAIText(response: OpenAIResponse) {
   if (typeof response.output_text === "string") return response.output_text;
 
@@ -363,11 +412,16 @@ function parseStructuredResponse<Output>(
   }
 }
 
-export function parseClarityProviderTimeout(value: string | undefined) {
+export function parseClarityProviderTimeout(
+  value: string | undefined,
+  minimumMs = 0,
+) {
   const parsed = Number(value ?? "30000");
-  return Number.isInteger(parsed) && parsed >= 1_000 && parsed <= 120_000
-    ? parsed
-    : 30_000;
+  const configured =
+    Number.isInteger(parsed) && parsed >= 1_000 && parsed <= 120_000
+      ? parsed
+      : 30_000;
+  return Math.max(configured, minimumMs);
 }
 
 export function parseClarityReasoningEffort(

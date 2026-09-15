@@ -2,7 +2,6 @@ import { z } from "zod";
 
 export const ONBOARDING_INTELLIGENCE_VERSION = 2;
 export const ONBOARDING_MINIMUM_MEANINGFUL_TURNS = 3;
-export const ONBOARDING_RICH_FIRST_TURN_CHARACTERS = 1_200;
 export const ONBOARDING_SOFT_QUESTION_CAP = 12;
 
 export const onboardingModes = [
@@ -12,6 +11,14 @@ export const onboardingModes = [
   "CHALLENGE",
   "EXPAND_POSSIBILITIES",
   "SYNTHESIZE",
+] as const;
+
+export const onboardingDiscoveryModes = [
+  "UNDERSTAND",
+  "CLARIFY",
+  "REFLECT_INSIGHT",
+  "CHALLENGE",
+  "EXPAND_POSSIBILITIES",
 ] as const;
 
 export const onboardingTruthStates = ["fact", "inference", "unknown"] as const;
@@ -58,14 +65,14 @@ export const onboardingProgressSchema = z
   })
   .strict();
 
-const unknownSchema = z
+export const onboardingUnknownSchema = z
   .object({
     statement: z.string().trim().min(1).max(500),
     materiality: confidenceSchema,
   })
   .strict();
 
-const insightSchema = z
+export const onboardingInsightSchema = z
   .object({
     statement: z.string().trim().min(1).max(700),
     confidence: confidenceSchema,
@@ -73,7 +80,7 @@ const insightSchema = z
   })
   .strict();
 
-const routeSchema = z
+export const onboardingRouteSchema = z
   .object({
     label: z.string().trim().min(1).max(120),
     rationale: z.string().trim().min(1).max(500),
@@ -108,9 +115,9 @@ export const onboardingIntelligenceResponseSchema = z
     mode: z.enum(onboardingModes),
     understanding: onboardingUnderstandingSchema,
     progress: onboardingProgressSchema,
-    unknowns: z.array(unknownSchema).max(10),
-    insights: z.array(insightSchema).max(6),
-    routes: z.array(routeSchema).max(4),
+    unknowns: z.array(onboardingUnknownSchema).max(10),
+    insights: z.array(onboardingInsightSchema).max(6),
+    routes: z.array(onboardingRouteSchema).max(4),
     readiness: z
       .object({
         readyForSynthesis: z.boolean(),
@@ -150,6 +157,22 @@ export type OnboardingIntelligenceResponse = z.infer<
 export type OnboardingUnderstanding = z.infer<typeof onboardingUnderstandingSchema>;
 export type OnboardingProgress = z.infer<typeof onboardingProgressSchema>;
 export type OnboardingSynthesis = z.infer<typeof onboardingSynthesisSchema>;
+export type OnboardingUnknown = z.infer<typeof onboardingUnknownSchema>;
+export type OnboardingInsight = z.infer<typeof onboardingInsightSchema>;
+export type OnboardingRoute = z.infer<typeof onboardingRouteSchema>;
+
+export const onboardingUnderstandingCategories = [
+  "currentReality",
+  "desiredFuture",
+  "capabilitiesAndAssets",
+  "constraints",
+  "behavioralEvidence",
+  "currentPriorityOrPressure",
+  "possibleRoutes",
+] as const;
+
+export type OnboardingUnderstandingCategory =
+  typeof onboardingUnderstandingCategories[number];
 
 export const emptyOnboardingUnderstanding = (): OnboardingUnderstanding => ({
   currentReality: [],
@@ -172,14 +195,13 @@ export const emptyOnboardingProgress = (): OnboardingProgress => ({
 export function enforceOnboardingStoppingPolicy(input: {
   output: OnboardingIntelligenceResponse;
   meaningfulUserTurns: number;
-  latestUserMessage: string;
 }): OnboardingIntelligenceResponse {
-  const sufficientlyRichFirstTurn =
+  const decisionReadyFirstTurn =
     input.meaningfulUserTurns === 1 &&
-    input.latestUserMessage.trim().length >= ONBOARDING_RICH_FIRST_TURN_CHARACTERS;
+    hasOnboardingUnderstandingAndActionReadiness(input.output);
   const maySynthesize =
     input.meaningfulUserTurns >= ONBOARDING_MINIMUM_MEANINGFUL_TURNS ||
-    sufficientlyRichFirstTurn;
+    decisionReadyFirstTurn;
 
   if (maySynthesize || !input.output.readiness.readyForSynthesis) {
     return {
@@ -204,6 +226,16 @@ export function enforceOnboardingStoppingPolicy(input: {
     },
     synthesis: null,
   };
+}
+
+export function hasOnboardingUnderstandingAndActionReadiness(
+  output: OnboardingIntelligenceResponse,
+) {
+  return (
+    output.progress.situation === "clear" &&
+    output.progress.whatMatters === "clear" &&
+    output.progress.constraints !== "learning"
+  );
 }
 
 export function validateOnboardingEvidenceReferences(

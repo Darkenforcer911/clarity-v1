@@ -1,6 +1,6 @@
 begin;
 
-select plan(12);
+select plan(18);
 
 insert into auth.users (
   id,
@@ -61,6 +61,115 @@ select is(
   (select count(*) from public.onboarding_messages where role = 'user'),
   1::bigint,
   'the owner can read the persisted user answer'
+);
+
+reset role;
+insert into public.clarity_message_attachments (
+  id,
+  user_id,
+  kind,
+  storage_path,
+  mime_type,
+  byte_size,
+  transcription_status
+)
+values
+  (
+    '92000000-0000-0000-0000-000000000001',
+    '91000000-0000-0000-0000-000000000001',
+    'image',
+    '91000000-0000-0000-0000-000000000001/92000000-0000-0000-0000-000000000001.jpg',
+    'image/jpeg',
+    1024,
+    'not_applicable'
+  ),
+  (
+    '92000000-0000-0000-0000-000000000002',
+    '91000000-0000-0000-0000-000000000002',
+    'image',
+    '91000000-0000-0000-0000-000000000002/92000000-0000-0000-0000-000000000002.jpg',
+    'image/jpeg',
+    1024,
+    'not_applicable'
+  );
+
+insert into storage.objects (bucket_id, name)
+values
+  (
+    'clarity-media',
+    '91000000-0000-0000-0000-000000000001/92000000-0000-0000-0000-000000000001.jpg'
+  ),
+  (
+    'clarity-media',
+    '91000000-0000-0000-0000-000000000002/92000000-0000-0000-0000-000000000002.jpg'
+  );
+
+set local role authenticated;
+select set_config(
+  'request.jwt.claim.sub',
+  '91000000-0000-0000-0000-000000000001',
+  true
+);
+
+select lives_ok(
+  $$
+    select *
+    from public.append_onboarding_user_message_v2(
+      'This photo shows what my days currently look like.',
+      array['92000000-0000-0000-0000-000000000001'::uuid]
+    )
+  $$,
+  'the owner can atomically persist an onboarding message with an owned image'
+);
+
+select is(
+  (
+    select count(*)
+    from public.clarity_message_attachments
+    where id = '92000000-0000-0000-0000-000000000001'
+      and message_id is null
+      and onboarding_message_id is not null
+  ),
+  1::bigint,
+  'the image is claimed by exactly the onboarding message target'
+);
+
+select is(
+  (
+    select content
+    from public.onboarding_messages
+    where id = (
+      select onboarding_message_id
+      from public.clarity_message_attachments
+      where id = '92000000-0000-0000-0000-000000000001'
+    )
+  ),
+  'This photo shows what my days currently look like.',
+  'the attachment reloads with the same durable onboarding user message'
+);
+
+select throws_ok(
+  $$
+    select public.discard_clarity_draft_attachment_v1(
+      '92000000-0000-0000-0000-000000000001'
+    )
+  $$,
+  'P0002',
+  'Draft attachment not found.',
+  'a claimed onboarding image cannot be discarded as a draft'
+);
+
+select throws_ok(
+  $$
+    select *
+    from public.append_onboarding_user_message_v2(
+      '',
+      array['92000000-0000-0000-0000-000000000002'::uuid]
+    )
+  $$,
+  'P0002',
+  'Attachment is unavailable.',
+  'an owner cannot claim another user image into onboarding'
 );
 
 select throws_ok(
@@ -143,6 +252,16 @@ select is(
   (select count(*) from public.onboarding_messages),
   0::bigint,
   'another authenticated user cannot read the messages'
+);
+
+select is(
+  (
+    select count(*)
+    from public.clarity_message_attachments
+    where id = '92000000-0000-0000-0000-000000000001'
+  ),
+  0::bigint,
+  'another authenticated user cannot read the owner onboarding image metadata'
 );
 
 select throws_ok(
