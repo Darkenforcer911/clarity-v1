@@ -16,7 +16,7 @@ export type OnboardingGoldenEval = {
     asksAtMostOneQuestion: true;
     preservesUncertainty: true;
     readiness?: {
-      understanding: "keep_learning" | "sufficient";
+      person: "keep_learning" | "sufficient";
       action: "keep_learning" | "sufficient";
     };
     recommendedFirstMove?: string | null;
@@ -103,7 +103,7 @@ export const onboardingGoldenEvals: OnboardingGoldenEval[] = [
       asksAtMostOneQuestion: true,
       preservesUncertainty: true,
       readiness: {
-        understanding: "keep_learning",
+        person: "keep_learning",
         action: "keep_learning",
       },
       recommendedFirstMove: null,
@@ -131,7 +131,7 @@ export const onboardingGoldenEvals: OnboardingGoldenEval[] = [
       asksAtMostOneQuestion: true,
       preservesUncertainty: true,
       readiness: {
-        understanding: "keep_learning",
+        person: "keep_learning",
         action: "sufficient",
       },
       recommendedFirstMove:
@@ -160,7 +160,7 @@ export const onboardingGoldenEvals: OnboardingGoldenEval[] = [
       asksAtMostOneQuestion: true,
       preservesUncertainty: true,
       readiness: {
-        understanding: "keep_learning",
+        person: "keep_learning",
         action: "keep_learning",
       },
       recommendedFirstMove: null,
@@ -187,11 +187,151 @@ export const onboardingGoldenEvals: OnboardingGoldenEval[] = [
       asksAtMostOneQuestion: true,
       preservesUncertainty: true,
       readiness: {
-        understanding: "sufficient",
+        person: "sufficient",
         action: "sufficient",
       },
       recommendedFirstMove:
         "review the recent interviews to identify and practise the repeated failure point",
+    },
+  },
+  {
+    id: "nursing-tests-action-ready-person-not-ready",
+    fictionalConversation: [
+      "I'm trying to get into nursing. I still need to finish the maths and English entry tests, and I've also been trying to sort out a health routine.",
+      "The tests are the thing blocking the application. I could book them this week.",
+    ],
+    expected: {
+      responseMode: ["REFLECT_INSIGHT", "CLARIFY"],
+      recognizes: [
+        "the incomplete tests are the immediate supported bottleneck",
+        "booking the tests is actionable now",
+        "nursing and health do not yet establish the broader person-level picture",
+      ],
+      avoids: [
+        "synthesizing a full Life Map from one narrow thread",
+        "treating an actionable prerequisite as person readiness",
+      ],
+      evidencePriority:
+        "the application prerequisite supports a first move while broader commitments and directions remain unexplored",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: {
+        person: "keep_learning",
+        action: "sufficient",
+      },
+      recommendedFirstMove: "book the incomplete maths and English tests",
+    },
+  },
+  {
+    id: "nursing-breadth-confirmed",
+    fictionalConversation: [
+      "I'm trying to get into nursing. The maths and English entry tests are blocking my application.",
+      "Outside nursing, is anything else seriously competing for your time, money, or direction right now?",
+      "No, that's basically everything important right now. I live at home, money is manageable, and my main goal is to qualify and start working in healthcare.",
+    ],
+    expected: {
+      responseMode: ["REFLECT_INSIGHT", "SYNTHESIZE"],
+      recognizes: [
+        "the user explicitly bounded the major competing areas",
+        "the entry tests remain the immediate bottleneck",
+        "qualifying for nursing is a supported route toward healthcare work",
+      ],
+      avoids: [
+        "continuing a category-by-category questionnaire",
+        "inventing financial pressure or hidden commitments",
+      ],
+      evidencePriority:
+        "the explicit breadth confirmation and concrete prerequisite support both readiness judgments",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: {
+        person: "sufficient",
+        action: "sufficient",
+      },
+      recommendedFirstMove: "book the incomplete entry tests",
+    },
+  },
+  {
+    id: "nursing-hidden-work-and-business",
+    fictionalConversation: [
+      "I'm trying to get into nursing and still need to finish the entry tests.",
+      "The tests are important, but I also work four shifts a week and run a small catering business on weekends.",
+    ],
+    expected: {
+      responseMode: ["UNDERSTAND", "CLARIFY", "REFLECT_INSIGHT"],
+      recognizes: [
+        "work and the business materially change the available time and trade-offs",
+        "the newly surfaced branches need contextual follow-up",
+        "the tests can remain the bottleneck without completing the person model",
+      ],
+      avoids: [
+        "synthesizing immediately after discovering competing commitments",
+        "returning mechanically to the same nursing question",
+      ],
+      evidencePriority:
+        "actual shifts and an active business outweigh assumptions that nursing is the only live concern",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: {
+        person: "keep_learning",
+        action: "sufficient",
+      },
+      recommendedFirstMove: "protect time to complete the entry tests",
+    },
+  },
+  {
+    id: "unmentioned-competing-directions-stay-unknown",
+    fictionalConversation: [
+      "I want to apply for nursing and the entry tests are the next step.",
+    ],
+    expected: {
+      responseMode: ["UNDERSTAND", "CLARIFY"],
+      recognizes: [
+        "nursing is a reported current direction",
+        "the entry tests are a candidate next step",
+        "other commitments or directions have not come up yet",
+      ],
+      avoids: [
+        "claiming the user has no other commitments",
+        "claiming nursing is their settled lifelong destination",
+      ],
+      evidencePriority:
+        "explicitly reported direction is evidence while unmentioned alternatives remain unknown",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: {
+        person: "keep_learning",
+        action: "sufficient",
+      },
+      recommendedFirstMove: "complete or book the entry tests",
+    },
+  },
+  {
+    id: "minor-routine-stays-out-of-synthesis",
+    fictionalConversation: [
+      "I'm working toward nursing, money is manageable while I live at home, and the entry tests are the only current blocker. I also use minoxidil every day.",
+      "That's basically the full picture right now. I want to qualify, get stable healthcare work, and become more independent.",
+    ],
+    expected: {
+      responseMode: ["REFLECT_INSIGHT", "SYNTHESIZE"],
+      recognizes: [
+        "the entry tests are the immediate bottleneck",
+        "nursing is a supported current route",
+        "independence is the broader future pull",
+      ],
+      avoids: [
+        "promoting minoxidil into the visible synthesis",
+        "presenting nursing as proven to be the deepest lifelong destination",
+      ],
+      evidencePriority:
+        "decision-relevant direction, constraints, and prerequisites outweigh a minor daily routine",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: {
+        person: "sufficient",
+        action: "sufficient",
+      },
+      recommendedFirstMove: "book the incomplete entry tests",
     },
   },
 ];

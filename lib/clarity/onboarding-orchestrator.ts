@@ -36,6 +36,7 @@ import {
   onboardingDiscoveryResponseSchema,
   onboardingFinalSynthesisResponseJsonSchema,
   onboardingFinalSynthesisResponseSchema,
+  validateOnboardingReadiness,
   type OnboardingCanonicalState,
   type OnboardingDiscoveryResponse,
   type OnboardingFinalSynthesisResponse,
@@ -160,12 +161,13 @@ async function executeOnboardingConversationTurn(input: {
         discovery: parsed,
         allowedMessageIds,
       });
+      validateOnboardingReadiness({ discovery: parsed, state: merged });
       const earlySynthesis =
         parsed.readiness.readyToSynthesize &&
         userMessages.length < ONBOARDING_MINIMUM_MEANINGFUL_TURNS &&
         !(
           userMessages.length === 1 &&
-          parsed.readiness.understandingReady &&
+          parsed.readiness.personReady &&
           parsed.readiness.actionReady &&
           merged.progress.situation === "clear" &&
           merged.progress.whatMatters === "clear" &&

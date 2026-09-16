@@ -229,11 +229,14 @@ export function enforceOnboardingStoppingPolicy(input: {
   output: OnboardingIntelligenceResponse;
   meaningfulUserTurns: number;
 }): OnboardingIntelligenceResponse {
+  const personAndActionReady = hasOnboardingPersonAndActionReadiness(
+    input.output,
+  );
   const decisionReadyFirstTurn =
-    input.meaningfulUserTurns === 1 &&
-    hasOnboardingUnderstandingAndActionReadiness(input.output);
+    input.meaningfulUserTurns === 1 && personAndActionReady;
   const maySynthesize =
-    input.meaningfulUserTurns >= ONBOARDING_MINIMUM_MEANINGFUL_TURNS ||
+    (input.meaningfulUserTurns >= ONBOARDING_MINIMUM_MEANINGFUL_TURNS &&
+      personAndActionReady) ||
     decisionReadyFirstTurn;
 
   if (maySynthesize || !input.output.readiness.readyForSynthesis) {
@@ -261,12 +264,13 @@ export function enforceOnboardingStoppingPolicy(input: {
   };
 }
 
-export function hasOnboardingUnderstandingAndActionReadiness(
+export function hasOnboardingPersonAndActionReadiness(
   output: OnboardingIntelligenceResponse,
 ) {
   return (
     output.progress.situation === "clear" &&
     output.progress.whatMatters === "clear" &&
+    output.progress.future !== "learning" &&
     output.progress.constraints !== "learning"
   );
 }

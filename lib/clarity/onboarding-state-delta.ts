@@ -115,7 +115,7 @@ export const onboardingDiscoveryResponseSchema = z
       .strict(),
     readiness: z
       .object({
-        understandingReady: z.boolean(),
+        personReady: z.boolean(),
         actionReady: z.boolean(),
         readyToSynthesize: z.boolean(),
         reason: z.string().trim().min(1).max(500),
@@ -157,12 +157,12 @@ export const onboardingDiscoveryResponseSchema = z
     }
     if (
       value.readiness.readyToSynthesize &&
-      (!value.readiness.understandingReady || !value.readiness.actionReady)
+      (!value.readiness.personReady || !value.readiness.actionReady)
     ) {
       context.addIssue({
         code: "custom",
         path: ["readiness", "readyToSynthesize"],
-        message: "Synthesis requires understanding and action readiness.",
+        message: "Synthesis requires person and action readiness.",
       });
     }
     rejectConflictingIds(value.stateDelta, context);
@@ -264,13 +264,13 @@ export const onboardingDiscoveryResponseJsonSchema = {
       type: "object",
       additionalProperties: false,
       required: [
-        "understandingReady",
+        "personReady",
         "actionReady",
         "readyToSynthesize",
         "reason",
       ],
       properties: {
-        understandingReady: { type: "boolean" },
+        personReady: { type: "boolean" },
         actionReady: { type: "boolean" },
         readyToSynthesize: { type: "boolean" },
         reason: { type: "string", minLength: 1, maxLength: 500 },
@@ -439,6 +439,28 @@ export function mergeOnboardingDiscoveryState(input: {
 
   validateCanonicalState(mergedState, allowedMessageIds);
   return mergedState;
+}
+
+export function validateOnboardingReadiness(input: {
+  discovery: OnboardingDiscoveryResponse;
+  state: OnboardingCanonicalState;
+}) {
+  const { readiness } = input.discovery;
+  const { progress } = input.state;
+
+  if (readiness.actionReady && progress.whatMatters !== "clear") {
+    throw new Error("Action readiness requires a clear immediate priority.");
+  }
+  if (
+    readiness.personReady &&
+    (progress.situation !== "clear" ||
+      progress.future === "learning" ||
+      progress.constraints === "learning")
+  ) {
+    throw new Error(
+      "Person readiness requires sufficient breadth across the current situation, future pull, and constraints.",
+    );
+  }
 }
 
 export function composeOnboardingTurnResponse(input: {
