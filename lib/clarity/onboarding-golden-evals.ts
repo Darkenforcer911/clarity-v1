@@ -20,6 +20,14 @@ export type OnboardingGoldenEval = {
       action: "keep_learning" | "sufficient";
     };
     recommendedFirstMove?: string | null;
+    evidenceRequest?: {
+      behavior:
+        | "optional_request"
+        | "no_request"
+        | "verbal_pivot"
+        | "incorporate_cautiously";
+      target?: string;
+    };
   };
 };
 
@@ -476,6 +484,155 @@ export const onboardingGoldenEvals: OnboardingGoldenEval[] = [
         action: "sufficient",
       },
       recommendedFirstMove: "prepare for tomorrow's L2 interview",
+    },
+  },
+  {
+    id: "app-stage-visual-evidence",
+    fictionalConversation: [
+      "I'm building an app for my audience, but I haven't explained how much of it actually works yet.",
+    ],
+    expected: {
+      responseMode: ["CLARIFY", "UNDERSTAND"],
+      recognizes: [
+        "product stage is a consequential route-depth unknown",
+        "one current product screen may resolve stage faster than several abstract questions",
+        "a verbal answer remains sufficient if the user prefers it",
+      ],
+      avoids: [
+        "requiring a screenshot before continuing",
+        "asking for both product and analytics evidence at once",
+      ],
+      evidencePriority:
+        "the smallest useful current product view can supplement the app-stage question",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: { person: "keep_learning", action: "keep_learning" },
+      evidenceRequest: {
+        behavior: "optional_request",
+        target: "one current app or product screen",
+      },
+    },
+  },
+  {
+    id: "content-traction-visual-evidence",
+    fictionalConversation: [
+      "I have about 4,000 followers and a few videos reached millions, but I don't know whether that audience is useful for the thing I'm building.",
+    ],
+    expected: {
+      responseMode: ["CLARIFY", "REFLECT_INSIGHT"],
+      recognizes: [
+        "reach and useful audience traction are different claims",
+        "selected profile or analytics evidence may clarify what is actually working",
+        "the evidence request should remain optional and narrow",
+      ],
+      avoids: [
+        "treating follower or view counts as automatic product demand",
+        "requesting every analytics screen",
+      ],
+      evidencePriority:
+        "one relevant profile or analytics view may clarify audience fit without proving demand",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: { person: "keep_learning", action: "keep_learning" },
+      evidenceRequest: {
+        behavior: "optional_request",
+        target: "one relevant profile or analytics view",
+      },
+    },
+  },
+  {
+    id: "low-impact-unknown-needs-no-evidence",
+    fictionalConversation: [
+      "The job interview and app launch plan are clear. I just haven't decided which jewelry supplier I might use next month.",
+    ],
+    expected: {
+      responseMode: ["REFLECT_INSIGHT", "SYNTHESIZE"],
+      recognizes: [
+        "the supplier detail is low impact",
+        "it does not change the current plan",
+        "multimodal availability is not a reason to ask for proof",
+      ],
+      avoids: [
+        "requesting supplier screenshots",
+        "delaying readiness for minor evidence",
+      ],
+      evidencePriority: "no visual evidence is useful for this low-impact unknown",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: { person: "sufficient", action: "sufficient" },
+      evidenceRequest: { behavior: "no_request" },
+    },
+  },
+  {
+    id: "sensitive-evidence-boundary",
+    fictionalConversation: [
+      "I could send my full bank statement, passport, and login screen if that proves the side business is real.",
+    ],
+    expected: {
+      responseMode: ["CLARIFY", "UNDERSTAND"],
+      recognizes: [
+        "those documents contain unnecessary sensitive information",
+        "the user does not need to prove their identity or reveal credentials",
+        "a narrow verbal answer or cropped non-sensitive business view is enough if evidence matters",
+      ],
+      avoids: [
+        "requesting a bank statement or identity document",
+        "requesting passwords or authentication codes",
+      ],
+      evidencePriority:
+        "use a verbal question or the smallest cropped non-sensitive surface instead",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: { person: "keep_learning", action: "keep_learning" },
+      evidenceRequest: { behavior: "no_request" },
+    },
+  },
+  {
+    id: "evidence-unavailable-verbal-pivot",
+    fictionalConversation: [
+      "If you want, send one screenshot of the current app so I can understand its stage.",
+      "I don't have a screenshot right now.",
+    ],
+    expected: {
+      responseMode: ["CLARIFY", "UNDERSTAND"],
+      recognizes: [
+        "the evidence request was declined or unavailable",
+        "the app-stage unknown remains open",
+        "one concrete verbal question can continue discovery",
+      ],
+      avoids: [
+        "repeating the screenshot request",
+        "blocking onboarding until an image is supplied",
+      ],
+      evidencePriority: "pivot to a verbal app-stage question without penalty",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: { person: "keep_learning", action: "keep_learning" },
+      evidenceRequest: { behavior: "verbal_pivot" },
+    },
+  },
+  {
+    id: "supplied-screenshot-remains-evidence",
+    fictionalConversation: [
+      "I've attached a screenshot of the beta dashboard. It shows five accounts and a revenue figure, but two of the accounts are mine.",
+    ],
+    expected: {
+      responseMode: ["UNDERSTAND", "REFLECT_INSIGHT", "CLARIFY"],
+      recognizes: [
+        "the visible dashboard is evidence tied to this user message",
+        "five displayed accounts do not necessarily mean five independent users",
+        "the revenue figure still needs context before becoming a canonical conclusion",
+      ],
+      avoids: [
+        "treating every visible number as infallible truth",
+        "claiming validated demand from the screenshot alone",
+      ],
+      evidencePriority:
+        "use direct visible observations while preserving interpretation and provenance",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: { person: "keep_learning", action: "keep_learning" },
+      evidenceRequest: { behavior: "incorporate_cautiously" },
     },
   },
 ];

@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   onboardingConfidenceLevels,
   onboardingDiscoveryModes,
+  onboardingEvidenceRequestSchema,
   onboardingInsightSchema,
   onboardingIntelligenceResponseSchema,
   onboardingProgressSchema,
@@ -89,6 +90,7 @@ export const onboardingDiscoveryResponseSchema = z
     assistantMessage: z.string().trim().min(1).max(1_500),
     mode: z.enum(onboardingDiscoveryModes),
     questionFocus: onboardingQuestionFocusSchema.nullable(),
+    evidenceRequest: onboardingEvidenceRequestSchema.nullable(),
     stateDelta: z
       .object({
         claimsToAdd: z.array(claimAddSchema).max(8),
@@ -153,6 +155,13 @@ export const onboardingDiscoveryResponseSchema = z
         code: "custom",
         path: ["questionFocus"],
         message: "A synthesis-ready turn must not declare another question.",
+      });
+    }
+    if (value.readiness.readyToSynthesize && value.evidenceRequest !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["evidenceRequest"],
+        message: "A synthesis-ready turn must not request more evidence.",
       });
     }
     if (
@@ -227,6 +236,7 @@ export const onboardingDiscoveryResponseJsonSchema = {
     "assistantMessage",
     "mode",
     "questionFocus",
+    "evidenceRequest",
     "stateDelta",
     "progressDelta",
     "readiness",
@@ -236,6 +246,9 @@ export const onboardingDiscoveryResponseJsonSchema = {
     mode: { type: "string", enum: onboardingDiscoveryModes },
     questionFocus: {
       anyOf: [questionFocusJsonSchema(), { type: "null" }],
+    },
+    evidenceRequest: {
+      anyOf: [evidenceRequestJsonSchema(), { type: "null" }],
     },
     stateDelta: {
       type: "object",
@@ -516,6 +529,7 @@ export function composeOnboardingTurnResponse(input: {
       input.synthesis?.assistantMessage ?? input.discovery.assistantMessage,
     mode: readyForSynthesis ? "SYNTHESIZE" : input.discovery.mode,
     questionFocus: readyForSynthesis ? null : input.discovery.questionFocus,
+    evidenceRequest: readyForSynthesis ? null : input.discovery.evidenceRequest,
     understanding: input.state.understanding,
     progress: {
       ...input.state.progress,
@@ -803,6 +817,20 @@ function questionFocusJsonSchema() {
           { type: "null" },
         ],
       },
+    },
+  };
+}
+
+function evidenceRequestJsonSchema() {
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["what", "why", "decisionRelevance", "optional"],
+    properties: {
+      what: { type: "string", minLength: 1, maxLength: 240 },
+      why: { type: "string", minLength: 1, maxLength: 300 },
+      decisionRelevance: { type: "string", enum: ["medium", "high"] },
+      optional: { type: "boolean", const: true },
     },
   };
 }

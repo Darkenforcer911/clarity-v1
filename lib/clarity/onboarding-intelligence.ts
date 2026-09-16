@@ -116,6 +116,15 @@ export const onboardingQuestionFocusSchema = z
   })
   .strict();
 
+export const onboardingEvidenceRequestSchema = z
+  .object({
+    what: z.string().trim().min(1).max(240),
+    why: z.string().trim().min(1).max(300),
+    decisionRelevance: z.enum(["medium", "high"]),
+    optional: z.literal(true),
+  })
+  .strict();
+
 export const onboardingSynthesisSchema = z
   .object({
     whereYouAre: z.string().trim().min(1).max(1_500),
@@ -141,6 +150,7 @@ export const onboardingIntelligenceResponseSchema = z
     assistantMessage: z.string().trim().min(1).max(3_000),
     mode: z.enum(onboardingModes),
     questionFocus: onboardingQuestionFocusSchema.nullable().optional(),
+    evidenceRequest: onboardingEvidenceRequestSchema.nullable().optional(),
     understanding: onboardingUnderstandingSchema,
     progress: onboardingProgressSchema,
     unknowns: z.array(onboardingUnknownSchema).max(10),
@@ -193,6 +203,9 @@ export type OnboardingQuestionFocus = z.infer<
 >;
 export type OnboardingQuestionFocusDomain =
   typeof onboardingQuestionFocusDomains[number];
+export type OnboardingEvidenceRequest = z.infer<
+  typeof onboardingEvidenceRequestSchema
+>;
 
 export const onboardingUnderstandingCategories = [
   "currentReality",
@@ -331,6 +344,7 @@ export const onboardingIntelligenceResponseJsonSchema = {
   required: [
     "assistantMessage",
     "mode",
+    "evidenceRequest",
     "understanding",
     "progress",
     "unknowns",
@@ -342,6 +356,22 @@ export const onboardingIntelligenceResponseJsonSchema = {
   properties: {
     assistantMessage: { type: "string", minLength: 1, maxLength: 3000 },
     mode: { type: "string", enum: onboardingModes },
+    evidenceRequest: {
+      anyOf: [
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["what", "why", "decisionRelevance", "optional"],
+          properties: {
+            what: { type: "string", minLength: 1, maxLength: 240 },
+            why: { type: "string", minLength: 1, maxLength: 300 },
+            decisionRelevance: { type: "string", enum: ["medium", "high"] },
+            optional: { type: "boolean", const: true },
+          },
+        },
+        { type: "null" },
+      ],
+    },
     understanding: {
       type: "object",
       additionalProperties: false,
