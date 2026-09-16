@@ -40,6 +40,11 @@ import {
   type OnboardingDiscoveryResponse,
   type OnboardingFinalSynthesisResponse,
 } from "./onboarding-state-delta";
+import {
+  buildOnboardingQuestionPolicy,
+  seedUserIntroducedUnknowns,
+  validateOnboardingQuestionSelection,
+} from "./onboarding-question-policy";
 
 type OnboardingStructuredProvider = Pick<
   OpenAIClarityProvider,
@@ -118,7 +123,17 @@ async function executeOnboardingConversationTurn(input: {
     (message) => message.role === "clarity" && message.content.includes("?"),
   ).length;
   const allowedMessageIds = new Set(userMessages.map((message) => message.id));
-  const canonicalState = canonicalStateFromContext(context.state);
+  const latestOutput = latestOnboardingOutput(context.state);
+  const canonicalState = seedUserIntroducedUnknowns({
+    state: canonicalStateFromContext(context.state, latestOutput),
+    latestUserMessage: context.userMessage.content,
+    previousFocus: latestOutput?.questionFocus ?? null,
+  });
+  const questionPolicy = buildOnboardingQuestionPolicy({
+    state: canonicalState,
+    messages: promptMessages,
+    previousFocus: latestOutput?.questionFocus ?? null,
+  });
   const discoveryContract: ClarityStructuredOutputContract<OnboardingDiscoveryResponse> = {
     name: "clarity_onboarding_discovery_delta",
     schema: onboardingDiscoveryResponseJsonSchema as unknown as Record<
@@ -135,6 +150,11 @@ async function executeOnboardingConversationTurn(input: {
       : {}),
     parse: (value) => {
       const parsed = onboardingDiscoveryResponseSchema.parse(value);
+      validateOnboardingQuestionSelection({
+        discovery: parsed,
+        state: canonicalState,
+        policy: questionPolicy,
+      });
       const merged = mergeOnboardingDiscoveryState({
         state: canonicalState,
         discovery: parsed,
@@ -175,6 +195,7 @@ async function executeOnboardingConversationTurn(input: {
     userPrompt: buildOnboardingUserPrompt({
       messages: promptMessages,
       state: canonicalState,
+      questionPolicy,
       userTurnCount: userMessages.length,
       assistantQuestionCount,
       profile: context.state.profile,
@@ -286,6 +307,13 @@ async function executeOnboardingConversationTurn(input: {
       synthesisOutputCharacters: synthesisResult
         ? JSON.stringify(synthesisResult.output).length
         : 0,
+      questionFocusDomain:
+        discoveryResult.output.questionFocus?.domain ?? null,
+      latestUserResponseWasNonAnswer:
+        questionPolicy.latestUserResponseWasNonAnswer,
+      discoveryDeltaOperationCount: countDiscoveryDeltaOperations(
+        discoveryResult.output,
+      ),
       imageCount: prepared.images.length,
       repaired: result.repaired,
       success: true,
@@ -303,6 +331,7 @@ async function executeOnboardingConversationTurn(input: {
       inputTokens: result.usage.inputTokens,
       outputTokens: result.usage.outputTokens,
       reasoningEffort: provider.reasoningEffort ?? "provider_default",
+      questionFocusDomain: output.questionFocus?.domain ?? "none",
     });
     return output;
   } catch (error) {
@@ -335,23 +364,29 @@ async function executeOnboardingConversationTurn(input: {
 
 function canonicalStateFromContext(
   state: OnboardingPageState,
+  latestArtifacts: OnboardingIntelligenceResponse | null,
 ): OnboardingCanonicalState {
-  const latestArtifacts = [...state.messages]
+  return {
+    understanding: state.understanding,
+    progress: state.progress,
+    unknowns: latestArtifacts?.unknowns ?? [],
+    insights: latestArtifacts?.insights ?? [],
+    routes: latestArtifacts?.routes ?? [],
+    synthesis: state.synthesis,
+  };
+}
+
+function latestOnboardingOutput(
+  state: OnboardingPageState,
+): OnboardingIntelligenceResponse | null {
+  const latest = [...state.messages]
     .reverse()
     .filter((message) => message.role === "clarity")
     .map((message) =>
       onboardingIntelligenceResponseSchema.safeParse(message.structured_output),
     )
     .find((result) => result.success);
-
-  return {
-    understanding: state.understanding,
-    progress: state.progress,
-    unknowns: latestArtifacts?.data.unknowns ?? [],
-    insights: latestArtifacts?.data.insights ?? [],
-    routes: latestArtifacts?.data.routes ?? [],
-    synthesis: state.synthesis,
-  };
+  return latest?.data ?? null;
 }
 
 function combineProviderResults(input: {
@@ -406,6 +441,9 @@ function logOnboardingPerformanceProfile(input: {
   persistedOutputCharacters?: number;
   discoveryOutputCharacters?: number;
   synthesisOutputCharacters?: number;
+  questionFocusDomain?: string | null;
+  latestUserResponseWasNonAnswer?: boolean;
+  discoveryDeltaOperationCount?: number;
   imageCount: number;
   repaired?: boolean;
   success: boolean;
@@ -449,11 +487,25 @@ function logOnboardingPerformanceProfile(input: {
     persistedOutputCharacters: input.persistedOutputCharacters ?? null,
     discoveryOutputCharacters: input.discoveryOutputCharacters ?? null,
     synthesisOutputCharacters: input.synthesisOutputCharacters ?? null,
+    questionFocusDomain: input.questionFocusDomain ?? null,
+    latestUserResponseWasNonAnswer:
+      input.latestUserResponseWasNonAnswer ?? null,
+    discoveryDeltaOperationCount:
+      input.discoveryDeltaOperationCount ?? null,
     imageCount: input.imageCount,
     repaired: input.repaired ?? false,
     success: input.success,
     errorCode: input.errorCode ?? null,
   });
+}
+
+function countDiscoveryDeltaOperations(
+  discovery: OnboardingDiscoveryResponse,
+) {
+  return Object.values(discovery.stateDelta).reduce(
+    (total, operations) => total + operations.length,
+    0,
+  );
 }
 
 function logOnboardingModelEvent(

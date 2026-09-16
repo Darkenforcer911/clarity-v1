@@ -9,6 +9,8 @@ import {
   onboardingIntelligenceResponseSchema,
   onboardingProgressSchema,
   onboardingProgressLevels,
+  onboardingQuestionFocusDomains,
+  onboardingQuestionFocusSchema,
   onboardingRouteSchema,
   onboardingSynthesisSchema,
   onboardingTruthStates,
@@ -86,6 +88,7 @@ export const onboardingDiscoveryResponseSchema = z
   .object({
     assistantMessage: z.string().trim().min(1).max(1_500),
     mode: z.enum(onboardingDiscoveryModes),
+    questionFocus: onboardingQuestionFocusSchema.nullable(),
     stateDelta: z
       .object({
         claimsToAdd: z.array(claimAddSchema).max(8),
@@ -126,6 +129,30 @@ export const onboardingDiscoveryResponseSchema = z
         code: "custom",
         path: ["assistantMessage"],
         message: "Ask at most one main question.",
+      });
+    }
+    if (!value.readiness.readyToSynthesize && value.questionFocus === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["questionFocus"],
+        message: "A continuing discovery turn requires a question focus.",
+      });
+    }
+    if (
+      !value.readiness.readyToSynthesize &&
+      (value.assistantMessage.match(/\?/g) ?? []).length !== 1
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["assistantMessage"],
+        message: "A continuing discovery turn requires one main question.",
+      });
+    }
+    if (value.readiness.readyToSynthesize && value.questionFocus !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["questionFocus"],
+        message: "A synthesis-ready turn must not declare another question.",
       });
     }
     if (
@@ -179,6 +206,7 @@ export const onboardingDiscoveryResponseJsonSchema = {
   required: [
     "assistantMessage",
     "mode",
+    "questionFocus",
     "stateDelta",
     "progressDelta",
     "readiness",
@@ -186,6 +214,9 @@ export const onboardingDiscoveryResponseJsonSchema = {
   properties: {
     assistantMessage: { type: "string", minLength: 1, maxLength: 1500 },
     mode: { type: "string", enum: onboardingDiscoveryModes },
+    questionFocus: {
+      anyOf: [questionFocusJsonSchema(), { type: "null" }],
+    },
     stateDelta: {
       type: "object",
       additionalProperties: false,
@@ -424,6 +455,7 @@ export function composeOnboardingTurnResponse(input: {
     assistantMessage:
       input.synthesis?.assistantMessage ?? input.discovery.assistantMessage,
     mode: readyForSynthesis ? "SYNTHESIZE" : input.discovery.mode,
+    questionFocus: readyForSynthesis ? null : input.discovery.questionFocus,
     understanding: input.state.understanding,
     progress: {
       ...input.state.progress,
@@ -693,6 +725,25 @@ function identityJsonSchema() {
   return {
     type: "string",
     pattern: "^(claim|unknown|insight|route)_[a-f0-9]{20}$",
+  };
+}
+
+function questionFocusJsonSchema() {
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["domain", "target", "reason", "relatedUnknownId"],
+    properties: {
+      domain: { type: "string", enum: onboardingQuestionFocusDomains },
+      target: { type: "string", minLength: 1, maxLength: 240 },
+      reason: { type: "string", minLength: 1, maxLength: 300 },
+      relatedUnknownId: {
+        anyOf: [
+          { type: "string", pattern: "^unknown_[a-f0-9]{20}$" },
+          { type: "null" },
+        ],
+      },
+    },
   };
 }
 

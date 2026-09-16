@@ -29,6 +29,21 @@ export const onboardingProgressLevels = [
   "clear",
 ] as const;
 
+export const onboardingQuestionFocusDomains = [
+  "CURRENT_WORK",
+  "ECONOMIC_PRESSURE",
+  "ACTIVE_PROJECTS",
+  "OTHER_INCOME",
+  "EDUCATION",
+  "RESPONSIBILITIES",
+  "CAPABILITIES",
+  "CONSTRAINTS",
+  "ACTIVE_DIRECTION",
+  "FUTURE_PULL",
+  "POSSIBILITY_EXPANSION",
+  "OTHER",
+] as const;
+
 const confidenceSchema = z.enum(onboardingConfidenceLevels);
 const progressLevelSchema = z.enum(onboardingProgressLevels);
 
@@ -89,6 +104,18 @@ export const onboardingRouteSchema = z
   })
   .strict();
 
+export const onboardingQuestionFocusSchema = z
+  .object({
+    domain: z.enum(onboardingQuestionFocusDomains),
+    target: z.string().trim().min(1).max(240),
+    reason: z.string().trim().min(1).max(300),
+    relatedUnknownId: z
+      .string()
+      .regex(/^unknown_[a-f0-9]{20}$/)
+      .nullable(),
+  })
+  .strict();
+
 export const onboardingSynthesisSchema = z
   .object({
     whereYouAre: z.string().trim().min(1).max(1_500),
@@ -113,6 +140,7 @@ export const onboardingIntelligenceResponseSchema = z
   .object({
     assistantMessage: z.string().trim().min(1).max(3_000),
     mode: z.enum(onboardingModes),
+    questionFocus: onboardingQuestionFocusSchema.nullable().optional(),
     understanding: onboardingUnderstandingSchema,
     progress: onboardingProgressSchema,
     unknowns: z.array(onboardingUnknownSchema).max(10),
@@ -160,6 +188,11 @@ export type OnboardingSynthesis = z.infer<typeof onboardingSynthesisSchema>;
 export type OnboardingUnknown = z.infer<typeof onboardingUnknownSchema>;
 export type OnboardingInsight = z.infer<typeof onboardingInsightSchema>;
 export type OnboardingRoute = z.infer<typeof onboardingRouteSchema>;
+export type OnboardingQuestionFocus = z.infer<
+  typeof onboardingQuestionFocusSchema
+>;
+export type OnboardingQuestionFocusDomain =
+  typeof onboardingQuestionFocusDomains[number];
 
 export const onboardingUnderstandingCategories = [
   "currentReality",

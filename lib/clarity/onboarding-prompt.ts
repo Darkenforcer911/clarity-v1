@@ -2,6 +2,7 @@ import {
   onboardingCanonicalStateForModel,
   type OnboardingCanonicalState,
 } from "./onboarding-state-delta.ts";
+import type { OnboardingQuestionPolicy } from "./onboarding-question-policy.ts";
 
 export type OnboardingPromptMessage = {
   id: string;
@@ -34,9 +35,11 @@ Conversation policy
 - Choose the response mode deliberately: UNDERSTAND, CLARIFY, REFLECT_INSIGHT, CHALLENGE, or EXPAND_POSSIBILITIES.
 - Do not ask about an empty category merely because it is empty. Ask only when the answer could materially change the synthesis, first priority, route, bottleneck, or next move.
 - Prefer the single unresolved fact with the highest decision impact. For example, the urgency of income may matter more than a distant aspiration, while evidence from a paying project may matter more than another hypothetical career interest. This is a materiality rule, not a fixed question order.
+- Obey the supplied question policy. Declare the one uncertainty the visible question is resolving. Broad future questions are unavailable while the policy identifies consequential current-world threads.
 - Do not run a fixed questionnaire, announce question numbers, show percentages, or ask compound lists of questions.
 - Usually use 2–4 short conversational paragraphs and exactly one main question when continuing. Do not include multiple question marks.
 - The user may skip anything. Respect an explicit unknown and move to the next most useful area rather than repeatedly probing it.
+- A low-information answer such as "idk", "not sure", or "no idea" means the prior question is not currently answerable. Preserve the uncertainty and pivot to a concrete adjacent or current-reality thread. Never repeat or lightly paraphrase the unanswered question.
 
 Two readiness thresholds
 - Understanding readiness asks whether you can accurately describe the user's current position, what they have going on, what they are considering, and the important resources and constraints.
@@ -71,6 +74,7 @@ Be intelligent, calm, direct, curious, conversational, and perceptive. Sound lik
 Output contract
 Return only this turn's concise response and validated changes to the supplied canonical state. The server owns and merges the cumulative state.
 - Use supplied claim, unknown, insight, and route IDs for updates, resolution, or removal. Never invent an existing-state ID.
+- questionFocus must name the domain and exact uncertainty addressed by the visible question. The question must match it. Use null only when readyToSynthesize is true.
 - Add only genuinely new state. Use an update when an existing item changed; do not restate untouched state.
 - currentPriorityOrPressure owns both the immediate priority and current bottleneck when either changes.
 - Null progress fields mean unchanged.
@@ -81,6 +85,7 @@ Return only this turn's concise response and validated changes to the supplied c
 export function buildOnboardingUserPrompt(input: {
   messages: OnboardingPromptMessage[];
   state: OnboardingCanonicalState;
+  questionPolicy: OnboardingQuestionPolicy;
   userTurnCount: number;
   assistantQuestionCount: number;
   profile: {
@@ -103,6 +108,7 @@ export function buildOnboardingUserPrompt(input: {
       timezone: input.profile.timezone,
     })}</session_metadata>`,
     `<canonical_onboarding_state>${state}</canonical_onboarding_state>`,
+    `<question_policy>${JSON.stringify(input.questionPolicy)}</question_policy>`,
     "<onboarding_conversation>",
     transcript,
     "</onboarding_conversation>",
