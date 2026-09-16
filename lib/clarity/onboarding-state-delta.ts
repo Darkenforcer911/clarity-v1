@@ -170,7 +170,7 @@ export const onboardingDiscoveryResponseSchema = z
 
 export const onboardingFinalSynthesisResponseSchema = z
   .object({
-    assistantMessage: z.string().trim().min(1).max(3_000),
+    assistantMessage: z.string().trim().min(1).max(500),
     synthesis: onboardingSynthesisSchema,
   })
   .strict()
@@ -180,6 +180,26 @@ export const onboardingFinalSynthesisResponseSchema = z
         code: "custom",
         path: ["assistantMessage"],
         message: "Ask at most one main question.",
+      });
+    }
+    const synthesisSections = [
+      value.synthesis.whereYouAre,
+      value.synthesis.whatYouWant,
+      value.synthesis.whatYouHaveGoingForYou,
+      value.synthesis.whatCouldGetInTheWay,
+      value.synthesis.stillUnsure,
+      value.synthesis.whatMattersFirst,
+      value.synthesis.horizons.shortTerm,
+      value.synthesis.horizons.midTerm,
+      value.synthesis.horizons.longTerm,
+      value.synthesis.horizons.bottleneck,
+      value.synthesis.horizons.nextMove,
+    ];
+    if (synthesisSections.reduce((total, section) => total + wordCount(section), 0) > 300) {
+      context.addIssue({
+        code: "custom",
+        path: ["synthesis"],
+        message: "First Understanding must stay within 300 words.",
       });
     }
   });
@@ -284,7 +304,7 @@ export const onboardingFinalSynthesisResponseJsonSchema = {
   additionalProperties: false,
   required: ["assistantMessage", "synthesis"],
   properties: {
-    assistantMessage: { type: "string", minLength: 1, maxLength: 3000 },
+    assistantMessage: { type: "string", minLength: 1, maxLength: 500 },
     synthesis: synthesisJsonSchema(),
   },
 } as const;
@@ -461,6 +481,24 @@ export function validateOnboardingReadiness(input: {
       "Person readiness requires sufficient breadth across the current situation, future pull, and constraints.",
     );
   }
+  if (
+    readiness.personReady &&
+    hasConsequentialOnboardingUnknowns(input.state)
+  ) {
+    throw new Error(
+      "Person readiness requires resolving or explicitly bounding every consequential unknown.",
+    );
+  }
+}
+
+export function hasConsequentialOnboardingUnknowns(
+  state: OnboardingCanonicalState,
+) {
+  return state.unknowns.some((unknown) => unknown.materiality === "high");
+}
+
+function wordCount(value: string) {
+  return value.trim().split(/\s+/u).filter(Boolean).length;
 }
 
 export function composeOnboardingTurnResponse(input: {

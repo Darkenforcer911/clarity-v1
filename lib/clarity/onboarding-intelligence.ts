@@ -271,7 +271,8 @@ export function hasOnboardingPersonAndActionReadiness(
     output.progress.situation === "clear" &&
     output.progress.whatMatters === "clear" &&
     output.progress.future !== "learning" &&
-    output.progress.constraints !== "learning"
+    output.progress.constraints !== "learning" &&
+    !output.unknowns.some((unknown) => unknown.materiality === "high")
   );
 }
 

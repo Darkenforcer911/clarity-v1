@@ -334,4 +334,148 @@ export const onboardingGoldenEvals: OnboardingGoldenEval[] = [
       recommendedFirstMove: "book the incomplete entry tests",
     },
   },
+  {
+    id: "job-search-and-app-stage-unknown",
+    fictionalConversation: [
+      "I lost my L1 role and I'm applying for L2 jobs around $80k plus super. About five interviews have reached serious consideration and I have another tomorrow.",
+      "Savings and Centrelink mean I'm not desperate this week. I also resell jewelry, make content for about 4,000 followers, and I'm building an app for that audience.",
+      "Apart from the job search, jewelry, content, and the app, is anything else major competing for your time or direction?",
+      "I'd say that's pretty much it.",
+    ],
+    expected: {
+      responseMode: ["REFLECT_INSIGHT", "CLARIFY"],
+      recognizes: [
+        "tomorrow's interview is the immediate supported priority",
+        "the breadth confirmation surfaces the major branches but does not explain app stage",
+        "app completion, launch readiness, usage, and blockers could change the route interpretation",
+      ],
+      avoids: [
+        "producing a full First Understanding immediately",
+        "claiming unproven demand is the app bottleneck",
+      ],
+      evidencePriority:
+        "the interview evidence supports action readiness while the consequential app-stage unknown blocks person readiness",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: {
+        person: "keep_learning",
+        action: "sufficient",
+      },
+      recommendedFirstMove: "prepare for tomorrow's L2 interview",
+    },
+  },
+  {
+    id: "app-nearly-ready-for-beta",
+    fictionalConversation: [
+      "The app is nearly complete. The core flow works, five people from my audience have tested it, and I'm preparing a wider beta next month.",
+      "The blocker is finishing onboarding and fixing two reliability issues before I invite more people. There is no revenue evidence yet.",
+    ],
+    expected: {
+      responseMode: ["REFLECT_INSIGHT", "CLARIFY", "SYNTHESIZE"],
+      recognizes: [
+        "the product is in pre-beta rather than idea stage",
+        "finishing onboarding and reliability work precedes wider validation",
+        "early testers are usage evidence but not revenue evidence",
+      ],
+      avoids: [
+        "calling demand the current bottleneck",
+        "describing the app as commercially promising",
+      ],
+      evidencePriority:
+        "working product and real testers establish route stage while launch blockers remain more immediate than monetization",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: {
+        person: "sufficient",
+        action: "sufficient",
+      },
+      recommendedFirstMove:
+        "finish the two launch-blocking reliability fixes before the wider beta",
+    },
+  },
+  {
+    id: "breadth-confirmation-does-not-close-route-depth",
+    fictionalConversation: [
+      "My job search, side sales, content, and the app are basically everything important right now.",
+      "The app is connected to my audience, but I haven't said how much is built or whether anyone has used it.",
+    ],
+    expected: {
+      responseMode: ["UNDERSTAND", "CLARIFY"],
+      recognizes: [
+        "breadth is reasonably bounded",
+        "route depth remains incomplete",
+        "the app's stage could change the short- and mid-term plan",
+      ],
+      avoids: [
+        "equating that's everything with person readiness",
+        "asking another generic breadth question",
+      ],
+      evidencePriority:
+        "a direct app-stage question now reduces more uncertainty than another inventory question",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: {
+        person: "keep_learning",
+        action: "sufficient",
+      },
+      recommendedFirstMove: "prepare for the immediate interview",
+    },
+  },
+  {
+    id: "minor-unknowns-do-not-block-person-readiness",
+    fictionalConversation: [
+      "The major picture is the L2 job search plus an app that's in beta. The interview is tomorrow, the app has ten testers, and the current product blocker is reliability before a wider launch.",
+      "I don't know which jewelry supplier I'll use next month, but that won't change the job or app plan.",
+    ],
+    expected: {
+      responseMode: ["REFLECT_INSIGHT", "SYNTHESIZE"],
+      recognizes: [
+        "the immediate interview priority is clear",
+        "the app route has enough stage and blocker evidence to place it",
+        "the supplier detail is a non-blocking unknown",
+      ],
+      avoids: [
+        "delaying synthesis for a minor sourcing detail",
+        "dropping the uncertainty as though it were answered",
+      ],
+      evidencePriority:
+        "route stage and current blockers matter more than a low-impact future supplier choice",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: {
+        person: "sufficient",
+        action: "sufficient",
+      },
+      recommendedFirstMove: "prepare for tomorrow's L2 interview",
+    },
+  },
+  {
+    id: "concise-grounded-first-understanding",
+    fictionalConversation: [
+      "I need stable work, I have an L2 interview tomorrow, and savings reduce the immediate pressure. Jewelry sales are irregular. My content has strong reach, and the app is nearly ready for beta but has no revenue evidence yet.",
+      "Longer term I want more control over my time and income, but the exact route is still forming.",
+    ],
+    expected: {
+      responseMode: ["SYNTHESIZE"],
+      recognizes: [
+        "the interview is the immediate priority",
+        "employment provides stability while the app is a higher-upside experiment",
+        "the longer-term direction remains explicitly tentative",
+      ],
+      avoids: [
+        "repeating the same priority across multiple synthesis sections",
+        "using commercially promising or other inflated business language",
+        "promoting minor routine facts",
+      ],
+      evidencePriority:
+        "interview progress, financial runway, audience traction, and actual app stage are the consequential facts",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: {
+        person: "sufficient",
+        action: "sufficient",
+      },
+      recommendedFirstMove: "prepare for tomorrow's L2 interview",
+    },
+  },
 ];

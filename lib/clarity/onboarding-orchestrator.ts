@@ -31,6 +31,7 @@ import {
 } from "./onboarding-prompt";
 import {
   composeOnboardingTurnResponse,
+  hasConsequentialOnboardingUnknowns,
   mergeOnboardingDiscoveryState,
   onboardingDiscoveryResponseJsonSchema,
   onboardingDiscoveryResponseSchema,
@@ -178,7 +179,8 @@ async function executeOnboardingConversationTurn(input: {
       }
       if (
         assistantQuestionCount >= ONBOARDING_SOFT_QUESTION_CAP &&
-        !parsed.readiness.readyToSynthesize
+        !parsed.readiness.readyToSynthesize &&
+        !hasConsequentialOnboardingUnknowns(merged)
       ) {
         throw new Error(
           "Onboarding reached the soft question cap and must synthesize with explicit unknowns.",

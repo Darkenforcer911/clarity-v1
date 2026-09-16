@@ -98,6 +98,9 @@ export function OnboardingFlow({
     initialState.confirmedSnapshot?.synthesis ?? initialState.synthesis;
   const completed = initialState.status === "completed";
   const hasSynthesis = Boolean(synthesis);
+  const canConfirm = Boolean(
+    synthesis && initialState.progress.readyForConfirmation,
+  );
 
   useEffect(() => {
     if (stage !== "basics" || basicContext.timezone !== "UTC") return;
@@ -490,7 +493,7 @@ export function OnboardingFlow({
 
               {synthesis && <OnboardingSynthesisView synthesis={synthesis} />}
 
-              {!completed && synthesis && initialState.sessionId && (
+              {!completed && canConfirm && initialState.sessionId && (
                 <form action={preview ? undefined : confirmAction}>
                   <input
                     type="hidden"
@@ -733,16 +736,16 @@ function OnboardingSynthesisView({
 }) {
   const sections = [
     ["Where you are", synthesis.whereYouAre],
-    ["What you want", synthesis.whatYouWant],
+    ["What matters now", synthesis.whatMattersFirst],
+    ["Current direction", synthesis.whatYouWant],
     ["What you have going for you", synthesis.whatYouHaveGoingForYou],
     ["What could get in the way", synthesis.whatCouldGetInTheWay],
-    ["Still unsure", synthesis.stillUnsure],
-    ["What matters first", synthesis.whatMattersFirst],
+    ["Still need to learn", synthesis.stillUnsure],
   ] as const;
   const horizons = [
-    ["Long term · 3–5+ years", synthesis.horizons.longTerm],
-    ["Mid term · 6–24 months", synthesis.horizons.midTerm],
     ["Short term · 30–90 days", synthesis.horizons.shortTerm],
+    ["Mid term · 6 months–2 years", synthesis.horizons.midTerm],
+    ["Long term · 3–5+ years", synthesis.horizons.longTerm],
     ["Current bottleneck", synthesis.horizons.bottleneck],
     ["Next move", synthesis.horizons.nextMove],
   ] as const;
