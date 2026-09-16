@@ -37,6 +37,7 @@ import {
   type ClarityViewerImage,
 } from "@/components/clarity/clarity-image-viewer";
 import { initialOnboardingActionState } from "@/lib/clarity/onboarding-action-state";
+import { onboardingRetryCardState } from "@/lib/clarity/onboarding-retry-state";
 import {
   CLARITY_MEDIA_BUCKET,
   MAX_CLARITY_AUDIO_BYTES,
@@ -83,12 +84,16 @@ export function OnboardingConversationComposer({
   onJumpToLatest,
   onConversationChanged,
   onPreviewSend,
+  retryableMessageId,
+  answeredMessageIds,
 }: {
   preview: boolean;
   showJumpToLatest: boolean;
   onJumpToLatest: () => void;
   onConversationChanged: () => void;
   onPreviewSend: (content: string) => void;
+  retryableMessageId: string | null;
+  answeredMessageIds: string[];
 }) {
   const [sendState, sendAction, isPending] = useActionState(
     sendOnboardingMessageAction,
@@ -125,6 +130,12 @@ export function OnboardingConversationComposer({
   const [canPauseRecording, setCanPauseRecording] = useState(false);
   const [recordingElapsedMs, setRecordingElapsedMs] = useState(0);
   const canSend = Boolean(message.trim() || draftMedia.length > 0);
+  const retryCard = onboardingRetryCardState({
+    persistedUnansweredMessageId: retryableMessageId,
+    persistedAnsweredMessageIds: answeredMessageIds,
+    sendState,
+    retryState,
+  });
   const draftViewerImages = draftMedia
     .filter((item) => item.kind === "image")
     .map((item) => ({
@@ -547,20 +558,23 @@ export function OnboardingConversationComposer({
         </div>
       )}
 
-      {(sendState.fieldError || sendState.message || retryState.message || mediaError) && (
+      {(sendState.fieldError ||
+        (sendState.message && !sendState.retryMessageId) ||
+        retryCard ||
+        mediaError) && (
         <div role="alert" className="mb-2 rounded-xl bg-secondary px-3 py-2 text-sm">
           <p>
             {mediaError ??
               sendState.fieldError ??
-              sendState.message ??
-              retryState.message}
+              (sendState.retryMessageId ? null : sendState.message) ??
+              retryCard?.message}
           </p>
-          {sendState.retryMessageId && (
+          {retryCard && (
             <form action={retryAction} className="mt-2">
               <input
                 type="hidden"
                 name="retryMessageId"
-                value={sendState.retryMessageId}
+                value={retryCard.messageId}
               />
               <Button type="submit" size="sm" disabled={isRetrying}>
                 {isRetrying ? "Retrying…" : "Retry"}

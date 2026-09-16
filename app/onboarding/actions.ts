@@ -148,7 +148,12 @@ export async function retryOnboardingMessageAction(
       await runOnboardingConversationTurn({ userMessageId: messageId });
     }
     revalidatePath("/onboarding");
-    return { status: "success", message: null, completedAt: Date.now() };
+    return {
+      status: "success",
+      message: null,
+      retryMessageId: messageId,
+      completedAt: Date.now(),
+    };
   } catch (error) {
     console.error("Onboarding retry failed", error);
     return {

@@ -635,4 +635,111 @@ export const onboardingGoldenEvals: OnboardingGoldenEval[] = [
       evidenceRequest: { behavior: "incorporate_cautiously" },
     },
   },
+  {
+    id: "distribution-asset-still-unknown",
+    fictionalConversation: [
+      "I'm applying for L2 support roles and have an interview tomorrow. Technical depth seems to be where interviews fall down.",
+      "I also make content to distribute my Clarity app. The app is in alpha and I want to test it with 30 people from the audience.",
+      "I haven't said how large or engaged that audience is, and nobody external has tested the app yet.",
+    ],
+    expected: {
+      responseMode: ["CLARIFY", "REFLECT_INSIGHT"],
+      recognizes: [
+        "tomorrow's interview is already an actionable priority",
+        "the app route depends on audience distribution that is not yet understood",
+        "unknown audience scale or engagement could materially change the 30-person test plan",
+      ],
+      avoids: [
+        "setting person readiness from route headlines alone",
+        "treating intended external testing as completed traction",
+      ],
+      evidencePriority:
+        "audience scale and engagement are high-impact unknowns while interview evidence still supports action readiness",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: { person: "keep_learning", action: "sufficient" },
+      recommendedFirstMove: "prepare for tomorrow's L2 interview",
+    },
+  },
+  {
+    id: "pre-beta-consistency-contradiction",
+    fictionalConversation: [
+      "Clarity is an alpha and I plan to put it in front of 30 people, but nobody outside me has tested it yet.",
+      "What's still missing before those people can use it?",
+      "Nothing really, just staying consistent.",
+    ],
+    expected: {
+      responseMode: ["CLARIFY", "CHALLENGE", "REFLECT_INSIGHT"],
+      recognizes: [
+        "the stated blocker is too vague to explain why testing has not begun",
+        "pre-beta stage and a supposedly ready product may conflict",
+        "one concise question should identify what actually prevents the first external test",
+      ],
+      avoids: [
+        "accepting consistency as the proven bottleneck",
+        "synthesizing before testing the contradiction",
+      ],
+      evidencePriority:
+        "the stage, claimed blocker, and next milestone must fit before the bottleneck is considered understood",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: { person: "keep_learning", action: "sufficient" },
+      recommendedFirstMove: "prepare for the immediate interview",
+    },
+  },
+  {
+    id: "consequential-audience-evidence-choice",
+    fictionalConversation: [
+      "The content exists to distribute Clarity to a 30-person alpha, but I haven't explained the audience size, engagement, or growth.",
+    ],
+    expected: {
+      responseMode: ["CLARIFY", "UNDERSTAND"],
+      recognizes: [
+        "audience traction is the current decision-relevant unknown",
+        "a verbal answer may be enough",
+        "one profile or analytics screenshot may efficiently clarify the same question",
+      ],
+      avoids: [
+        "requesting both analytics and a Clarity product screenshot",
+        "requesting visual evidence only because uploads are available",
+      ],
+      evidencePriority:
+        "ask about audience scale and engagement verbally or offer one optional profile or analytics screenshot",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: { person: "keep_learning", action: "sufficient" },
+      evidenceRequest: {
+        behavior: "optional_request",
+        target: "one content profile or analytics screenshot",
+      },
+    },
+  },
+  {
+    id: "consequential-routes-bounded-and-ready",
+    fictionalConversation: [
+      "Tomorrow's L2 interview is the immediate priority and technical depth is the interview gap.",
+      "Clarity's alpha flow is ready for outside use. My audience is about 4,000, engagement is strongest on the videos about this problem, and I have 30 people identified for the first test.",
+      "No external test has happened yet, so I don't know retention or willingness to pay. Those can only be learned from the test and don't change the first plan.",
+      "Long term is still forming. Right now I want stable income while testing whether Clarity deserves to become the bigger route.",
+    ],
+    expected: {
+      responseMode: ["REFLECT_INSIGHT", "SYNTHESIZE"],
+      recognizes: [
+        "the employment and Clarity routes are understood well enough to place",
+        "post-test retention and willingness to pay are explicitly bounded unknowns",
+        "a still-forming long-term destination does not block a useful current plan",
+      ],
+      avoids: [
+        "repeating audience and alpha facts across synthesis sections",
+        "forcing a fixed five-year destination",
+      ],
+      evidencePriority:
+        "current audience scale, product readiness, identified testers, and explicit unknown boundaries support person readiness",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: { person: "sufficient", action: "sufficient" },
+      recommendedFirstMove: "prepare for tomorrow's L2 interview",
+      evidenceRequest: { behavior: "no_request" },
+    },
+  },
 ];

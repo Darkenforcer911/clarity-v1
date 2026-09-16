@@ -29,6 +29,10 @@ import {
   isClarityHistoryNearBottom,
 } from "@/lib/clarity/ai/clarity-chat-layout";
 import { initialOnboardingActionState } from "@/lib/clarity/onboarding-action-state";
+import {
+  answeredOnboardingMessageIds,
+  latestUnansweredOnboardingMessageId,
+} from "@/lib/clarity/onboarding-retry-state";
 import type {
   OnboardingConversationMessage,
   OnboardingPageState,
@@ -94,6 +98,10 @@ export function OnboardingFlow({
   const historyNearBottomRef = useRef(true);
   const scrollAfterConversationChangeRef = useRef(false);
   const messages = preview ? previewMessages : initialState.messages;
+  const retryableMessageId = preview
+    ? null
+    : latestUnansweredOnboardingMessageId(messages);
+  const answeredMessageIds = preview ? [] : answeredOnboardingMessageIds(messages);
   const synthesis =
     initialState.confirmedSnapshot?.synthesis ?? initialState.synthesis;
   const completed = initialState.status === "completed";
@@ -535,6 +543,8 @@ export function OnboardingFlow({
                 onJumpToLatest={scrollConversationToBottom}
                 onConversationChanged={handleConversationChanged}
                 onPreviewSend={handlePreviewSend}
+                retryableMessageId={retryableMessageId}
+                answeredMessageIds={answeredMessageIds}
               />
             )}
           </>
