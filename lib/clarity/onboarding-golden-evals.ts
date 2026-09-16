@@ -118,6 +118,37 @@ export const onboardingGoldenEvals: OnboardingGoldenEval[] = [
     },
   },
   {
+    id: "employment-locate-before-solve",
+    fictionalConversation: [
+      "I lost my job.",
+      "My last role was L1 tech admin and I'm applying for L2 roles now.",
+      "Are those applications actually producing interviews?",
+      "I've had five interviews but no offers.",
+    ],
+    expected: {
+      responseMode: ["UNDERSTAND", "CLARIFY", "REFLECT_INSIGHT"],
+      recognizes: [
+        "application-to-interview traction locates the employment branch before detailed diagnosis",
+        "five interviews without an offer makes interview conversion a supported candidate bottleneck",
+        "interview feedback or a possible technical gap is now worth investigating while the broader life board remains incomplete",
+      ],
+      avoids: [
+        "asking about technologies, end-to-end ownership, or escalation boundaries before learning whether applications produce interviews",
+        "spending several more employment questions on technical detail without checking for another major consequential branch",
+      ],
+      evidencePriority:
+        "pipeline movement separates application positioning from interview conversion before solution-level questioning",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: {
+        person: "keep_learning",
+        action: "sufficient",
+      },
+      recommendedFirstMove:
+        "review the repeated interview feedback or failure point before prescribing technical remediation",
+    },
+  },
+  {
     id: "multiple-ambitions-with-immediate-prerequisite",
     fictionalConversation: [
       "I'm weighing up a business, going back to study, and finding another job.",
