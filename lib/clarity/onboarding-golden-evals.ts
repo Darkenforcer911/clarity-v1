@@ -77,6 +77,31 @@ export const onboardingGoldenEvals: OnboardingGoldenEval[] = [
     },
   },
   {
+    id: "stable-worker-considering-career-change",
+    fictionalConversation: [
+      "My job is stable and pays enough, but I keep thinking about changing careers. I haven't decided what I would change into.",
+      "I want work that feels more meaningful, but I don't want to throw away the stability I have just to escape a boring month.",
+    ],
+    expected: {
+      responseMode: ["UNDERSTAND", "CLARIFY", "EXPAND_POSSIBILITIES"],
+      recognizes: [
+        "the current job provides real stability while the alternative direction is not yet grounded",
+        "wanting more meaning does not by itself identify a viable destination",
+        "the decision requires locating what is persistently wrong before comparing possible routes",
+      ],
+      avoids: [
+        "treating a vague wish to change as a settled career branch",
+        "recommending resignation or a specific field without evidence",
+      ],
+      evidencePriority:
+        "the persistent source of dissatisfaction and the shape of a desired change matter before solution-level route comparison",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: { person: "keep_learning", action: "keep_learning" },
+      recommendedFirstMove: null,
+    },
+  },
+  {
     id: "time-fragmented-skilled-worker",
     fictionalConversation: [
       "My job pays decently but the shifts break up the whole week. I want more control of my time.",
@@ -931,6 +956,58 @@ export const onboardingGoldenEvals: OnboardingGoldenEval[] = [
       preservesUncertainty: true,
       readiness: { person: "keep_learning", action: "keep_learning" },
       recommendedFirstMove: null,
+    },
+  },
+  {
+    id: "vague-unfamiliar-obligation-needs-grounding",
+    fictionalConversation: ["I've got some papers to deal with as well."],
+    expected: {
+      responseMode: ["UNDERSTAND", "CLARIFY"],
+      recognizes: [
+        "a potentially consequential new branch exists",
+        "the branch identity is too ambiguous to rank or diagnose yet",
+        "identity must be grounded before urgency, consequence, or category can be assigned",
+      ],
+      avoids: [
+        "assuming the papers concern work, study, law, finances, or administration",
+        "asking about a deadline before establishing what the papers are",
+      ],
+      evidencePriority:
+        "the smallest useful question establishes what the papers are for before triage",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: { person: "keep_learning", action: "keep_learning" },
+      recommendedFirstMove: null,
+      delivery: {
+        preferredShape: "question_only",
+        targetMaxVisibleWords: 35,
+        reflectionMustAddDecisionValue: true,
+      },
+    },
+  },
+  {
+    id: "context-grounded-obligation-skips-redundant-clarification",
+    fictionalConversation: [
+      "My manager gave me compliance forms for work that have to be submitted tonight, and I still haven't finished them.",
+    ],
+    expected: {
+      responseMode: ["UNDERSTAND", "CLARIFY", "REFLECT_INSIGHT"],
+      recognizes: [
+        "the obligation is already grounded as work compliance forms",
+        "the deadline establishes immediate urgency",
+        "unfinished required forms may interrupt a less urgent branch",
+      ],
+      avoids: [
+        "asking what the forms are when the context already establishes their identity",
+        "ignoring the dated obligation to continue a lower-impact thread",
+      ],
+      evidencePriority:
+        "the remaining work and consequence of missing tonight's deadline determine the next move",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: { person: "keep_learning", action: "sufficient" },
+      recommendedFirstMove:
+        "finish or submit the required compliance forms before lower-impact work",
     },
   },
   {

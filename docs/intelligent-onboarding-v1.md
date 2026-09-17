@@ -28,6 +28,15 @@ single unusually rich answer can qualify. Ten to twelve assistant questions is
 a soft ceiling, after which explicit unknowns are preferable to a longer
 interview.
 
+The V1 base reasoning policy is frozen around one adaptive loop:
+`DISCOVER → GROUND → LOCATE → COMPARE → DEEPEN → PRIORITISE → ACT`. It grounds
+material ambiguity before inference, maps enough breadth to avoid tunnel
+vision, earns depth through expected decision impact, and keeps facts,
+inferences, and unknowns distinct. Domain examples belong in evaluation
+fixtures rather than production rules. Before beta, base reasoning should be
+reopened only for a demonstrated violation of one of these invariants;
+reliability defects and product-learning observations are tracked separately.
+
 ## Authority and persistence
 
 `onboarding_messages` is an append-only, owner-scoped workflow transcript.
