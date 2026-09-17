@@ -118,16 +118,46 @@ export const onboardingGoldenEvals: OnboardingGoldenEval[] = [
     },
   },
   {
+    id: "employment-target-before-traction",
+    fictionalConversation: [
+      "I lost my job.",
+      "I was an L1 tech admin and I'm applying for jobs.",
+    ],
+    expected: {
+      responseMode: ["UNDERSTAND", "CLARIFY"],
+      recognizes: [
+        "L1 tech admin is confirmed previous experience rather than a settled current direction",
+        "the role or work direction currently being pursued remains a consequential unknown",
+        "branch identity must be established before application traction is interpreted",
+      ],
+      avoids: [
+        "inferring that the user is applying for L1, L2, or similar technical roles",
+        "asking whether applications produce interviews before learning what roles they target",
+      ],
+      evidencePriority:
+        "ask what kind of roles or direction the user is applying toward before measuring traction",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: {
+        person: "keep_learning",
+        action: "keep_learning",
+      },
+      recommendedFirstMove: null,
+    },
+  },
+  {
     id: "employment-locate-before-solve",
     fictionalConversation: [
       "I lost my job.",
-      "My last role was L1 tech admin and I'm applying for L2 roles now.",
+      "My last role was L1 tech admin.",
+      "I'm applying for L2 roles now.",
       "Are those applications actually producing interviews?",
       "I've had five interviews but no offers.",
     ],
     expected: {
       responseMode: ["UNDERSTAND", "CLARIFY", "REFLECT_INSIGHT"],
       recognizes: [
+        "the L2 target is established before traction is assessed",
         "application-to-interview traction locates the employment branch before detailed diagnosis",
         "five interviews without an offer makes interview conversion a supported candidate bottleneck",
         "interview feedback or a possible technical gap is now worth investigating while the broader life board remains incomplete",
@@ -771,6 +801,131 @@ export const onboardingGoldenEvals: OnboardingGoldenEval[] = [
       readiness: { person: "sufficient", action: "sufficient" },
       recommendedFirstMove: "prepare for tomorrow's L2 interview",
       evidenceRequest: { behavior: "no_request" },
+    },
+  },
+  {
+    id: "caregiver-returning-to-work",
+    fictionalConversation: [
+      "I've been home with my children for three years and want to return to paid work, but I don't know what shape would fit around school hours.",
+      "I used to manage a retail team. I need some income, but being available after school matters more than returning full-time immediately.",
+    ],
+    expected: {
+      responseMode: ["UNDERSTAND", "CLARIFY", "REFLECT_INSIGHT"],
+      recognizes: [
+        "returning to paid work is an active branch whose desired shape is not yet settled",
+        "prior management experience is capability evidence rather than proof of the current target",
+        "care availability and income pressure are cross-cutting constraints that affect viable routes",
+      ],
+      avoids: [
+        "assuming the user wants the same role or full-time hours",
+        "turning childcare and finances into a mandatory checklist",
+      ],
+      evidencePriority:
+        "locate the desired work shape and material constraints before diagnosing employability or prescribing applications",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: { person: "keep_learning", action: "keep_learning" },
+      recommendedFirstMove: null,
+    },
+  },
+  {
+    id: "student-degree-continuation",
+    fictionalConversation: [
+      "I'm halfway through a degree and thinking about leaving, but I don't know whether I dislike the subject or just the way life feels this semester.",
+      "My grades are fine. The course leads to work I might enjoy, but I'm exhausted and also curious about a different field.",
+    ],
+    expected: {
+      responseMode: ["UNDERSTAND", "CLARIFY", "REFLECT_INSIGHT"],
+      recognizes: [
+        "degree performance, current exhaustion, and desired work are distinct dimensions",
+        "adequate grades are evidence that capability is not yet the established blocker",
+        "the alternative field is a possible route whose identity and evidence remain thin",
+      ],
+      avoids: [
+        "telling the user to quit or persist before separating temporary pressure from direction",
+        "treating curiosity about another field as demonstrated fit",
+      ],
+      evidencePriority:
+        "compare what the degree is meant to enable with the source and duration of current pressure before choosing a route",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: { person: "keep_learning", action: "keep_learning" },
+      recommendedFirstMove: null,
+    },
+  },
+  {
+    id: "salaried-relocation-decision",
+    fictionalConversation: [
+      "I have a stable salaried job and I'm considering moving interstate with my partner later this year.",
+      "My role might become remote, but that hasn't been approved. My partner already has an offer there and needs to decide soon.",
+    ],
+    expected: {
+      responseMode: ["CLARIFY", "REFLECT_INSIGHT", "CHALLENGE"],
+      recognizes: [
+        "relocation, employment continuity, and the partner's decision are connected branches",
+        "remote approval is an unresolved dependency rather than an established option",
+        "the partner's deadline creates real pressure on the comparison",
+      ],
+      avoids: [
+        "reducing the decision to career preference alone",
+        "assuming remote work or recommending relocation before the dependency is bounded",
+      ],
+      evidencePriority:
+        "the remote-work decision and partner deadline most affect which relocation options are real",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: { person: "keep_learning", action: "keep_learning" },
+      recommendedFirstMove: null,
+    },
+  },
+  {
+    id: "debt-and-side-business",
+    fictionalConversation: [
+      "My salary covers the basics, but I have debt repayments and a small weekend repair business that I hope could grow.",
+      "The business has eight paying customers, though the work is inconsistent and I haven't tracked profit properly.",
+    ],
+    expected: {
+      responseMode: ["CLARIFY", "REFLECT_INSIGHT", "CHALLENGE"],
+      recognizes: [
+        "salary stability and debt pressure affect how much risk the business route can carry",
+        "paying customers are real evidence while profitability and repeatability remain unknown",
+        "the side business may be upside without yet being a replacement-income route",
+      ],
+      avoids: [
+        "telling the user to leave the salary because customers exist",
+        "asking for a complete debt and household-finance inventory by default",
+      ],
+      evidencePriority:
+        "actual profit and repeat demand would most change how the business should be placed beside salary and obligations",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: { person: "keep_learning", action: "keep_learning" },
+      recommendedFirstMove: null,
+    },
+  },
+  {
+    id: "health-pressure-before-career",
+    fictionalConversation: [
+      "I keep trying to make a career plan, but a health issue has been making it hard to work a normal week.",
+      "I'm seeing a clinician and still waiting to understand what is going on. For now I can only manage a few focused hours most days.",
+    ],
+    expected: {
+      responseMode: ["UNDERSTAND", "CLARIFY", "REFLECT_INSIGHT"],
+      recognizes: [
+        "current functioning is a cross-cutting constraint on career options and pace",
+        "appropriate professional support is already in progress while the outcome remains uncertain",
+        "the immediate priority may be a sustainable near-term operating shape rather than a definitive career choice",
+      ],
+      avoids: [
+        "diagnosing the health issue or overriding the clinician",
+        "forcing a detailed career route before the capacity constraint is bounded",
+      ],
+      evidencePriority:
+        "current usable capacity and near-term health uncertainty matter more than speculative long-term optimization",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: { person: "keep_learning", action: "keep_learning" },
+      recommendedFirstMove: null,
     },
   },
 ];

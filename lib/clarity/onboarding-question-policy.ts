@@ -14,13 +14,6 @@ type ConversationMessage = {
   content: string;
 };
 
-type IntroducedThread = {
-  domain: OnboardingQuestionFocusDomain;
-  statement: string;
-  target: string;
-  materiality: "medium" | "high";
-};
-
 export type OnboardingQuestionPolicy = {
   latestUserResponseWasNonAnswer: boolean;
   broadFutureAllowed: boolean;
@@ -45,6 +38,7 @@ const currentWorldPriority: OnboardingQuestionFocusDomain[] = [
   "CAPABILITIES",
   "CONSTRAINTS",
   "ACTIVE_DIRECTION",
+  "OTHER",
 ];
 
 export function seedUserIntroducedUnknowns(input: {
@@ -52,32 +46,30 @@ export function seedUserIntroducedUnknowns(input: {
   latestUserMessage: string;
   previousFocus?: OnboardingQuestionFocus | null;
 }): OnboardingCanonicalState {
-  const threads = deriveUserIntroducedThreads(input.latestUserMessage);
+  const additions: OnboardingCanonicalState["unknowns"] = [];
   if (
     isOnboardingNonAnswer(input.latestUserMessage) &&
     input.previousFocus &&
     !input.previousFocus.relatedUnknownId
   ) {
-    threads.push({
-      domain: input.previousFocus.domain,
+    additions.push({
       statement: `The user cannot currently answer the unresolved question about ${input.previousFocus.target}.`,
-      target: input.previousFocus.target,
       materiality: "medium",
     });
   }
-  if (threads.length === 0) return input.state;
+  if (additions.length === 0) return input.state;
 
   const existing = new Set(
     input.state.unknowns.map((unknown) => normalizeText(unknown.statement)),
   );
-  const additions = threads
-    .filter((thread) => !existing.has(normalizeText(thread.statement)))
-    .map(({ statement, materiality }) => ({ statement, materiality }));
-  if (additions.length === 0) return input.state;
+  const newUnknowns = additions.filter(
+    (unknown) => !existing.has(normalizeText(unknown.statement)),
+  );
+  if (newUnknowns.length === 0) return input.state;
 
   return {
     ...input.state,
-    unknowns: [...input.state.unknowns, ...additions].slice(0, 10),
+    unknowns: [...input.state.unknowns, ...newUnknowns].slice(0, 10),
   };
 }
 
@@ -100,18 +92,13 @@ export function buildOnboardingQuestionPolicy(input: {
   const inferredPreviousFocus =
     input.previousFocus ?? inferQuestionFocus(recentAssistantQuestions.at(-1));
   const identifiedUnknowns = onboardingCanonicalStateForModel(input.state).unknowns;
-  const preferredTargets = identifiedUnknowns
+  const identifiedTargets = identifiedUnknowns
     .map((unknown) => ({
       domain: inferUnknownDomain(unknown.statement),
       target: unknown.statement,
       relatedUnknownId: unknown.unknownId,
       materiality: unknown.materiality,
     }))
-    .filter(
-      (target): target is typeof target & {
-        domain: OnboardingQuestionFocusDomain;
-      } => target.domain !== null && currentWorldPriority.includes(target.domain),
-    )
     .sort((left, right) => {
       const materiality = Number(right.materiality === "high") - Number(left.materiality === "high");
       if (materiality !== 0) return materiality;
@@ -125,24 +112,38 @@ export function buildOnboardingQuestionPolicy(input: {
       target,
       relatedUnknownId,
     }));
-  const currentDomains = [...new Set(preferredTargets.map((item) => item.domain))];
-  const pivotAlternatives = latestUserResponseWasNonAnswer
-    ? currentDomains.filter((domain) => domain !== inferredPreviousFocus?.domain)
-    : currentDomains;
-  const mustPivotFromPreviousFocus =
-    latestUserResponseWasNonAnswer && pivotAlternatives.length > 0;
-  const allowedDomains =
-    currentDomains.length > 0
-      ? mustPivotFromPreviousFocus
-        ? pivotAlternatives
-        : currentDomains
+  const currentTargets = identifiedTargets.filter((target) =>
+    currentWorldPriority.includes(target.domain),
+  );
+  const currentDomains = [...new Set(currentTargets.map((item) => item.domain))];
+  const identifiedDomains = [
+    ...new Set(identifiedTargets.map((item) => item.domain)),
+  ];
+  const hasCurrentWorldUncertainty =
+    currentDomains.length > 0 || input.state.progress.situation !== "clear";
+  const baseAllowedDomains = hasCurrentWorldUncertainty
+    ? currentWorldPriority
+    : identifiedDomains.length > 0
+      ? identifiedDomains
       : [...onboardingQuestionFocusDomains];
+  const pivotAlternatives = latestUserResponseWasNonAnswer
+    ? baseAllowedDomains.filter(
+        (domain) => domain !== inferredPreviousFocus?.domain,
+      )
+    : baseAllowedDomains;
+  const mustPivotFromPreviousFocus =
+    latestUserResponseWasNonAnswer &&
+    inferredPreviousFocus !== null &&
+    pivotAlternatives.length > 0;
+  const allowedDomains = mustPivotFromPreviousFocus
+    ? pivotAlternatives
+    : baseAllowedDomains;
 
   return {
     latestUserResponseWasNonAnswer,
-    broadFutureAllowed: currentDomains.length === 0,
+    broadFutureAllowed: !hasCurrentWorldUncertainty,
     allowedDomains,
-    preferredTargets: preferredTargets.filter((target) =>
+    preferredTargets: identifiedTargets.filter((target) =>
       allowedDomains.includes(target.domain),
     ),
     avoidRecentQuestions: latestUserResponseWasNonAnswer
@@ -234,77 +235,20 @@ export function areQuestionsMateriallySame(left: string, right: string) {
   );
 }
 
-function deriveUserIntroducedThreads(value: string): IntroducedThread[] {
-  const text = normalizeText(value);
-  const threads: IntroducedThread[] = [];
-  if (
-    /\b(?:lost|lose|left|fired|laid off|redundan\w*)\b.{0,28}\b(?:job|role|work|employment)\b/.test(
-      text,
-    ) ||
-    /\b(?:job|role|work|employment)\b.{0,28}\b(?:lost|lose|left|fired|laid off|redundan\w*)\b/.test(
-      text,
-    )
-  ) {
-    threads.push({
-      domain: "CURRENT_WORK",
-      statement:
-        "The user's previous role, relevant work experience, and current employment situation remain unresolved.",
-      target: "the user's previous work and current employment situation",
-      materiality: "high",
-    });
-    threads.push({
-      domain: "ECONOMIC_PRESSURE",
-      statement:
-        "Whether replacement income is needed, and how urgently, remains unresolved.",
-      target: "the urgency of replacement income",
-      materiality: "high",
-    });
-  }
-  if (
-    /\b(?:a few|several|other|lots? of)\s+(?:other\s+)?(?:things|stuff)\b/.test(text) ||
-    /\b(?:things|stuff)\s+(?:going on|happening)\b/.test(text)
-  ) {
-    threads.push({
-      domain: "ACTIVE_PROJECTS",
-      statement:
-        "The other projects, commitments, income sources, or study the user introduced remain unresolved.",
-      target: "the other things the user currently has going on",
-      materiality: "high",
-    });
-  }
-  if (/\b(?:side income|side hustle|money on the side|earn on the side)\b/.test(text)) {
-    threads.push({
-      domain: "OTHER_INCOME",
-      statement: "The side-income activity and how material it is remain unresolved.",
-      target: "the user's side-income activity and evidence",
-      materiality: "high",
-    });
-  }
-  if (/\b(?:building|project|business|startup|company)\b/.test(text)) {
-    threads.push({
-      domain: "ACTIVE_PROJECTS",
-      statement: "The active project or business the user introduced remains unresolved.",
-      target: "the active project or business",
-      materiality: "medium",
-    });
-  }
-  return deduplicateThreads(threads);
-}
-
 function inferUnknownDomain(
   statement: string,
-): OnboardingQuestionFocusDomain | null {
+): OnboardingQuestionFocusDomain {
   const text = normalizeText(statement);
   if (/\b(?:side income|side-income|side hustle|other income)\b/.test(text)) {
     return "OTHER_INCOME";
   }
-  if (/\b(?:projects?|business|startup|commitments?|things going on)\b/.test(text)) {
+  if (/\b(?:projects?|business|startup|commitments?)\b/.test(text)) {
     return "ACTIVE_PROJECTS";
   }
   if (/\b(?:income|money|financial|runway|savings|afford|economic)\b/.test(text)) {
     return "ECONOMIC_PRESSURE";
   }
-  if (/\b(?:job|role|work|employment|career)\b/.test(text)) return "CURRENT_WORK";
+  if (/\b(?:job|work|employment|career)\b/.test(text)) return "CURRENT_WORK";
   if (/\b(?:study|education|university|school|course|degree)\b/.test(text)) {
     return "EDUCATION";
   }
@@ -323,20 +267,18 @@ function inferUnknownDomain(
   if (/\b(?:future|year from now|long term|life look like|want)\b/.test(text)) {
     return "FUTURE_PULL";
   }
-  return null;
+  return "OTHER";
 }
 
 function inferQuestionFocus(question: string | undefined): OnboardingQuestionFocus | null {
   if (!question) return null;
   const domain = inferUnknownDomain(question);
-  return domain
-    ? {
-        domain,
-        target: question.replace(/\?+$/, "").trim(),
-        reason: "Inferred from the prior visible question.",
-        relatedUnknownId: null,
-      }
-    : null;
+  return {
+    domain,
+    target: question.replace(/\?+$/, "").trim(),
+    reason: "Inferred from the prior visible question.",
+    relatedUnknownId: null,
+  };
 }
 
 function questionMatchesFocus(
@@ -409,16 +351,6 @@ function questionTokens(value: string) {
       .map((token) => aliases[token] ?? token)
       .filter((token) => !stop.has(token)),
   );
-}
-
-function deduplicateThreads(threads: IntroducedThread[]) {
-  const seen = new Set<string>();
-  return threads.filter((thread) => {
-    const key = `${thread.domain}:${normalizeText(thread.statement)}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
 }
 
 function normalizeText(value: string) {
