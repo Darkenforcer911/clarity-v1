@@ -28,6 +28,11 @@ export type OnboardingGoldenEval = {
         | "incorporate_cautiously";
       target?: string;
     };
+    delivery?: {
+      preferredShape: "question_only" | "observation_then_question";
+      targetMaxVisibleWords: 35;
+      reflectionMustAddDecisionValue: true;
+    };
   };
 };
 
@@ -926,6 +931,65 @@ export const onboardingGoldenEvals: OnboardingGoldenEval[] = [
       preservesUncertainty: true,
       readiness: { person: "keep_learning", action: "keep_learning" },
       recommendedFirstMove: null,
+    },
+  },
+  {
+    id: "verbal-economy-current-work",
+    fictionalConversation: [
+      "I make decent money right now, but I feel like I'm working all the time and I don't know what direction to focus on.",
+    ],
+    expected: {
+      responseMode: ["UNDERSTAND", "CLARIFY"],
+      recognizes: [
+        "current work identity is still unknown",
+        "time pressure is reported but not yet located precisely",
+        "direction should not be diagnosed before the current branch is located",
+      ],
+      avoids: [
+        "restating that income comes at the cost of time",
+        "adding polished narration before a simple branch-location question",
+      ],
+      evidencePriority:
+        "a direct question about the current work should locate the branch before asking for detailed hours or solutions",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: { person: "keep_learning", action: "keep_learning" },
+      recommendedFirstMove: null,
+      delivery: {
+        preferredShape: "question_only",
+        targetMaxVisibleWords: 35,
+        reflectionMustAddDecisionValue: true,
+      },
+    },
+  },
+  {
+    id: "verbal-economy-useful-reflection",
+    fictionalConversation: [
+      "I'm applying for L2 support roles.",
+      "I've had five interviews and no offers.",
+    ],
+    expected: {
+      responseMode: ["REFLECT_INSIGHT", "CLARIFY"],
+      recognizes: [
+        "applications are producing interviews",
+        "initial consideration is therefore not the immediate failure point",
+        "feedback or interview conversion is the next useful unknown",
+      ],
+      avoids: [
+        "repeating the interview count without drawing a useful inference",
+        "explaining the whole employment funnel before asking for feedback",
+      ],
+      evidencePriority:
+        "one short conversion insight may earn its place before a direct feedback question",
+      asksAtMostOneQuestion: true,
+      preservesUncertainty: true,
+      readiness: { person: "keep_learning", action: "keep_learning" },
+      recommendedFirstMove: null,
+      delivery: {
+        preferredShape: "observation_then_question",
+        targetMaxVisibleWords: 35,
+        reflectionMustAddDecisionValue: true,
+      },
     },
   },
 ];
