@@ -43,6 +43,7 @@ export type ClarityStructuredOutputContract<Output> = {
   schema: Record<string, unknown>;
   parse: (value: unknown) => Output;
   maxOutputTokens?: number;
+  promptCacheKey?: string;
   onTiming?: (event: ClarityStructuredProviderTimingEvent) => void;
 };
 
@@ -201,6 +202,7 @@ export class OpenAIClarityProvider implements ClarityModelProvider {
           contract.name,
           contract.schema,
           contract.maxOutputTokens,
+          contract.promptCacheKey,
         );
         const text = extractOpenAIText(raw);
         emitStructuredTiming(contract, {
@@ -344,6 +346,7 @@ export class OpenAIClarityProvider implements ClarityModelProvider {
     outputName = "clarity_conversation_response",
     outputSchema: Record<string, unknown> = clarityConversationResponseJsonSchema,
     maxOutputTokens = 2_500,
+    promptCacheKey: string | undefined = undefined,
   ): Promise<OpenAIResponse> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -360,6 +363,7 @@ export class OpenAIClarityProvider implements ClarityModelProvider {
           model: this.model,
           store: false,
           max_output_tokens: maxOutputTokens,
+          ...(promptCacheKey ? { prompt_cache_key: promptCacheKey } : {}),
           ...(researchLocation
             ? {
                 include: ["web_search_call.action.sources"],
@@ -435,6 +439,13 @@ export function buildStructuredRepairInstruction(
     rejection.safeMetadata.operationType === "insight_add"
   ) {
     return `${genericStructuredRepairInstruction} The canonical onboarding insight collection has no additional slots remaining. Do not append another unique insight. Either update or replace an existing insight when the new evidence justifies it, or return no new insight delta.`;
+  }
+
+  if (
+    rejection.stage === "question_policy" &&
+    rejection.code === "visible_question_focus_mismatch"
+  ) {
+    return `${genericStructuredRepairInstruction} The one visible question in assistantMessage must directly ask about the domain and target declared in questionFocus and reuse at least one meaningful term from that target. Either revise that question to match questionFocus or revise questionFocus to describe the question exactly.`;
   }
 
   return genericStructuredRepairInstruction;

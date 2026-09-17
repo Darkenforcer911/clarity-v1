@@ -89,7 +89,7 @@ const routeUpdateSchema = z
 
 export const onboardingDiscoveryResponseSchema = z
   .object({
-    assistantMessage: z.string().trim().min(1).max(1_500),
+    assistantMessage: z.string().trim().min(1).max(700),
     mode: z.enum(onboardingDiscoveryModes),
     questionFocus: onboardingQuestionFocusSchema.nullable(),
     evidenceRequest: onboardingEvidenceRequestSchema.nullable(),
@@ -244,7 +244,7 @@ export const onboardingDiscoveryResponseJsonSchema = {
     "readiness",
   ],
   properties: {
-    assistantMessage: { type: "string", minLength: 1, maxLength: 1500 },
+    assistantMessage: { type: "string", minLength: 1, maxLength: 700 },
     mode: { type: "string", enum: onboardingDiscoveryModes },
     questionFocus: {
       anyOf: [questionFocusJsonSchema(), { type: "null" }],

@@ -149,6 +149,7 @@ async function executeOnboardingConversationTurn(input: {
       unknown
     >,
     maxOutputTokens: 2_000,
+    promptCacheKey: "clarity_onboarding_discovery_v1",
     ...(onboardingPerformanceLoggingEnabled
       ? {
           onTiming: (event: ClarityStructuredProviderTimingEvent) => {
