@@ -6,7 +6,14 @@ import type { Json, Tables } from "@/lib/supabase/database.types";
 import { getAuthenticatedUserAndProfile } from "../daily-loop-queries";
 import { loadClarityAttachmentsForMessages } from "./clarity-attachment-service";
 import type { ClarityMessageAttachment } from "./clarity-attachments";
-import type { ClarityConversationResponse } from "./clarity-response-schema";
+import {
+  loadClarityProposalsForAssistantMessages,
+} from "./clarity-proposal-service";
+import type { ClarityMemoryUpdateProposal } from "./clarity-proposal";
+import type {
+  ClarityConversationResponse,
+  ClarityMemoryUpdateCandidate,
+} from "./clarity-response-schema";
 import type {
   ClarityInvocationDescriptor,
 } from "./clarity-context-assembler";
@@ -38,6 +45,7 @@ type StoredClarityConversationMessage = z.infer<typeof storedMessageSchema>;
 
 export type ClarityConversationMessage = StoredClarityConversationMessage & {
   attachments: ClarityMessageAttachment[];
+  proposal: ClarityMemoryUpdateProposal | null;
 };
 
 export type ClarityConversation = {
@@ -70,15 +78,23 @@ export async function loadClarityConversation(
   if (error) throw new Error(error.message);
 
   const storedMessages = storedMessageSchema.array().parse(data ?? []).reverse();
-  const attachments = await loadClarityAttachmentsForMessages(
-    storedMessages.map((message) => message.id),
-  );
+  const [attachments, proposals] = await Promise.all([
+    loadClarityAttachmentsForMessages(
+      storedMessages.map((message) => message.id),
+    ),
+    loadClarityProposalsForAssistantMessages(
+      storedMessages
+        .filter((message) => message.role === "clarity")
+        .map((message) => message.id),
+    ),
+  ]);
 
   return {
     id: conversation.id,
     messages: storedMessages.map((message) => ({
       ...message,
       attachments: attachments.get(message.id) ?? [],
+      proposal: proposals.get(message.id) ?? null,
     })),
   };
 }
@@ -119,6 +135,7 @@ export async function appendClarityResponse(
   userMessageId: string,
   response: ClarityConversationResponse,
   providerResult: ClarityProviderResult,
+  proposalCandidate: ClarityMemoryUpdateCandidate | null = null,
 ) {
   const { supabase } = await getAuthenticatedUserAndProfile();
   const metadata = {
@@ -135,7 +152,7 @@ export async function appendClarityResponse(
       latencyMs: 0,
     },
   } satisfies Json;
-  const { data, error } = await supabase.rpc("append_clarity_response_v1", {
+  const { data, error } = await supabase.rpc("append_clarity_response_v2", {
     p_user_message_id: userMessageId,
     p_content: response.response,
     p_model_provider: providerResult.provider,
@@ -143,6 +160,12 @@ export async function appendClarityResponse(
     p_next_move_type: response.nextMove.type,
     p_structured_metadata: metadata,
     p_latency_ms: providerResult.latencyMs,
+    p_proposal_type: proposalCandidate?.type,
+    p_target_memory_item_id: proposalCandidate?.targetMemoryItemId,
+    p_replacement_statement: proposalCandidate?.replacementStatement,
+    p_effective_on: proposalCandidate?.effectiveOn ?? undefined,
+    p_proposal_summary: proposalCandidate?.summary,
+    p_proposal_rationale: proposalCandidate?.rationale,
     ...(providerResult.usage.inputTokens === null
       ? {}
       : { p_input_tokens: providerResult.usage.inputTokens }),
@@ -184,6 +207,7 @@ export async function loadRetryableUserMessage(messageId: string) {
     message: {
       ...message,
       attachments: attachments.get(message.id) ?? [],
+      proposal: null,
     },
     alreadyAnswered: Boolean(existingResponse),
   };

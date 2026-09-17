@@ -42,6 +42,7 @@ import {
   ClarityImageViewer,
   type ClarityViewerImage,
 } from "@/components/clarity/clarity-image-viewer";
+import { ClarityMemoryProposalCard } from "@/components/clarity/clarity-memory-proposal-card";
 import { initialClarityConversationActionState } from "@/lib/clarity/ai/clarity-conversation-action-state";
 import {
   appendDictationTranscript,
@@ -1261,12 +1262,19 @@ export function ClarityConversation({
               </p>
             )}
             {messages.map((item) => (
-              <ConversationMessage
-                key={item.id}
-                item={item}
-                formAction={formAction}
-                onOpenImages={openImageViewer}
-              />
+              <div key={item.id} className="space-y-2">
+                <ConversationMessage
+                  item={item}
+                  formAction={formAction}
+                  onOpenImages={openImageViewer}
+                />
+                {item.role === "clarity" && item.proposal && (
+                  <ClarityMemoryProposalCard
+                    key={`${item.proposal.id}:${item.proposal.revision}:${item.proposal.status}`}
+                    proposal={item.proposal}
+                  />
+                )}
+              </div>
             ))}
             {state.fallbackResponse && state.retryMessageId && (
               <ResearchFallbackResponse

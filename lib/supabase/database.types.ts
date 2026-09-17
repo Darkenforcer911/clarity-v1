@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
-  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -384,6 +379,107 @@ export type Database = {
           },
         ]
       }
+      clarity_change_proposals: {
+        Row: {
+          confirmed_at: string | null
+          conversation_id: string
+          created_at: string
+          dismissal_reason: string | null
+          dismissed_at: string | null
+          executed_at: string | null
+          execution_failure_code: string | null
+          execution_key: string
+          expired_at: string | null
+          id: string
+          payload_fingerprint: string
+          payload_version: number
+          proposal_type: Database["public"]["Enums"]["clarity_change_proposal_type"]
+          rationale: string
+          revision: number
+          source_assistant_message_id: string
+          source_user_message_id: string
+          status: Database["public"]["Enums"]["clarity_change_proposal_status"]
+          summary: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          confirmed_at?: string | null
+          conversation_id: string
+          created_at?: string
+          dismissal_reason?: string | null
+          dismissed_at?: string | null
+          executed_at?: string | null
+          execution_failure_code?: string | null
+          execution_key?: string
+          expired_at?: string | null
+          id?: string
+          payload_fingerprint: string
+          payload_version?: number
+          proposal_type: Database["public"]["Enums"]["clarity_change_proposal_type"]
+          rationale: string
+          revision?: number
+          source_assistant_message_id: string
+          source_user_message_id: string
+          status?: Database["public"]["Enums"]["clarity_change_proposal_status"]
+          summary: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          confirmed_at?: string | null
+          conversation_id?: string
+          created_at?: string
+          dismissal_reason?: string | null
+          dismissed_at?: string | null
+          executed_at?: string | null
+          execution_failure_code?: string | null
+          execution_key?: string
+          expired_at?: string | null
+          id?: string
+          payload_fingerprint?: string
+          payload_version?: number
+          proposal_type?: Database["public"]["Enums"]["clarity_change_proposal_type"]
+          rationale?: string
+          revision?: number
+          source_assistant_message_id?: string
+          source_user_message_id?: string
+          status?: Database["public"]["Enums"]["clarity_change_proposal_status"]
+          summary?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clarity_change_proposals_assistant_message_owner_fkey"
+            columns: ["source_assistant_message_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "clarity_messages"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "clarity_change_proposals_conversation_owner_fkey"
+            columns: ["conversation_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "clarity_conversations"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "clarity_change_proposals_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clarity_change_proposals_user_message_owner_fkey"
+            columns: ["source_user_message_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "clarity_messages"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
+      }
       clarity_conversations: {
         Row: {
           created_at: string
@@ -560,6 +656,88 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      clarity_memory_update_proposals: {
+        Row: {
+          confidence: Database["public"]["Enums"]["clarity_memory_confidence"]
+          created_at: string
+          effective_on: string | null
+          expected_target_fingerprint: string
+          materiality: Database["public"]["Enums"]["clarity_memory_materiality"]
+          memory_class: Database["public"]["Enums"]["clarity_memory_class"]
+          observed_at: string
+          proposal_id: string
+          replacement_statement: string
+          result_memory_item_id: string | null
+          review_after: string
+          target_memory_item_id: string
+          target_statement: string
+          topic: string
+          truth_state: Database["public"]["Enums"]["clarity_memory_truth_state"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          confidence: Database["public"]["Enums"]["clarity_memory_confidence"]
+          created_at?: string
+          effective_on?: string | null
+          expected_target_fingerprint: string
+          materiality: Database["public"]["Enums"]["clarity_memory_materiality"]
+          memory_class: Database["public"]["Enums"]["clarity_memory_class"]
+          observed_at: string
+          proposal_id: string
+          replacement_statement: string
+          result_memory_item_id?: string | null
+          review_after: string
+          target_memory_item_id: string
+          target_statement: string
+          topic: string
+          truth_state: Database["public"]["Enums"]["clarity_memory_truth_state"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          confidence?: Database["public"]["Enums"]["clarity_memory_confidence"]
+          created_at?: string
+          effective_on?: string | null
+          expected_target_fingerprint?: string
+          materiality?: Database["public"]["Enums"]["clarity_memory_materiality"]
+          memory_class?: Database["public"]["Enums"]["clarity_memory_class"]
+          observed_at?: string
+          proposal_id?: string
+          replacement_statement?: string
+          result_memory_item_id?: string | null
+          review_after?: string
+          target_memory_item_id?: string
+          target_statement?: string
+          topic?: string
+          truth_state?: Database["public"]["Enums"]["clarity_memory_truth_state"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clarity_memory_update_proposals_proposal_owner_fkey"
+            columns: ["proposal_id", "user_id"]
+            isOneToOne: true
+            referencedRelation: "clarity_change_proposals"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "clarity_memory_update_proposals_result_owner_fkey"
+            columns: ["result_memory_item_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "clarity_memory_items"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "clarity_memory_update_proposals_target_owner_fkey"
+            columns: ["target_memory_item_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "clarity_memory_items"
+            referencedColumns: ["id", "user_id"]
           },
         ]
       }
@@ -2589,6 +2767,7 @@ export type Database = {
           p_recurrence_days?: number[]
           p_recurrence_pattern?: string
           p_scheduled_time?: string
+          p_start_on?: string
           p_suggested_method?: string
           p_title: string
           p_why_it_exists?: string
@@ -2611,6 +2790,31 @@ export type Database = {
           conversation_id: string
           created_at: string
           message_id: string
+        }[]
+      }
+      append_clarity_response_v2: {
+        Args: {
+          p_content: string
+          p_effective_on?: string
+          p_input_tokens?: number
+          p_latency_ms: number
+          p_model_provider: string
+          p_model_version: string
+          p_next_move_type: string
+          p_output_tokens?: number
+          p_proposal_rationale?: string
+          p_proposal_summary?: string
+          p_proposal_type?: Database["public"]["Enums"]["clarity_change_proposal_type"]
+          p_replacement_statement?: string
+          p_structured_metadata: Json
+          p_target_memory_item_id?: string
+          p_user_message_id: string
+        }
+        Returns: {
+          conversation_id: string
+          created_at: string
+          message_id: string
+          proposal_id: string
         }[]
       }
       append_clarity_user_message_v1: {
@@ -2684,10 +2888,6 @@ export type Database = {
         Args: { p_allow_empty?: boolean; p_daily_plan_id: string }
         Returns: undefined
       }
-      confirm_onboarding_understanding_v1: {
-        Args: { p_onboarding_session_id: string }
-        Returns: Json
-      }
       archive_life_area: {
         Args: { p_life_area_id: string }
         Returns: undefined
@@ -2741,6 +2941,10 @@ export type Database = {
       }
       confirm_life_model_change_proposal: {
         Args: { p_life_model_change_proposal_id: string }
+        Returns: Json
+      }
+      confirm_onboarding_understanding_v1: {
+        Args: { p_onboarding_session_id: string }
         Returns: Json
       }
       correct_action_completion_time: {
@@ -2980,9 +3184,35 @@ export type Database = {
         Args: { p_attachment_id: string }
         Returns: undefined
       }
+      dismiss_clarity_change_proposal_v1: {
+        Args: { p_proposal_id: string }
+        Returns: Database["public"]["Enums"]["clarity_change_proposal_status"]
+      }
+      edit_clarity_memory_update_proposal_v1: {
+        Args: {
+          p_effective_on?: string
+          p_expected_revision: number
+          p_proposal_id: string
+          p_replacement_statement: string
+        }
+        Returns: {
+          proposal_id: string
+          revision: number
+          status: Database["public"]["Enums"]["clarity_change_proposal_status"]
+        }[]
+      }
       end_current_context: {
         Args: { p_current_context_id: string; p_ended_on?: string }
         Returns: undefined
+      }
+      execute_clarity_memory_update_proposal_v1: {
+        Args: { p_proposal_id: string }
+        Returns: {
+          execution_failure_code: string
+          proposal_id: string
+          result_memory_item_id: string
+          status: Database["public"]["Enums"]["clarity_change_proposal_status"]
+        }[]
       }
       fail_clarity_audio_transcription_v1: {
         Args: { p_attachment_id: string }
@@ -3587,6 +3817,13 @@ export type Database = {
         | "monthly"
         | "yearly"
       calendar_recurrence_unit: "day" | "week" | "month" | "year"
+      clarity_change_proposal_status:
+        | "proposed"
+        | "dismissed"
+        | "expired"
+        | "executed"
+        | "execution_failed"
+      clarity_change_proposal_type: "memory_update"
       clarity_memory_class: "durable_memory" | "current_state"
       clarity_memory_confidence: "low" | "medium" | "high"
       clarity_memory_materiality: "low" | "medium" | "high"
@@ -3663,12 +3900,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3692,11 +3929,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3717,11 +3954,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3742,11 +3979,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3759,11 +3996,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never) = never,
+    : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3801,6 +4038,14 @@ export const Constants = {
         "yearly",
       ],
       calendar_recurrence_unit: ["day", "week", "month", "year"],
+      clarity_change_proposal_status: [
+        "proposed",
+        "dismissed",
+        "expired",
+        "executed",
+        "execution_failed",
+      ],
+      clarity_change_proposal_type: ["memory_update"],
       clarity_memory_class: ["durable_memory", "current_state"],
       clarity_memory_confidence: ["low", "medium", "high"],
       clarity_memory_materiality: ["low", "medium", "high"],

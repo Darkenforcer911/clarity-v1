@@ -19,6 +19,8 @@ import {
 import { parseLifeModel, type LifeModel } from "../life-model";
 import type { ClarityMemoryContext } from "./clarity-memory";
 import { loadClarityMemoryContext } from "./clarity-memory-service";
+import type { ClarityProposalContext } from "./clarity-proposal";
+import { loadClarityProposalContext } from "./clarity-proposal-service";
 
 const CONTEXT_LIMITS = {
   calendarPastDays: 2,
@@ -72,6 +74,7 @@ export type ClarityAssembledContext = {
   };
   life: ReturnType<typeof selectLifeContext>;
   memory: ClarityMemoryContext;
+  proposalHistory: ClarityProposalContext;
   today: {
     plan: Tables<"daily_plans"> | null;
     actions: ActionRow[];
@@ -144,6 +147,7 @@ export async function assembleClarityContext(
   const [
     lifeResult,
     memory,
+    proposalHistory,
     planResult,
     actionResult,
     subjectDateActionResult,
@@ -153,6 +157,7 @@ export async function assembleClarityContext(
   ] = await Promise.all([
     supabase.rpc("get_life_model"),
     loadClarityMemoryContext(supabase, user.id),
+    loadClarityProposalContext(supabase, user.id),
     supabase
       .from("daily_plans")
       .select("*")
@@ -273,6 +278,7 @@ export async function assembleClarityContext(
     profile: profileContext(profile, today),
     life: selectLifeContext(life, subject),
     memory,
+    proposalHistory,
     today: {
       plan: planResult.data,
       actions: boundedActions

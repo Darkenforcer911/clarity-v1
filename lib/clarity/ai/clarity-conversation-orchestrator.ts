@@ -21,6 +21,10 @@ import {
   ClarityResearchFallbackError,
 } from "./clarity-research-fallback";
 import { normalizeClarityVisibleResponse } from "./clarity-response-presentation";
+import {
+  ClarityProposalCandidateError,
+  validateClarityMemoryUpdateCandidate,
+} from "./clarity-proposal";
 import { runClarityTurnSingleFlight } from "./clarity-turn-single-flight";
 import {
   appendResearchNeedToUserPrompt,
@@ -119,6 +123,7 @@ async function executeClarityConversationTurn(input: {
     const presentedResult = await persistPresentedResult(
       input.userMessageId,
       result,
+      context,
     );
     logClarityModelEvent({
       provider: result.provider,
@@ -201,6 +206,7 @@ async function executeClarityResearchRetryTurn(input: {
     const presentedResult = await persistPresentedResult(
       input.userMessageId,
       result,
+      context,
     );
     logClarityModelEvent({
       provider: result.provider,
@@ -293,6 +299,7 @@ function addNullableCounts(left: number | null, right: number | null) {
 async function persistPresentedResult(
   userMessageId: string,
   result: ClarityProviderResult,
+  context: Awaited<ReturnType<typeof assembleClarityContext>>,
 ) {
   const presentedResult = {
     ...result,
@@ -310,10 +317,23 @@ async function persistPresentedResult(
       "invalid_output",
     );
   }
+  let proposalCandidate;
+  try {
+    proposalCandidate = validateClarityMemoryUpdateCandidate(
+      presentedResult.output.proposalCandidate,
+      context.memory,
+    );
+  } catch (error) {
+    if (error instanceof ClarityProposalCandidateError) {
+      throw new ClarityProviderError(error.message, "invalid_output");
+    }
+    throw error;
+  }
   await appendClarityResponse(
     userMessageId,
     presentedResult.output,
     presentedResult,
+    proposalCandidate,
   );
   return presentedResult;
 }

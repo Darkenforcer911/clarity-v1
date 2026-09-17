@@ -201,6 +201,7 @@ select lives_ok(
         select id
         from public.onboarding_messages
         where role = 'user'
+        order by created_at desc, id desc
         limit 1
       ),
       'The fragmented schedule looks like the immediate constraint. What would you want a normal week to feel like?',

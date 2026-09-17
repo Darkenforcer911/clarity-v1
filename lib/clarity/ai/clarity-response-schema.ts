@@ -18,6 +18,21 @@ export const clarityTruthStates = [
 
 const confidenceSchema = z.enum(["low", "medium", "high"]);
 
+export const clarityMemoryUpdateCandidateSchema = z
+  .object({
+    type: z.literal("memory_update"),
+    targetMemoryItemId: z.string().uuid(),
+    replacementStatement: z.string().trim().min(1).max(1000),
+    effectiveOn: z.iso.date().nullable(),
+    summary: z.string().trim().min(1).max(240),
+    rationale: z.string().trim().min(1).max(1000),
+  })
+  .strict();
+
+export type ClarityMemoryUpdateCandidate = z.infer<
+  typeof clarityMemoryUpdateCandidateSchema
+>;
+
 export const clarityConversationResponseSchema = z
   .object({
     response: z.string().trim().min(1).max(8000),
@@ -53,6 +68,7 @@ export const clarityConversationResponseSchema = z
       .max(6),
     requiresCurrentVerification: z.boolean(),
     verificationNeed: z.string().trim().min(1).max(500).nullable(),
+    proposalCandidate: clarityMemoryUpdateCandidateSchema.nullable(),
   })
   .strict()
   .superRefine((value, context) => {
@@ -80,6 +96,7 @@ export const clarityConversationResponseJsonSchema = {
     "uncertainties",
     "requiresCurrentVerification",
     "verificationNeed",
+    "proposalCandidate",
   ],
   properties: {
     response: { type: "string", minLength: 1, maxLength: 8000 },
@@ -136,6 +153,42 @@ export const clarityConversationResponseJsonSchema = {
       type: ["string", "null"],
       minLength: 1,
       maxLength: 500,
+    },
+    proposalCandidate: {
+      anyOf: [
+        {
+          type: "object",
+          additionalProperties: false,
+          required: [
+            "type",
+            "targetMemoryItemId",
+            "replacementStatement",
+            "effectiveOn",
+            "summary",
+            "rationale",
+          ],
+          properties: {
+            type: { type: "string", enum: ["memory_update"] },
+            targetMemoryItemId: {
+              type: "string",
+              pattern:
+                "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+            },
+            replacementStatement: {
+              type: "string",
+              minLength: 1,
+              maxLength: 1000,
+            },
+            effectiveOn: {
+              type: ["string", "null"],
+              pattern: "^\\d{4}-\\d{2}-\\d{2}$",
+            },
+            summary: { type: "string", minLength: 1, maxLength: 240 },
+            rationale: { type: "string", minLength: 1, maxLength: 1000 },
+          },
+        },
+        { type: "null" },
+      ],
     },
   },
 } as const;
