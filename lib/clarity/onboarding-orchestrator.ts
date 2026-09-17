@@ -11,6 +11,12 @@ import type {
   ClarityStructuredOutputContract,
   OpenAIClarityProvider,
 } from "./ai/clarity-provider";
+import {
+  ClarityStructuredValidationError,
+  rejectClarityStructuredOutput,
+  type ClaritySafeDiagnosticMetadata,
+  type ClarityStructuredRejectionStage,
+} from "./ai/clarity-structured-diagnostics";
 import { runClarityTurnSingleFlight } from "./ai/clarity-turn-single-flight";
 import {
   ONBOARDING_MINIMUM_MEANINGFUL_TURNS,
@@ -152,17 +158,43 @@ async function executeOnboardingConversationTurn(input: {
       : {}),
     parse: (value) => {
       const parsed = onboardingDiscoveryResponseSchema.parse(value);
-      validateOnboardingQuestionSelection({
-        discovery: parsed,
-        state: canonicalState,
-        policy: questionPolicy,
-      });
-      const merged = mergeOnboardingDiscoveryState({
-        state: canonicalState,
-        discovery: parsed,
-        allowedMessageIds,
-      });
-      validateOnboardingReadiness({ discovery: parsed, state: merged });
+      runOnboardingValidationBoundary(
+        "question_policy",
+        "question_policy_validation_failed",
+        () =>
+          validateOnboardingQuestionSelection({
+            discovery: parsed,
+            state: canonicalState,
+            policy: questionPolicy,
+          }),
+        {
+          returnedMode: parsed.mode,
+          questionFocusDomain: parsed.questionFocus?.domain ?? null,
+        },
+      );
+      const merged = runOnboardingValidationBoundary(
+        "state_delta",
+        "state_delta_validation_failed",
+        () =>
+          mergeOnboardingDiscoveryState({
+            state: canonicalState,
+            discovery: parsed,
+            allowedMessageIds,
+          }),
+        {
+          returnedMode: parsed.mode,
+          questionFocusDomain: parsed.questionFocus?.domain ?? null,
+        },
+      );
+      runOnboardingValidationBoundary(
+        "readiness",
+        "readiness_validation_failed",
+        () => validateOnboardingReadiness({ discovery: parsed, state: merged }),
+        {
+          returnedMode: parsed.mode,
+          questionFocusDomain: parsed.questionFocus?.domain ?? null,
+        },
+      );
       const earlySynthesis =
         parsed.readiness.readyToSynthesize &&
         userMessages.length < ONBOARDING_MINIMUM_MEANINGFUL_TURNS &&
@@ -175,14 +207,30 @@ async function executeOnboardingConversationTurn(input: {
           merged.progress.constraints !== "learning"
         );
       if (earlySynthesis) {
-        throw new Error("Onboarding synthesis is premature.");
+        rejectClarityStructuredOutput(
+          "synthesis_policy",
+          "premature_synthesis",
+          {
+            readinessRule: "minimum_meaningful_turns",
+            returnedMode: parsed.mode,
+            questionFocusDomain: parsed.questionFocus?.domain ?? null,
+          },
+          "Onboarding synthesis is premature.",
+        );
       }
       if (
         assistantQuestionCount >= ONBOARDING_SOFT_QUESTION_CAP &&
         !parsed.readiness.readyToSynthesize &&
         !hasConsequentialOnboardingUnknowns(merged)
       ) {
-        throw new Error(
+        rejectClarityStructuredOutput(
+          "stopping_policy",
+          "soft_question_cap_requires_synthesis",
+          {
+            stoppingRule: "soft_question_cap",
+            returnedMode: parsed.mode,
+            questionFocusDomain: parsed.questionFocus?.domain ?? null,
+          },
           "Onboarding reached the soft question cap and must synthesize with explicit unknowns.",
         );
       }
@@ -455,6 +503,8 @@ function logOnboardingPerformanceProfile(input: {
 }) {
   if (!onboardingPerformanceLoggingEnabled) return;
 
+  logOnboardingStructuredAttempts(input.providerTimings);
+
   const providerRequestMs = input.providerTimings
     .filter((event) => event.phase === "provider_request")
     .reduce((total, event) => total + event.durationMs, 0);
@@ -466,7 +516,7 @@ function logOnboardingPerformanceProfile(input: {
     .reduce((total, event) => total + event.durationMs, 0);
 
   // Counts and timings only: never log prompts, messages, output, or hidden reasoning.
-  console.info("clarity_onboarding_turn_profile", {
+  console.info("clarity_onboarding_turn_profile", JSON.stringify({
     ...Object.fromEntries(
       Object.entries(input.phaseTimings).map(([key, value]) => [
         key,
@@ -500,7 +550,68 @@ function logOnboardingPerformanceProfile(input: {
     repaired: input.repaired ?? false,
     success: input.success,
     errorCode: input.errorCode ?? null,
-  });
+  }));
+}
+
+function logOnboardingStructuredAttempts(
+  timings: ClarityStructuredProviderTimingEvent[],
+) {
+  for (const validation of timings.filter(
+    (event) => event.phase === "structured_parse",
+  )) {
+    const request = timings.find(
+      (event) =>
+        event.phase === "provider_request" &&
+        event.contractName === validation.contractName &&
+        event.attempt === validation.attempt,
+    );
+    // Safe metadata only: never include prompts, message/output text, or reasoning.
+    console.info(
+      "clarity_onboarding_structured_attempt",
+      JSON.stringify({
+        contractName: validation.contractName,
+        attempt: validation.attempt,
+        repairAttempt: validation.repairAttempt,
+        providerDurationMs: request ? Math.round(request.durationMs) : null,
+        validationDurationMs: Math.round(validation.durationMs),
+        inputTokens: validation.inputTokens,
+        outputTokens: validation.outputTokens,
+        outputCharacters: validation.outputCharacters,
+        providerStatus: validation.providerStatus,
+        finishReason: validation.finishReason,
+        success: validation.success,
+        rejectionStage: validation.rejectionStage,
+        rejectionCode: validation.rejectionCode,
+        safeMetadata: validation.safeMetadata,
+      }),
+    );
+  }
+}
+
+function runOnboardingValidationBoundary<Output>(
+  stage: ClarityStructuredRejectionStage,
+  code: string,
+  validate: () => Output,
+  safeMetadata: ClaritySafeDiagnosticMetadata = {},
+) {
+  try {
+    return validate();
+  } catch (error) {
+    if (error instanceof ClarityStructuredValidationError) {
+      throw new ClarityStructuredValidationError(
+        error.stage,
+        error.code,
+        { ...safeMetadata, ...error.safeMetadata },
+        error.message,
+      );
+    }
+    return rejectClarityStructuredOutput(
+      stage,
+      code,
+      safeMetadata,
+      error instanceof Error ? error.message : undefined,
+    );
+  }
 }
 
 function countDiscoveryDeltaOperations(
@@ -516,5 +627,5 @@ function logOnboardingModelEvent(
   event: Record<string, string | number | boolean | null>,
 ) {
   // Never log conversation content, structured understanding, or hidden reasoning.
-  console.info("clarity_onboarding_model_request", event);
+  console.info("clarity_onboarding_model_request", JSON.stringify(event));
 }

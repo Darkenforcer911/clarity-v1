@@ -3,6 +3,7 @@ import {
   type OnboardingQuestionFocus,
   type OnboardingQuestionFocusDomain,
 } from "./onboarding-intelligence.ts";
+import { rejectClarityStructuredOutput } from "./ai/clarity-structured-diagnostics.ts";
 import {
   onboardingCanonicalStateForModel,
   type OnboardingCanonicalState,
@@ -161,25 +162,25 @@ export function validateOnboardingQuestionSelection(input: {
 }) {
   if (input.discovery.readiness.readyToSynthesize) return;
   const focus = input.discovery.questionFocus;
-  if (!focus) throw new Error("A continuing onboarding turn requires a question focus.");
+  if (!focus) {
+    rejectQuestionPolicy("missing_question_focus", null);
+  }
   if (!input.policy.allowedDomains.includes(focus.domain)) {
-    throw new Error("The onboarding question focus is not currently allowed.");
+    rejectQuestionPolicy("question_focus_not_allowed", focus.domain);
   }
   if (
     input.policy.mustPivotFromPreviousFocus &&
     focus.domain === input.policy.previousFocusDomain
   ) {
-    throw new Error("A non-answer requires a different question focus.");
+    rejectQuestionPolicy("non_answer_requires_focus_pivot", focus.domain);
   }
 
   const question = extractMainQuestion(input.discovery.assistantMessage);
   if (!question || !questionMatchesFocus(question, focus)) {
-    throw new Error("The visible onboarding question does not match its declared focus.");
+    rejectQuestionPolicy("visible_question_focus_mismatch", focus.domain);
   }
   if (!input.policy.broadFutureAllowed && isBroadFutureQuestion(question)) {
-    throw new Error(
-      "A broad future question is unavailable while current-world threads remain unresolved.",
-    );
+    rejectQuestionPolicy("broad_future_not_allowed", focus.domain);
   }
   if (
     input.policy.latestUserResponseWasNonAnswer &&
@@ -187,7 +188,7 @@ export function validateOnboardingQuestionSelection(input: {
       areQuestionsMateriallySame(prior, question),
     )
   ) {
-    throw new Error("The onboarding question repeats an unanswered question.");
+    rejectQuestionPolicy("repeated_unanswered_question", focus.domain);
   }
   if (focus.relatedUnknownId) {
     if (
@@ -195,7 +196,9 @@ export function validateOnboardingQuestionSelection(input: {
         focus.relatedUnknownId,
       )
     ) {
-      throw new Error("The onboarding question cannot target a resolved unknown.");
+      rejectQuestionPolicy("question_targets_resolved_unknown", focus.domain, {
+        canonicalId: focus.relatedUnknownId,
+      });
     }
     const validUnknownIds = new Set(
       onboardingCanonicalStateForModel(input.state).unknowns.map(
@@ -203,9 +206,41 @@ export function validateOnboardingQuestionSelection(input: {
       ),
     );
     if (!validUnknownIds.has(focus.relatedUnknownId)) {
-      throw new Error("The onboarding question references an unknown focus target.");
+      rejectQuestionPolicy("unknown_question_focus_target", focus.domain, {
+        canonicalId: focus.relatedUnknownId,
+      });
     }
   }
+}
+
+function rejectQuestionPolicy(
+  policyReason: string,
+  questionFocusDomain: OnboardingQuestionFocusDomain | null,
+  metadata: { canonicalId?: string } = {},
+): never {
+  const messages: Record<string, string> = {
+    missing_question_focus:
+      "A continuing onboarding turn requires a question focus.",
+    question_focus_not_allowed:
+      "The onboarding question focus is not currently allowed.",
+    non_answer_requires_focus_pivot:
+      "A non-answer requires a different question focus.",
+    visible_question_focus_mismatch:
+      "The visible onboarding question does not match its declared focus.",
+    broad_future_not_allowed:
+      "A broad future question is unavailable while current-world threads remain unresolved.",
+    repeated_unanswered_question:
+      "The onboarding question repeats an unanswered question.",
+    question_targets_resolved_unknown:
+      "The onboarding question cannot target a resolved unknown.",
+    unknown_question_focus_target:
+      "The onboarding question references an unknown focus target.",
+  };
+  return rejectClarityStructuredOutput("question_policy", policyReason, {
+    policyReason,
+    questionFocusDomain,
+    ...(metadata.canonicalId ? { canonicalId: metadata.canonicalId } : {}),
+  }, messages[policyReason]);
 }
 
 export function isOnboardingNonAnswer(value: string) {

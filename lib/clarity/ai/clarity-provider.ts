@@ -4,10 +4,17 @@ import {
   type ClarityConversationResponse,
 } from "./clarity-response-schema.ts";
 import {
+  ClarityStructuredValidationError,
+  type ClaritySafeDiagnosticMetadata,
+  type ClarityStructuredRejection,
+  type ClarityStructuredRejectionStage,
+} from "./clarity-structured-diagnostics.ts";
+import {
   extractClarityResearchMetadata,
   selectClarityResearchSources,
   type ClarityResearchMetadata,
 } from "./clarity-research.ts";
+import { z } from "zod";
 
 export type ClarityProviderUsage = {
   inputTokens: number | null;
@@ -41,11 +48,24 @@ export type ClarityStructuredOutputContract<Output> = {
 
 export type ClarityStructuredProviderTimingEvent = {
   phase: "provider_request" | "structured_parse";
+  contractName: string;
   attempt: number;
   repairAttempt: boolean;
   durationMs: number;
   success: boolean;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  outputCharacters: number | null;
+  providerStatus: string | null;
+  finishReason: string | null;
+  rejectionStage: ClarityStructuredRejectionStage | null;
+  rejectionCode: string | null;
+  safeMetadata: ClaritySafeDiagnosticMetadata;
 };
+
+export type ClarityStructuredParseResult<Output> =
+  | { ok: true; value: Output }
+  | { ok: false; rejection: ClarityStructuredRejection };
 
 export type ClarityProviderRequest = {
   systemPrompt: string;
@@ -116,8 +136,11 @@ type FetchLike = typeof fetch;
 
 type OpenAIResponse = {
   output_text?: unknown;
+  status?: unknown;
+  incomplete_details?: { reason?: unknown } | null;
   output?: Array<{
     type?: string;
+    status?: string;
     action?: { sources?: unknown };
     content?: Array<{ type?: string; text?: string; annotations?: unknown }>;
   }>;
@@ -179,20 +202,36 @@ export class OpenAIClarityProvider implements ClarityModelProvider {
           contract.schema,
           contract.maxOutputTokens,
         );
+        const text = extractOpenAIText(raw);
         emitStructuredTiming(contract, {
           phase: "provider_request",
+          contractName: contract.name,
           attempt: attempt + 1,
           repairAttempt: attempt === 1,
           durationMs: performance.now() - providerRequestStartedAt,
           success: true,
+          ...structuredResponseMetadata(raw, text.length),
+          rejectionStage: null,
+          rejectionCode: null,
+          safeMetadata: {},
         });
       } catch (error) {
         emitStructuredTiming(contract, {
           phase: "provider_request",
+          contractName: contract.name,
           attempt: attempt + 1,
           repairAttempt: attempt === 1,
           durationMs: performance.now() - providerRequestStartedAt,
           success: false,
+          inputTokens: null,
+          outputTokens: null,
+          outputCharacters: null,
+          providerStatus: null,
+          finishReason: null,
+          rejectionStage: null,
+          rejectionCode:
+            error instanceof ClarityProviderError ? error.code : "unknown",
+          safeMetadata: {},
         });
         throw error;
       }
@@ -202,15 +241,20 @@ export class OpenAIClarityProvider implements ClarityModelProvider {
       const parsed = parseStructuredResponse(text, contract.parse);
       emitStructuredTiming(contract, {
         phase: "structured_parse",
+        contractName: contract.name,
         attempt: attempt + 1,
         repairAttempt: attempt === 1,
         durationMs: performance.now() - parseStartedAt,
-        success: parsed !== null,
+        success: parsed.ok,
+        ...structuredResponseMetadata(raw, text.length),
+        rejectionStage: parsed.ok ? null : parsed.rejection.stage,
+        rejectionCode: parsed.ok ? null : parsed.rejection.code,
+        safeMetadata: parsed.ok ? {} : parsed.rejection.safeMetadata,
       });
 
-      if (parsed) {
+      if (parsed.ok) {
         return {
-          output: parsed,
+          output: parsed.value,
           provider: this.provider,
           model: this.model,
           latencyMs: Date.now() - startedAt,
@@ -222,8 +266,7 @@ export class OpenAIClarityProvider implements ClarityModelProvider {
         };
       }
 
-      repairInstruction =
-        "Your prior output was not valid against the required JSON schema. Return only a corrected structured response. Do not add commentary or hidden reasoning.";
+      repairInstruction = buildStructuredRepairInstruction(parsed.rejection);
     }
 
     throw new ClarityProviderError(
@@ -253,7 +296,7 @@ export class OpenAIClarityProvider implements ClarityModelProvider {
         retrievedAt: new Date().toISOString(),
         latencyMs: Date.now() - startedAt,
       });
-      if (!parsed || research.toolCallCount < 1 || research.sourceCount < 1) {
+      if (!parsed.ok || research.toolCallCount < 1 || research.sourceCount < 1) {
         throw new ClarityProviderError(
           "Current research did not return a usable answer.",
           "research_failure",
@@ -264,7 +307,7 @@ export class OpenAIClarityProvider implements ClarityModelProvider {
         true,
       );
       return {
-        output: parsed,
+        output: parsed.value,
         provider: this.provider,
         model: this.model,
         latencyMs: Date.now() - startedAt,
@@ -380,6 +423,23 @@ export class OpenAIClarityProvider implements ClarityModelProvider {
   }
 }
 
+const genericStructuredRepairInstruction =
+  "Your prior output was not valid against the required JSON schema. Return only a corrected structured response. Do not add commentary or hidden reasoning.";
+
+export function buildStructuredRepairInstruction(
+  rejection: ClarityStructuredRejection,
+) {
+  if (
+    rejection.stage === "state_delta" &&
+    rejection.code === "artifact_limit_exceeded" &&
+    rejection.safeMetadata.operationType === "insight_add"
+  ) {
+    return `${genericStructuredRepairInstruction} The canonical onboarding insight collection has no additional slots remaining. Do not append another unique insight. Either update or replace an existing insight when the new evidence justifies it, or return no new insight delta.`;
+  }
+
+  return genericStructuredRepairInstruction;
+}
+
 function emitStructuredTiming<Output>(
   contract: ClarityStructuredOutputContract<Output>,
   event: ClarityStructuredProviderTimingEvent,
@@ -401,15 +461,79 @@ function extractOpenAIText(response: OpenAIResponse) {
     .join("");
 }
 
-function parseStructuredResponse<Output>(
+export function parseStructuredResponse<Output>(
   value: string,
   parse: (value: unknown) => Output,
-) {
+): ClarityStructuredParseResult<Output> {
+  let decoded: unknown;
   try {
-    return parse(JSON.parse(value));
+    decoded = JSON.parse(value);
   } catch {
-    return null;
+    return {
+      ok: false,
+      rejection: {
+        stage: "json_parse",
+        code: "invalid_json",
+        safeMetadata: {},
+      },
+    };
   }
+
+  try {
+    return { ok: true, value: parse(decoded) };
+  } catch (error) {
+    if (error instanceof ClarityStructuredValidationError) {
+      return {
+        ok: false,
+        rejection: {
+          stage: error.stage,
+          code: error.code,
+          safeMetadata: error.safeMetadata,
+        },
+      };
+    }
+    if (error instanceof z.ZodError) {
+      return {
+        ok: false,
+        rejection: {
+          stage: "schema_validation",
+          code: "zod_validation_failed",
+          safeMetadata: {
+            issueCount: error.issues.length,
+            issueCodes: [...new Set(error.issues.map((issue) => issue.code))],
+            issuePaths: error.issues.map((issue) =>
+              issue.path.length > 0 ? issue.path.join(".") : "$",
+            ),
+          },
+        },
+      };
+    }
+    return {
+      ok: false,
+      rejection: {
+        stage: "other_internal_validation",
+        code: error instanceof Error ? error.name : "unknown_error",
+        safeMetadata: {},
+      },
+    };
+  }
+}
+
+function structuredResponseMetadata(
+  response: OpenAIResponse,
+  outputCharacters: number,
+) {
+  return {
+    inputTokens: integerOrNull(response.usage?.input_tokens),
+    outputTokens: integerOrNull(response.usage?.output_tokens),
+    outputCharacters,
+    providerStatus:
+      typeof response.status === "string" ? response.status : null,
+    finishReason:
+      typeof response.incomplete_details?.reason === "string"
+        ? response.incomplete_details.reason
+        : null,
+  };
 }
 
 export function parseClarityProviderTimeout(

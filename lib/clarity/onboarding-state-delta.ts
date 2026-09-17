@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 
 import { z } from "zod";
 
+import { rejectClarityStructuredOutput } from "./ai/clarity-structured-diagnostics.ts";
+
 import {
   onboardingConfidenceLevels,
   onboardingDiscoveryModes,
@@ -400,7 +402,17 @@ export function mergeOnboardingDiscoveryState(input: {
         addUniqueClaim(merged, addition);
       }
       if (merged.length > 10) {
-        throw new Error(`Onboarding ${category} exceeds its bounded claim limit.`);
+        rejectClarityStructuredOutput(
+          "state_delta",
+          "claim_limit_exceeded",
+          {
+            operationType: "claim_add",
+            category,
+            resultingCount: merged.length,
+            limit: 10,
+          },
+          `Onboarding ${category} exceeds its bounded claim limit.`,
+        );
       }
       return [category, merged];
     }),
@@ -482,7 +494,12 @@ export function validateOnboardingReadiness(input: {
   const { progress } = input.state;
 
   if (readiness.actionReady && progress.whatMatters !== "clear") {
-    throw new Error("Action readiness requires a clear immediate priority.");
+    rejectClarityStructuredOutput(
+      "readiness",
+      "action_requires_clear_priority",
+      { readinessRule: "action_requires_clear_priority" },
+      "Action readiness requires a clear immediate priority.",
+    );
   }
   if (
     readiness.personReady &&
@@ -490,7 +507,10 @@ export function validateOnboardingReadiness(input: {
       progress.future === "learning" ||
       progress.constraints === "learning")
   ) {
-    throw new Error(
+    rejectClarityStructuredOutput(
+      "readiness",
+      "person_requires_sufficient_breadth",
+      { readinessRule: "person_requires_sufficient_breadth" },
       "Person readiness requires sufficient breadth across the current situation, future pull, and constraints.",
     );
   }
@@ -498,7 +518,10 @@ export function validateOnboardingReadiness(input: {
     readiness.personReady &&
     hasConsequentialOnboardingUnknowns(input.state)
   ) {
-    throw new Error(
+    rejectClarityStructuredOutput(
+      "readiness",
+      "person_requires_bounded_consequential_unknowns",
+      { readinessRule: "person_requires_bounded_consequential_unknowns" },
       "Person readiness requires resolving or explicitly bounding every consequential unknown.",
     );
   }
@@ -521,7 +544,12 @@ export function composeOnboardingTurnResponse(input: {
   allowedMessageIds: ReadonlySet<string>;
 }): OnboardingIntelligenceResponse {
   if (input.discovery.readiness.readyToSynthesize !== Boolean(input.synthesis)) {
-    throw new Error("Final synthesis must match validated onboarding readiness.");
+    rejectClarityStructuredOutput(
+      "synthesis_policy",
+      "synthesis_readiness_mismatch",
+      {},
+      "Final synthesis must match validated onboarding readiness.",
+    );
   }
   const readyForSynthesis = Boolean(input.synthesis);
   const output = onboardingIntelligenceResponseSchema.parse({
@@ -557,29 +585,68 @@ function validateReferencedIds(
     routes: ReadonlyMap<string, unknown>;
   },
 ) {
-  for (const id of [
-    ...discovery.stateDelta.claimIdsToRemove,
-    ...discovery.stateDelta.claimsToUpdate.map((item) => item.claimId),
-  ]) {
-    if (!indexes.claims.has(id)) throw new Error("Unknown onboarding claim ID.");
-  }
-  for (const id of [
-    ...discovery.stateDelta.unknownIdsToResolve,
-    ...discovery.stateDelta.unknownsToUpdate.map((item) => item.unknownId),
-  ]) {
-    if (!indexes.unknowns.has(id)) throw new Error("Unknown onboarding unknown ID.");
-  }
-  for (const id of [
-    ...discovery.stateDelta.insightIdsToRemove,
-    ...discovery.stateDelta.insightsToUpdate.map((item) => item.insightId),
-  ]) {
-    if (!indexes.insights.has(id)) throw new Error("Unknown onboarding insight ID.");
-  }
-  for (const id of [
-    ...discovery.stateDelta.routeIdsToRemove,
-    ...discovery.stateDelta.routesToUpdate.map((item) => item.routeId),
-  ]) {
-    if (!indexes.routes.has(id)) throw new Error("Unknown onboarding route ID.");
+  const references = [
+    ...discovery.stateDelta.claimIdsToRemove.map((canonicalId) => ({
+      canonicalId,
+      operationType: "claim_remove",
+      index: indexes.claims,
+      message: "Unknown onboarding claim ID.",
+    })),
+    ...discovery.stateDelta.claimsToUpdate.map(({ claimId: canonicalId }) => ({
+      canonicalId,
+      operationType: "claim_update",
+      index: indexes.claims,
+      message: "Unknown onboarding claim ID.",
+    })),
+    ...discovery.stateDelta.unknownIdsToResolve.map((canonicalId) => ({
+      canonicalId,
+      operationType: "unknown_resolve",
+      index: indexes.unknowns,
+      message: "Unknown onboarding unknown ID.",
+    })),
+    ...discovery.stateDelta.unknownsToUpdate.map(({ unknownId: canonicalId }) => ({
+      canonicalId,
+      operationType: "unknown_update",
+      index: indexes.unknowns,
+      message: "Unknown onboarding unknown ID.",
+    })),
+    ...discovery.stateDelta.insightIdsToRemove.map((canonicalId) => ({
+      canonicalId,
+      operationType: "insight_remove",
+      index: indexes.insights,
+      message: "Unknown onboarding insight ID.",
+    })),
+    ...discovery.stateDelta.insightsToUpdate.map(({ insightId: canonicalId }) => ({
+      canonicalId,
+      operationType: "insight_update",
+      index: indexes.insights,
+      message: "Unknown onboarding insight ID.",
+    })),
+    ...discovery.stateDelta.routeIdsToRemove.map((canonicalId) => ({
+      canonicalId,
+      operationType: "route_remove",
+      index: indexes.routes,
+      message: "Unknown onboarding route ID.",
+    })),
+    ...discovery.stateDelta.routesToUpdate.map(({ routeId: canonicalId }) => ({
+      canonicalId,
+      operationType: "route_update",
+      index: indexes.routes,
+      message: "Unknown onboarding route ID.",
+    })),
+  ];
+  for (const reference of references) {
+    if (!reference.index.has(reference.canonicalId)) {
+      rejectClarityStructuredOutput(
+        "state_delta",
+        "unknown_canonical_id",
+        {
+          operationType: reference.operationType,
+          canonicalId: reference.canonicalId,
+        },
+        reference.message,
+      );
+    }
   }
 }
 
@@ -590,28 +657,45 @@ function validateDiscoveryEvidence(
   const claims = discovery.stateDelta.claimsToAdd;
   const updatedClaims = discovery.stateDelta.claimsToUpdate;
   for (const claim of claims) {
-    validateEvidenceIds(claim.evidenceMessageIds, allowedMessageIds);
+    validateEvidenceIds(
+      claim.evidenceMessageIds,
+      allowedMessageIds,
+      "claim_add",
+    );
     if (claim.truthState !== "unknown" && claim.evidenceMessageIds.length === 0) {
-      throw new Error("Grounded onboarding claims require message evidence.");
+      rejectClarityStructuredOutput(
+        "evidence_reference",
+        "grounded_claim_missing_evidence",
+        { operationType: "claim_add" },
+        "Grounded onboarding claims require message evidence.",
+      );
     }
   }
   for (const update of updatedClaims) {
     if (update.evidenceMessageIds) {
-      validateEvidenceIds(update.evidenceMessageIds, allowedMessageIds);
+      validateEvidenceIds(
+        update.evidenceMessageIds,
+        allowedMessageIds,
+        "claim_update",
+      );
     }
   }
   for (const item of [
     ...discovery.stateDelta.insightsToAdd,
     ...discovery.stateDelta.routesToAdd,
   ]) {
-    validateEvidenceIds(item.evidenceMessageIds, allowedMessageIds);
+    validateEvidenceIds(item.evidenceMessageIds, allowedMessageIds, "artifact_add");
   }
   for (const item of [
     ...discovery.stateDelta.insightsToUpdate,
     ...discovery.stateDelta.routesToUpdate,
   ]) {
     if (item.evidenceMessageIds) {
-      validateEvidenceIds(item.evidenceMessageIds, allowedMessageIds);
+      validateEvidenceIds(
+        item.evidenceMessageIds,
+        allowedMessageIds,
+        "artifact_update",
+      );
     }
   }
 }
@@ -619,9 +703,18 @@ function validateDiscoveryEvidence(
 function validateEvidenceIds(
   evidenceMessageIds: string[],
   allowedMessageIds: ReadonlySet<string>,
+  operationType = "canonical_state",
 ) {
-  if (evidenceMessageIds.some((id) => !allowedMessageIds.has(id))) {
-    throw new Error("Onboarding delta referenced an unknown user message.");
+  const unknownMessageId = evidenceMessageIds.find(
+    (id) => !allowedMessageIds.has(id),
+  );
+  if (unknownMessageId) {
+    rejectClarityStructuredOutput(
+      "evidence_reference",
+      "unknown_user_message_reference",
+      { operationType, messageId: unknownMessageId },
+      "Onboarding delta referenced an unknown user message.",
+    );
   }
 }
 
@@ -638,7 +731,12 @@ function validateCanonicalState(
   for (const claim of Object.values(state.understanding).flat()) {
     validateEvidenceIds(claim.evidenceMessageIds, allowedMessageIds);
     if (claim.truthState !== "unknown" && claim.evidenceMessageIds.length === 0) {
-      throw new Error("Grounded onboarding claims require message evidence.");
+      rejectClarityStructuredOutput(
+        "evidence_reference",
+        "grounded_claim_missing_evidence",
+        { operationType: "canonical_state" },
+        "Grounded onboarding claims require message evidence.",
+      );
     }
   }
   for (const item of [...state.insights, ...state.routes]) {
@@ -668,7 +766,12 @@ function addUniqueClaim(
     JSON.stringify(existing.evidenceMessageIds) !==
       JSON.stringify(addition.evidenceMessageIds)
   ) {
-    throw new Error("Use a claim update instead of adding a conflicting claim.");
+    rejectClarityStructuredOutput(
+      "state_delta",
+      "conflicting_claim_addition",
+      { operationType: "claim_add" },
+      "Use a claim update instead of adding a conflicting claim.",
+    );
   }
 }
 
@@ -710,7 +813,21 @@ function mergeArtifacts<
     keys.add(key);
   }
   if (merged.length > input.max) {
-    throw new Error("Onboarding artifact state exceeds its bounded limit.");
+    const operationType = {
+      unknownId: "unknown_add",
+      insightId: "insight_add",
+      routeId: "route_add",
+    }[input.idKey];
+    rejectClarityStructuredOutput(
+      "state_delta",
+      "artifact_limit_exceeded",
+      {
+        operationType,
+        resultingCount: merged.length,
+        limit: input.max,
+      },
+      "Onboarding artifact state exceeds its bounded limit.",
+    );
   }
   return merged;
 }
