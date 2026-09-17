@@ -6,7 +6,7 @@ import { PageLoading } from "@/components/clarity/page-loading";
 import {
   AuthenticationRequiredError,
 } from "@/lib/clarity/daily-loop-queries";
-import { getLifeModel } from "@/lib/clarity/life-model-service";
+import { getLifePageModel } from "@/lib/clarity/life-model-service";
 
 export default function LifeModelPage() {
   return (
@@ -17,14 +17,19 @@ export default function LifeModelPage() {
 }
 
 async function LifeModelContent() {
-  let model;
+  let pageModel;
 
   try {
-    model = await getLifeModel();
+    pageModel = await getLifePageModel();
   } catch (error) {
     if (error instanceof AuthenticationRequiredError) redirect("/auth/login");
     throw error;
   }
 
-  return <LifeModelView model={model} />;
+  return (
+    <LifeModelView
+      model={pageModel.life}
+      projection={pageModel.projection}
+    />
+  );
 }

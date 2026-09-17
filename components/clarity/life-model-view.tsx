@@ -26,6 +26,11 @@ import {
 } from "@/lib/clarity/life-model-action-state";
 import type { LifeModel } from "@/lib/clarity/life-model";
 import { mentorLifeChangeHref } from "@/lib/clarity/life-model-navigation";
+import {
+  hasLifeProjectionContent,
+  type LifeProjection,
+  type LifeProjectionSection,
+} from "@/lib/clarity/life-projection";
 import { ClarityFormHeader } from "./clarity-form-header";
 import { PendingButton } from "./pending-button";
 
@@ -40,30 +45,17 @@ const fieldClassName = "h-12 rounded-xl";
 const selectClassName =
   "h-12 w-full rounded-xl border border-input bg-card px-3 text-base text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:text-sm";
 
-export function LifeModelView({ model }: { model: LifeModel }) {
+export function LifeModelView({
+  model,
+  projection,
+}: {
+  model: LifeModel;
+  projection: LifeProjection;
+}) {
   const [expandedAreaId, setExpandedAreaId] = useState<string | null>(null);
   const [editorKey, setEditorKey] = useState<string | null>(null);
-
-  if (model.areas.length === 0) {
-    return (
-      <div className="space-y-5">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-semibold tracking-[-0.04em]">Your life</h1>
-          <p className="text-sm text-muted-foreground">
-            What Clarity currently knows about you.
-          </p>
-        </div>
-        <div className="space-y-4 rounded-2xl border border-border bg-card p-5">
-          <p className="text-sm leading-6 text-muted-foreground">
-            Your life will take shape here as Clarity learns about you.
-          </p>
-          <Button asChild className="h-12 w-full rounded-xl">
-            <Link href={mentorLifeChangeHref}>Talk to Clarity</Link>
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  const hasProjection = hasLifeProjectionContent(projection);
+  const isEmpty = model.areas.length === 0 && !hasProjection;
 
   function openEditor(key: string) {
     setEditorKey(key);
@@ -78,16 +70,30 @@ export function LifeModelView({ model }: { model: LifeModel }) {
         </p>
       </div>
 
-      <section className="space-y-3" aria-labelledby="life-areas-heading">
-        <h2
-          id="life-areas-heading"
-          className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground"
-        >
-          Life Areas
-        </h2>
-        {model.areas.map((area) => {
-          const expanded = expandedAreaId === area.id;
-          return (
+      {isEmpty && (
+        <div className="space-y-4 rounded-2xl border border-border bg-card p-5">
+          <p className="text-sm leading-6 text-muted-foreground">
+            Your life will take shape here as Clarity learns about you.
+          </p>
+          <Button asChild className="h-12 w-full rounded-xl">
+            <Link href={mentorLifeChangeHref}>Talk to Clarity</Link>
+          </Button>
+        </div>
+      )}
+
+      {hasProjection && <LifeProjectionOverview projection={projection} />}
+
+      {model.areas.length > 0 && (
+        <section className="space-y-3" aria-labelledby="active-life-heading">
+          <h2
+            id="active-life-heading"
+            className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground"
+          >
+            Active Life
+          </h2>
+          {model.areas.map((area) => {
+            const expanded = expandedAreaId === area.id;
+            return (
             <article
               key={area.id}
               data-life-area-id={area.id}
@@ -105,11 +111,6 @@ export function LifeModelView({ model }: { model: LifeModel }) {
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block text-lg font-semibold">{area.name}</span>
-                    {area.currentState && (
-                      <span className="mt-1 block truncate text-sm text-muted-foreground">
-                        {area.currentState.summary}
-                      </span>
-                    )}
                     <span className="mt-1 block text-xs text-muted-foreground">
                       {formatAreaCounts(area)}
                     </span>
@@ -279,46 +280,94 @@ export function LifeModelView({ model }: { model: LifeModel }) {
                 </div>
               )}
             </article>
-          );
-        })}
-      </section>
-
-      {model.currentDirection && (
-        <section className="space-y-2 rounded-2xl border border-border bg-card p-4">
-          <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            What matters now
-          </h2>
-          <p className="text-base font-semibold">{model.currentDirection.summary}</p>
-          <p className="text-sm leading-5 text-muted-foreground">
-            {model.currentDirection.rationale}
-          </p>
+            );
+          })}
         </section>
       )}
 
-      {model.openQuestions.length > 0 && (
-        <LifeSection title="Still figuring out">
-          {model.openQuestions.map((question) => (
+      {projection.learning.length > 0 && (
+        <LifeSection title="What Clarity is still learning">
+          {projection.learning.map((item) => (
             <LifeFactRow
-              key={question.id}
-              title={question.question}
-              detail={question.context ?? undefined}
+              key={`${item.kind}:${item.text}`}
+              title={item.text}
             />
           ))}
         </LifeSection>
       )}
 
-      <section className="space-y-3 border-t border-border pt-5">
-        <div className="space-y-1">
-          <h2 className="text-sm font-semibold">Something changed?</h2>
-          <p className="text-sm leading-5 text-muted-foreground">
-            Tell Clarity what’s new, what you’re considering, or what no longer fits.
-          </p>
-        </div>
-        <Button asChild variant="secondary" className="h-11 rounded-xl px-5">
-          <Link href={mentorLifeChangeHref}>Talk to Clarity</Link>
-        </Button>
-      </section>
+      {!isEmpty && (
+        <section className="space-y-3 border-t border-border pt-5">
+          <div className="space-y-1">
+            <h2 className="text-sm font-semibold">Something changed?</h2>
+            <p className="text-sm leading-5 text-muted-foreground">
+              Tell Clarity what’s new, what you’re considering, or what no longer fits.
+            </p>
+          </div>
+          <Button asChild variant="secondary" className="h-11 rounded-xl px-5">
+            <Link href={mentorLifeChangeHref}>Talk to Clarity</Link>
+          </Button>
+        </section>
+      )}
     </div>
+  );
+}
+
+function LifeProjectionOverview({ projection }: { projection: LifeProjection }) {
+  return (
+    <section
+      aria-label="Life projection"
+      data-slot="life-projection"
+      className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card"
+    >
+      {projection.currentPosition && (
+        <LifeProjectionBlock
+          title="Current Position"
+          section={projection.currentPosition}
+        />
+      )}
+      {projection.currentDirection && (
+        <LifeProjectionBlock
+          title="Current Direction"
+          section={projection.currentDirection}
+        />
+      )}
+      {projection.future && (
+        <LifeProjectionBlock title="Future" section={projection.future} />
+      )}
+    </section>
+  );
+}
+
+function LifeProjectionBlock({
+  title,
+  section,
+}: {
+  title: string;
+  section: LifeProjectionSection;
+}) {
+  return (
+    <article
+      data-projection-section={title}
+      data-projection-source={section.source}
+      className="space-y-2.5 px-4 py-4"
+    >
+      <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+        {title}
+      </h2>
+      <div className="space-y-2">
+        {section.items.map((item) => (
+          <p key={item} className="text-sm leading-6 text-foreground">
+            {item}
+          </p>
+        ))}
+      </div>
+      {section.detail && (
+        <p className="text-sm leading-6 text-muted-foreground">
+          {section.detail}
+        </p>
+      )}
+    </article>
   );
 }
 
