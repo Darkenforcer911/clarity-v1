@@ -8,7 +8,10 @@ import type {
 } from "../daily-loop-queries";
 import type { LifeModel } from "../life-model";
 import type { AuthoritativeReturnState } from "../previous-day-routing";
-import type { ClarityMemoryContext, ClarityMemorySource } from "./clarity-memory";
+import type {
+  ClarityMemoryContext,
+  ClarityMemorySource,
+} from "./clarity-memory";
 import type {
   ClarityActionInvocation,
   ClarityCalendarInvocation,

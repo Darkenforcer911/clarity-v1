@@ -297,15 +297,12 @@ export function ClarityConversation({
     const composerDock = composerDockRef.current;
     if (!history || !inset || !composerDock) return;
 
-    const mobile = window.matchMedia("(max-width: 767px)").matches;
     const keepLatestVisible =
       initialPositionedRef.current && historyNearBottomRef.current;
-    const nextInset = mobile
-      ? clarityHistoryBottomInset({
-          composerDockTop: composerDock.getBoundingClientRect().top,
-          historyBottom: history.getBoundingClientRect().bottom,
-        })
-      : 0;
+    const nextInset = clarityHistoryBottomInset({
+      composerDockTop: composerDock.getBoundingClientRect().top,
+      historyBottom: history.getBoundingClientRect().bottom,
+    });
     const nextHeight = `${nextInset}px`;
     if (inset.style.height !== nextHeight) {
       inset.style.height = nextHeight;
@@ -1295,7 +1292,7 @@ export function ClarityConversation({
         <div
           ref={composerDockRef}
           data-clarity-composer-dock
-          className="relative min-w-0 shrink-0 max-md:fixed max-md:z-50"
+          className="relative min-w-0 shrink-0 max-md:fixed max-md:z-50 md:!left-auto md:!right-auto"
           style={composerDockStyle}
         >
           <div

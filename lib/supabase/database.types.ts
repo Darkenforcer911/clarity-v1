@@ -413,6 +413,156 @@ export type Database = {
           },
         ]
       }
+      clarity_memory_item_sources: {
+        Row: {
+          clarity_message_id: string | null
+          created_at: string
+          id: string
+          memory_item_id: string
+          onboarding_message_id: string | null
+          onboarding_session_id: string | null
+          source_type: Database["public"]["Enums"]["clarity_memory_source_type"]
+          user_id: string
+        }
+        Insert: {
+          clarity_message_id?: string | null
+          created_at?: string
+          id?: string
+          memory_item_id: string
+          onboarding_message_id?: string | null
+          onboarding_session_id?: string | null
+          source_type: Database["public"]["Enums"]["clarity_memory_source_type"]
+          user_id: string
+        }
+        Update: {
+          clarity_message_id?: string | null
+          created_at?: string
+          id?: string
+          memory_item_id?: string
+          onboarding_message_id?: string | null
+          onboarding_session_id?: string | null
+          source_type?: Database["public"]["Enums"]["clarity_memory_source_type"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clarity_memory_item_sources_clarity_message_owner_fkey"
+            columns: ["clarity_message_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "clarity_messages"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "clarity_memory_item_sources_item_owner_fkey"
+            columns: ["memory_item_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "clarity_memory_items"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "clarity_memory_item_sources_onboarding_message_owner_fkey"
+            columns: ["onboarding_message_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_messages"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "clarity_memory_item_sources_session_owner_fkey"
+            columns: ["onboarding_session_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_sessions"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
+      }
+      clarity_memory_items: {
+        Row: {
+          confidence: Database["public"]["Enums"]["clarity_memory_confidence"]
+          confirmed_at: string
+          created_at: string
+          effective_on: string | null
+          id: string
+          materiality: Database["public"]["Enums"]["clarity_memory_materiality"]
+          memory_class: Database["public"]["Enums"]["clarity_memory_class"]
+          observed_at: string | null
+          origin_key: string | null
+          origin_onboarding_session_id: string | null
+          review_after: string | null
+          statement: string
+          status: Database["public"]["Enums"]["clarity_memory_status"]
+          superseded_at: string | null
+          superseded_by_item_id: string | null
+          topic: string
+          truth_state: Database["public"]["Enums"]["clarity_memory_truth_state"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          confidence: Database["public"]["Enums"]["clarity_memory_confidence"]
+          confirmed_at: string
+          created_at?: string
+          effective_on?: string | null
+          id?: string
+          materiality: Database["public"]["Enums"]["clarity_memory_materiality"]
+          memory_class: Database["public"]["Enums"]["clarity_memory_class"]
+          observed_at?: string | null
+          origin_key?: string | null
+          origin_onboarding_session_id?: string | null
+          review_after?: string | null
+          statement: string
+          status?: Database["public"]["Enums"]["clarity_memory_status"]
+          superseded_at?: string | null
+          superseded_by_item_id?: string | null
+          topic: string
+          truth_state: Database["public"]["Enums"]["clarity_memory_truth_state"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          confidence?: Database["public"]["Enums"]["clarity_memory_confidence"]
+          confirmed_at?: string
+          created_at?: string
+          effective_on?: string | null
+          id?: string
+          materiality?: Database["public"]["Enums"]["clarity_memory_materiality"]
+          memory_class?: Database["public"]["Enums"]["clarity_memory_class"]
+          observed_at?: string | null
+          origin_key?: string | null
+          origin_onboarding_session_id?: string | null
+          review_after?: string | null
+          statement?: string
+          status?: Database["public"]["Enums"]["clarity_memory_status"]
+          superseded_at?: string | null
+          superseded_by_item_id?: string | null
+          topic?: string
+          truth_state?: Database["public"]["Enums"]["clarity_memory_truth_state"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clarity_memory_items_origin_owner_fkey"
+            columns: ["origin_onboarding_session_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_sessions"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "clarity_memory_items_superseded_owner_fkey"
+            columns: ["superseded_by_item_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "clarity_memory_items"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "clarity_memory_items_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clarity_message_attachments: {
         Row: {
           byte_size: number
@@ -3079,6 +3229,14 @@ export type Database = {
         Args: { p_daily_plan_id: string }
         Returns: number
       }
+      retract_clarity_memory_item_v1: {
+        Args: {
+          p_memory_item_id: string
+          p_source_id: string
+          p_source_type: Database["public"]["Enums"]["clarity_memory_source_type"]
+        }
+        Returns: undefined
+      }
       revalidate_notification_delivery: {
         Args: { p_delivery_id: string; p_now?: string }
         Returns: Json
@@ -3210,6 +3368,21 @@ export type Database = {
       }
       start_current_day: { Args: never; Returns: string }
       start_current_day_v2: { Args: never; Returns: Json }
+      supersede_clarity_memory_item_v1: {
+        Args: {
+          p_confidence: Database["public"]["Enums"]["clarity_memory_confidence"]
+          p_effective_on?: string
+          p_materiality: Database["public"]["Enums"]["clarity_memory_materiality"]
+          p_memory_item_id: string
+          p_observed_at?: string
+          p_review_after?: string
+          p_source_id: string
+          p_source_type: Database["public"]["Enums"]["clarity_memory_source_type"]
+          p_statement: string
+          p_truth_state: Database["public"]["Enums"]["clarity_memory_truth_state"]
+        }
+        Returns: string
+      }
       supersede_current_direction: { Args: never; Returns: undefined }
       transition_goal_status: {
         Args: {
@@ -3414,6 +3587,15 @@ export type Database = {
         | "monthly"
         | "yearly"
       calendar_recurrence_unit: "day" | "week" | "month" | "year"
+      clarity_memory_class: "durable_memory" | "current_state"
+      clarity_memory_confidence: "low" | "medium" | "high"
+      clarity_memory_materiality: "low" | "medium" | "high"
+      clarity_memory_source_type:
+        | "onboarding_confirmation"
+        | "onboarding_message"
+        | "clarity_message"
+      clarity_memory_status: "active" | "superseded" | "retracted"
+      clarity_memory_truth_state: "fact" | "inference" | "unknown"
       current_context_status: "active" | "ended"
       daily_action_status:
         | "proposed"
@@ -3619,6 +3801,16 @@ export const Constants = {
         "yearly",
       ],
       calendar_recurrence_unit: ["day", "week", "month", "year"],
+      clarity_memory_class: ["durable_memory", "current_state"],
+      clarity_memory_confidence: ["low", "medium", "high"],
+      clarity_memory_materiality: ["low", "medium", "high"],
+      clarity_memory_source_type: [
+        "onboarding_confirmation",
+        "onboarding_message",
+        "clarity_message",
+      ],
+      clarity_memory_status: ["active", "superseded", "retracted"],
+      clarity_memory_truth_state: ["fact", "inference", "unknown"],
       current_context_status: ["active", "ended"],
       daily_action_status: [
         "proposed",
