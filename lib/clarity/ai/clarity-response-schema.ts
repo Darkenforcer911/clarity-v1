@@ -33,6 +33,44 @@ export type ClarityMemoryUpdateCandidate = z.infer<
   typeof clarityMemoryUpdateCandidateSchema
 >;
 
+export const clarityActionRelativeDueAtPattern =
+  /^(?:today|tomorrow|tonight|(?:this|next)_(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))(?:T(?:[01]\d|2[0-3]):[0-5]\d)?$/;
+
+export const clarityActionRelativeDueAtSchema = z
+  .string()
+  .regex(clarityActionRelativeDueAtPattern);
+
+export const clarityActionCreateCandidateSchema = z
+  .object({
+    type: z.literal("action_create"),
+    title: z.string().trim().min(1).max(200),
+    dueAt: z
+      .union([
+        z.iso.date(),
+        z.iso.datetime({ offset: true }),
+        clarityActionRelativeDueAtSchema,
+      ])
+      .nullable(),
+    preferredDay: z.iso.date().nullable(),
+    durationMinutes: z.number().int().min(1).max(1440).nullable(),
+    summary: z.string().trim().min(1).max(240),
+    rationale: z.string().trim().min(1).max(1000),
+  })
+  .strict();
+
+export type ClarityActionCreateCandidate = z.infer<
+  typeof clarityActionCreateCandidateSchema
+>;
+
+export const clarityProposalCandidateSchema = z.discriminatedUnion("type", [
+  clarityMemoryUpdateCandidateSchema,
+  clarityActionCreateCandidateSchema,
+]);
+
+export type ClarityProposalCandidate = z.infer<
+  typeof clarityProposalCandidateSchema
+>;
+
 export const clarityConversationResponseSchema = z
   .object({
     response: z.string().trim().min(1).max(8000),
@@ -68,7 +106,7 @@ export const clarityConversationResponseSchema = z
       .max(6),
     requiresCurrentVerification: z.boolean(),
     verificationNeed: z.string().trim().min(1).max(500).nullable(),
-    proposalCandidate: clarityMemoryUpdateCandidateSchema.nullable(),
+    proposalCandidate: clarityProposalCandidateSchema.nullable(),
   })
   .strict()
   .superRefine((value, context) => {
@@ -182,6 +220,50 @@ export const clarityConversationResponseJsonSchema = {
             effectiveOn: {
               type: ["string", "null"],
               pattern: "^\\d{4}-\\d{2}-\\d{2}$",
+            },
+            summary: { type: "string", minLength: 1, maxLength: 240 },
+            rationale: { type: "string", minLength: 1, maxLength: 1000 },
+          },
+        },
+        {
+          type: "object",
+          additionalProperties: false,
+          required: [
+            "type",
+            "title",
+            "dueAt",
+            "preferredDay",
+            "durationMinutes",
+            "summary",
+            "rationale",
+          ],
+          properties: {
+            type: { type: "string", enum: ["action_create"] },
+            title: { type: "string", minLength: 1, maxLength: 200 },
+            dueAt: {
+              anyOf: [
+                { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+                {
+                  type: "string",
+                  pattern:
+                    "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d+)?)?(?:Z|[+-]\\d{2}:\\d{2})$",
+                },
+                {
+                  type: "string",
+                  pattern:
+                    "^(?:today|tomorrow|tonight|(?:this|next)_(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))(?:T(?:[01]\\d|2[0-3]):[0-5]\\d)?$",
+                },
+                { type: "null" },
+              ],
+            },
+            preferredDay: {
+              type: ["string", "null"],
+              pattern: "^\\d{4}-\\d{2}-\\d{2}$",
+            },
+            durationMinutes: {
+              type: ["integer", "null"],
+              minimum: 1,
+              maximum: 1440,
             },
             summary: { type: "string", minLength: 1, maxLength: 240 },
             rationale: { type: "string", minLength: 1, maxLength: 1000 },

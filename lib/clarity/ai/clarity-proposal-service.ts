@@ -6,14 +6,16 @@ import { z } from "zod";
 import type { Database } from "@/lib/supabase/database.types";
 import { getAuthenticatedUserAndProfile } from "../daily-loop-queries";
 import {
+  clarityActionCreateProposalSchema,
   clarityMemoryUpdateProposalSchema,
-  type ClarityMemoryUpdateProposal,
+  type ClarityChangeProposal,
   type ClarityProposalContext,
 } from "./clarity-proposal";
 
 const proposalRowSchema = z.object({
   id: z.string().uuid(),
   source_assistant_message_id: z.string().uuid(),
+  proposal_type: z.enum(["memory_update", "action_create"]),
   status: z.enum([
     "proposed",
     "dismissed",
@@ -41,9 +43,20 @@ const detailRowSchema = z.object({
   result_memory_item_id: z.string().uuid().nullable(),
 });
 
+const actionDetailRowSchema = z.object({
+  proposal_id: z.string().uuid(),
+  title: z.string(),
+  local_date: z.string(),
+  due_local_date: z.string().nullable(),
+  due_local_time: z.string().nullable(),
+  estimated_minutes: z.number().int().nullable(),
+  result_daily_action_id: z.string().uuid().nullable(),
+});
+
 const dismissedRowSchema = z.object({
   id: z.string().uuid(),
   source_user_message_id: z.string().uuid(),
+  proposal_type: z.enum(["memory_update", "action_create"]),
   summary: z.string(),
   dismissed_at: z.string(),
 });
@@ -55,47 +68,75 @@ const dismissedDetailSchema = z.object({
   replacement_statement: z.string(),
 });
 
+const dismissedActionDetailSchema = z.object({
+  proposal_id: z.string().uuid(),
+  title: z.string(),
+  local_date: z.string(),
+  due_local_date: z.string().nullable(),
+  due_local_time: z.string().nullable(),
+});
+
 export async function loadClarityProposalsForAssistantMessages(
   assistantMessageIds: string[],
-): Promise<Map<string, ClarityMemoryUpdateProposal>> {
+): Promise<Map<string, ClarityChangeProposal>> {
   if (assistantMessageIds.length === 0) return new Map();
   const { supabase, user } = await getAuthenticatedUserAndProfile();
   const { data: proposalRows, error: proposalError } = await supabase
     .from("clarity_change_proposals")
     .select(
-      "id, source_assistant_message_id, status, summary, rationale, revision, confirmed_at, dismissed_at, expired_at, executed_at, execution_failure_code, dismissal_reason",
+      "id, source_assistant_message_id, proposal_type, status, summary, rationale, revision, confirmed_at, dismissed_at, expired_at, executed_at, execution_failure_code, dismissal_reason",
     )
     .eq("user_id", user.id)
-    .eq("proposal_type", "memory_update")
     .in("source_assistant_message_id", assistantMessageIds);
   if (proposalError) throw new Error(proposalError.message);
 
   const proposals = proposalRowSchema.array().parse(proposalRows ?? []);
   if (proposals.length === 0) return new Map();
-  const { data: detailRows, error: detailError } = await supabase
-    .from("clarity_memory_update_proposals")
-    .select(
-      "proposal_id, target_memory_item_id, target_statement, replacement_statement, effective_on, result_memory_item_id",
-    )
-    .eq("user_id", user.id)
-    .in(
-      "proposal_id",
-      proposals.map((proposal) => proposal.id),
-    );
-  if (detailError) throw new Error(detailError.message);
+  const memoryIds = proposals
+    .filter((proposal) => proposal.proposal_type === "memory_update")
+    .map((proposal) => proposal.id);
+  const actionIds = proposals
+    .filter((proposal) => proposal.proposal_type === "action_create")
+    .map((proposal) => proposal.id);
+  const [memoryResult, actionResult] = await Promise.all([
+    memoryIds.length === 0
+      ? Promise.resolve({ data: [], error: null })
+      : supabase
+          .from("clarity_memory_update_proposals")
+          .select(
+            "proposal_id, target_memory_item_id, target_statement, replacement_statement, effective_on, result_memory_item_id",
+          )
+          .eq("user_id", user.id)
+          .in("proposal_id", memoryIds),
+    actionIds.length === 0
+      ? Promise.resolve({ data: [], error: null })
+      : supabase
+          .from("clarity_action_create_proposals")
+          .select(
+            "proposal_id, title, local_date, due_local_date, due_local_time, estimated_minutes, result_daily_action_id",
+          )
+          .eq("user_id", user.id)
+          .in("proposal_id", actionIds),
+  ]);
+  if (memoryResult.error) throw new Error(memoryResult.error.message);
+  if (actionResult.error) throw new Error(actionResult.error.message);
 
-  const details = new Map(
+  const memoryDetails = new Map(
     detailRowSchema
       .array()
-      .parse(detailRows ?? [])
+      .parse(memoryResult.data ?? [])
+      .map((detail) => [detail.proposal_id, detail]),
+  );
+  const actionDetails = new Map(
+    actionDetailRowSchema
+      .array()
+      .parse(actionResult.data ?? [])
       .map((detail) => [detail.proposal_id, detail]),
   );
 
   return new Map(
     proposals.flatMap((proposal) => {
-      const detail = details.get(proposal.id);
-      if (!detail) return [];
-      const value = clarityMemoryUpdateProposalSchema.parse({
+      const common = {
         id: proposal.id,
         sourceAssistantMessageId: proposal.source_assistant_message_id,
         status: proposal.status,
@@ -108,12 +149,34 @@ export async function loadClarityProposalsForAssistantMessages(
         executedAt: proposal.executed_at,
         executionFailureCode: proposal.execution_failure_code,
         dismissalReason: proposal.dismissal_reason,
-        targetMemoryItemId: detail.target_memory_item_id,
-        targetStatement: detail.target_statement,
-        replacementStatement: detail.replacement_statement,
-        effectiveOn: detail.effective_on,
-        resultMemoryItemId: detail.result_memory_item_id,
-      });
+      };
+      let value: ClarityChangeProposal;
+      if (proposal.proposal_type === "memory_update") {
+        const detail = memoryDetails.get(proposal.id);
+        if (!detail) return [];
+        value = clarityMemoryUpdateProposalSchema.parse({
+          type: "memory_update",
+          ...common,
+          targetMemoryItemId: detail.target_memory_item_id,
+          targetStatement: detail.target_statement,
+          replacementStatement: detail.replacement_statement,
+          effectiveOn: detail.effective_on,
+          resultMemoryItemId: detail.result_memory_item_id,
+        });
+      } else {
+        const detail = actionDetails.get(proposal.id);
+        if (!detail) return [];
+        value = clarityActionCreateProposalSchema.parse({
+          type: "action_create",
+          ...common,
+          title: detail.title,
+          localDate: detail.local_date,
+          dueLocalDate: detail.due_local_date,
+          dueLocalTime: detail.due_local_time?.slice(0, 5) ?? null,
+          estimatedMinutes: detail.estimated_minutes,
+          resultActionId: detail.result_daily_action_id,
+        });
+      }
       return [[proposal.source_assistant_message_id, value] as const];
     }),
   );
@@ -125,9 +188,8 @@ export async function loadClarityProposalContext(
 ): Promise<ClarityProposalContext> {
   const { data: proposalRows, error: proposalError } = await supabase
     .from("clarity_change_proposals")
-    .select("id, source_user_message_id, summary, dismissed_at")
+    .select("id, source_user_message_id, proposal_type, summary, dismissed_at")
     .eq("user_id", userId)
-    .eq("proposal_type", "memory_update")
     .eq("status", "dismissed")
     .order("dismissed_at", { ascending: false })
     .limit(6);
@@ -135,30 +197,57 @@ export async function loadClarityProposalContext(
 
   const proposals = dismissedRowSchema.array().parse(proposalRows ?? []);
   if (proposals.length === 0) {
-    return { recentDismissedMemoryUpdates: [] };
+    return {
+      recentDismissedMemoryUpdates: [],
+      recentDismissedActionCreates: [],
+    };
   }
-  const { data: detailRows, error: detailError } = await supabase
-    .from("clarity_memory_update_proposals")
-    .select(
-      "proposal_id, target_memory_item_id, target_statement, replacement_statement",
-    )
-    .eq("user_id", userId)
-    .in(
-      "proposal_id",
-      proposals.map((proposal) => proposal.id),
-    );
-  if (detailError) throw new Error(detailError.message);
+  const memoryIds = proposals
+    .filter((proposal) => proposal.proposal_type === "memory_update")
+    .map((proposal) => proposal.id);
+  const actionIds = proposals
+    .filter((proposal) => proposal.proposal_type === "action_create")
+    .map((proposal) => proposal.id);
+  const [memoryResult, actionResult] = await Promise.all([
+    memoryIds.length === 0
+      ? Promise.resolve({ data: [], error: null })
+      : supabase
+          .from("clarity_memory_update_proposals")
+          .select(
+            "proposal_id, target_memory_item_id, target_statement, replacement_statement",
+          )
+          .eq("user_id", userId)
+          .in("proposal_id", memoryIds),
+    actionIds.length === 0
+      ? Promise.resolve({ data: [], error: null })
+      : supabase
+          .from("clarity_action_create_proposals")
+          .select(
+            "proposal_id, title, local_date, due_local_date, due_local_time",
+          )
+          .eq("user_id", userId)
+          .in("proposal_id", actionIds),
+  ]);
+  if (memoryResult.error) throw new Error(memoryResult.error.message);
+  if (actionResult.error) throw new Error(actionResult.error.message);
 
-  const details = new Map(
+  const memoryDetails = new Map(
     dismissedDetailSchema
       .array()
-      .parse(detailRows ?? [])
+      .parse(memoryResult.data ?? [])
+      .map((detail) => [detail.proposal_id, detail]),
+  );
+  const actionDetails = new Map(
+    dismissedActionDetailSchema
+      .array()
+      .parse(actionResult.data ?? [])
       .map((detail) => [detail.proposal_id, detail]),
   );
 
   return {
     recentDismissedMemoryUpdates: proposals.flatMap((proposal) => {
-      const detail = details.get(proposal.id);
+      if (proposal.proposal_type !== "memory_update") return [];
+      const detail = memoryDetails.get(proposal.id);
       return detail
         ? [
             {
@@ -169,6 +258,25 @@ export async function loadClarityProposalContext(
               targetMemoryItemId: detail.target_memory_item_id,
               targetStatementAtProposal: detail.target_statement,
               replacementStatement: detail.replacement_statement,
+              dismissedAt: proposal.dismissed_at,
+            },
+          ]
+        : [];
+    }),
+    recentDismissedActionCreates: proposals.flatMap((proposal) => {
+      if (proposal.proposal_type !== "action_create") return [];
+      const detail = actionDetails.get(proposal.id);
+      return detail
+        ? [
+            {
+              type: "action_create" as const,
+              epistemicStatus: "dismissed_unconfirmed" as const,
+              sourceUserMessageId: proposal.source_user_message_id,
+              summary: proposal.summary,
+              title: detail.title,
+              localDate: detail.local_date,
+              dueLocalDate: detail.due_local_date,
+              dueLocalTime: detail.due_local_time?.slice(0, 5) ?? null,
               dismissedAt: proposal.dismissed_at,
             },
           ]
@@ -228,4 +336,51 @@ export async function dismissClarityChangeProposal(id: string) {
   );
   if (error) throw new Error(error.message);
   return data;
+}
+
+export async function confirmClarityActionCreateProposal(id: string) {
+  const { supabase } = await getAuthenticatedUserAndProfile();
+  const { data, error } = await supabase.rpc(
+    "execute_clarity_action_create_proposal_v1",
+    { p_proposal_id: id },
+  );
+  if (error) throw new Error(error.message);
+  const result = data?.[0];
+  if (!result) throw new Error("Clarity could not add this Action.");
+  if (result.status === "execution_failed") {
+    throw new Error("Clarity could not add this Action. Try again.");
+  }
+  if (result.status === "expired") {
+    throw new Error("This Action proposal is out of date. Ask Clarity again.");
+  }
+  return result;
+}
+
+export async function editClarityActionCreateProposal(input: {
+  id: string;
+  expectedRevision: number;
+  title: string;
+  dueLocalDate: string | null;
+  dueLocalTime: string | null;
+  estimatedMinutes: number | null;
+}) {
+  const { supabase } = await getAuthenticatedUserAndProfile();
+  const { data, error } = await supabase.rpc(
+    "edit_clarity_action_create_proposal_v1",
+    {
+      p_proposal_id: input.id,
+      p_expected_revision: input.expectedRevision,
+      p_title: input.title,
+      p_due_local_date: input.dueLocalDate ?? undefined,
+      p_due_local_time: input.dueLocalTime ?? undefined,
+      p_estimated_minutes: input.estimatedMinutes ?? undefined,
+    },
+  );
+  if (error) throw new Error(error.message);
+  const result = data?.[0];
+  if (!result) throw new Error("Clarity could not edit this Action proposal.");
+  if (result.status === "expired") {
+    throw new Error("This Action proposal is out of date. Ask Clarity again.");
+  }
+  return result;
 }

@@ -23,7 +23,7 @@ import {
 import { normalizeClarityVisibleResponse } from "./clarity-response-presentation";
 import {
   ClarityProposalCandidateError,
-  validateClarityMemoryUpdateCandidate,
+  validateClarityProposalCandidate,
 } from "./clarity-proposal";
 import { runClarityTurnSingleFlight } from "./clarity-turn-single-flight";
 import {
@@ -319,9 +319,9 @@ async function persistPresentedResult(
   }
   let proposalCandidate;
   try {
-    proposalCandidate = validateClarityMemoryUpdateCandidate(
+    proposalCandidate = validateClarityProposalCandidate(
       presentedResult.output.proposalCandidate,
-      context.memory,
+      context,
     );
   } catch (error) {
     if (error instanceof ClarityProposalCandidateError) {

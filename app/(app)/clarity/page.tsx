@@ -10,7 +10,11 @@ import {
 } from "@/lib/clarity/ai/clarity-context-assembler";
 import { loadClarityConversation } from "@/lib/clarity/ai/clarity-conversation-service";
 import { parseClarityInvocation } from "@/lib/clarity/clarity-action-context";
-import { AuthenticationRequiredError } from "@/lib/clarity/daily-loop-queries";
+import { getLocalDate } from "@/lib/clarity/date-time";
+import {
+  AuthenticationRequiredError,
+  getAuthenticatedUserAndProfile,
+} from "@/lib/clarity/daily-loop-queries";
 
 type ClarityPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -27,7 +31,8 @@ export default function ClarityPage({ searchParams }: ClarityPageProps) {
 async function ClarityContent({ searchParams }: ClarityPageProps) {
   const resolvedSearchParams = await searchParams;
   const invocation = parseClarityInvocation(resolvedSearchParams);
-  const { conversation, subject } = await loadClarityPageData(invocation);
+  const { conversation, subject, profileLocalDate } =
+    await loadClarityPageData(invocation);
 
   return (
     <div
@@ -55,6 +60,7 @@ async function ClarityContent({ searchParams }: ClarityPageProps) {
         messages={conversation.messages}
         invocation={invocationDescriptor(invocation)}
         subjectLabel={subject?.label ?? null}
+        profileLocalDate={profileLocalDate}
       />
     </div>
   );
@@ -64,11 +70,16 @@ async function loadClarityPageData(
   invocation: ReturnType<typeof parseClarityInvocation>,
 ) {
   try {
-    const [conversation, subject] = await Promise.all([
+    const [conversation, subject, { profile }] = await Promise.all([
       loadClarityConversation(),
       resolveClarityInvocationSubject(invocation),
+      getAuthenticatedUserAndProfile(),
     ]);
-    return { conversation, subject };
+    return {
+      conversation,
+      subject,
+      profileLocalDate: getLocalDate(profile.timezone),
+    };
   } catch (error) {
     if (error instanceof AuthenticationRequiredError) redirect("/auth/login");
     if (error instanceof ClarityInvocationNotFoundError) redirect("/clarity");

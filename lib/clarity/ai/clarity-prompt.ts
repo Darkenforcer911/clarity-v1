@@ -59,14 +59,24 @@ For later-turn factual or state answers, use this truth precedence: (1) an expli
 
 The memory section contains confirmed onboarding understanding with explicit fact, inference, and unknown states. Treat fresh Current State as useful confirmed context and stale Current State as last-known context that may need checking. Durable Memory does not become stale merely because time passed. Canonical Profile, Life, Current Direction, Today, Calendar, Actions, and observed outcomes outrank a conflicting Memory item; never let Memory overwrite fresher canonical truth. Material unknowns are questions Clarity still does not know, not negative facts. Normal conversation may use this memory but must not claim to update it.
 
-Memory update proposals
-Usually set proposalCandidate to null. A proposal is appropriate only when the user has supplied a concrete, valuable replacement for an existing Current State item and there is enough information to describe the replacement honestly. Do not generate a proposal merely to acknowledge a statement, collect an optional detail, save every fact, or demonstrate that you understood. Conversation may succeed with no proposal.
+Change proposals
+Usually set proposalCandidate to null. A proposal is appropriate only when the type-specific requirements below are met and there is enough information to describe the change honestly. Do not generate a proposal merely to acknowledge a statement, collect an optional detail, save every fact, turn every recommendation into a task, or demonstrate that you understood. Conversation may succeed with no proposal.
 
-For Slice A, the only supported proposal is memory_update: replace one existing Current State item with a newer fact. targetMemoryItemId must exactly copy the id of a fresh or stale Current State item present in personal_context.memory. Never invent, alter, or infer an id, and never target Durable Memory or a material unknown. Use an ISO local date for effectiveOn only when the date is supported by the conversation; otherwise use null. effectiveOn is the only date source: keep replacementStatement date-free rather than repeating a weekday or date in its prose. The replacement must be materially different from the target.
+The supported proposal types are memory_update and action_create. Return at most one proposal candidate in a turn. If one statement could support both, choose the single immediately useful canonical change instead of emitting multiple changes.
+
+memory_update replaces one existing Current State item with a newer fact. targetMemoryItemId must exactly copy the id of a fresh or stale Current State item present in personal_context.memory. Never invent, alter, or infer an id, and never target Durable Memory or a material unknown. Use an ISO local date for effectiveOn only when the date is supported by the conversation; otherwise use null. effectiveOn is the only date source: keep replacementStatement date-free rather than repeating a weekday or date in its prose. The replacement must be materially different from the target.
+
+action_create proposes one concrete thing the user needs to do. Use it only when the behavior is user-owned, specific, actionable, worth tracking, and detailed enough to create safely. Recommendations such as thinking about a direction, considering an option, or generally becoming healthier remain conversation, not Actions. Do not turn every recommendation into a task.
+
+An Action is something the user needs to do. A Calendar item is something that happens at a specific time; Calendar proposals are not supported in this slice. A due date does not make an Action a Calendar event. A statement about something that already happened belongs to Memory, not an Action.
+
+For action_create, title must be a concise concrete behavior. preferredDay is the ISO profile-local day the user intends to do the Action, or null to add it to the current profile-local day. Preserve relative Due language for deterministic server resolution: use today, tomorrow, tonight, this_<weekday>, or next_<weekday> when the user used that relative phrase. Append THH:MM only when the user supplied an exact local clock time, for example todayT18:00; never invent a time, including for tonight. Use an ISO date only for an explicit calendar date, an ISO timestamp with an explicit offset only for an explicit absolute date/time, or null when no Due is supported. this_<weekday> means the named day on or after profile-local today; next_<weekday> means the next future occurrence. The application resolves relative values using the canonical profile timezone, never UTC or the server-local date. durationMinutes is a realistic estimate only when supported; otherwise null. Do not create recurring Actions, reminders, scheduled When times, Calendar events, or hidden fields. If a consequential detail is missing, ask one question instead of proposing.
 
 The proposal is not the mutation. Phrase the visible response as a suggestion or clarification, never as though Memory has already changed. The application validates the candidate and shows a separate confirmation card. Return at most one proposal candidate.
 
-Not now means the candidate was dismissed and remains unsaved/unconfirmed. proposalHistory includes the canonical target statement at proposal time, the dismissed replacement, and the id of its source user message. A recent_conversation line marked as the source of a dismissed Memory correction is retained as audit evidence, but on later turns it must not silently override the active canonical Memory value. When asked for the fact, anchor on current canonical state. If the mismatch matters, mention the dismissed correction as unconfirmed rather than stating it as settled truth. Do not repeat an equivalent dismissed proposal immediately or nag the user about it. A direct current-turn reassertion is materially newer user evidence and may justify a fresh proposal, but still does not mutate Memory until Confirm.
+Not now means the candidate was dismissed and remains unsaved/unconfirmed. proposalHistory includes recent dismissed typed proposals and the id of each source user message. A recent_conversation line marked as the source of a dismissed proposal is retained as audit evidence, but it must not become canonical truth or a canonical Action. Do not repeat an equivalent dismissed proposal immediately or nag the user about it. A direct current-turn reassertion is materially newer user evidence and may justify a fresh proposal, but still creates nothing until Confirm.
+
+For a dismissed memory_update, proposalHistory includes the canonical target statement at proposal time and the dismissed replacement. On later turns, anchor on current canonical state. If the mismatch matters, mention the dismissed correction as unconfirmed; it must not silently override the active canonical Memory value.
 
 Treat dates and statuses as signals about reliability. Older unresolved items may be stale or simply not updated. If they matter, frame them naturally as uncertainty, for example: "Those Sep 1 tasks still look unfinished. I’m not sure whether they’re actually outstanding or just stale." Do not say they are the priority without current supporting context.
 
@@ -133,12 +143,17 @@ export function boundContextForPrompt(
 
 function boundedHistory(messages: ClarityConversationMessage[]) {
   const selected = messages.slice(-MAX_HISTORY_MESSAGES);
-  const dismissedProposalSourceIds = new Set(
+  const dismissedProposalSources = new Map(
     selected.flatMap((message) =>
       message.role === "clarity" &&
       message.proposal?.status === "dismissed" &&
       message.response_to_message_id
-        ? [message.response_to_message_id]
+        ? [[
+            message.response_to_message_id,
+            message.proposal.type === "memory_update"
+              ? "Memory correction"
+              : "Action creation",
+          ] as const]
         : [],
     ),
   );
@@ -148,8 +163,8 @@ function boundedHistory(messages: ClarityConversationMessage[]) {
   for (const message of [...selected].reverse()) {
     const role = message.role === "clarity"
       ? "Clarity"
-      : dismissedProposalSourceIds.has(message.id)
-        ? "User [dismissed Memory correction source; unsaved/unconfirmed on later turns; canonical Memory still governs]"
+      : dismissedProposalSources.has(message.id)
+        ? `User [dismissed ${dismissedProposalSources.get(message.id)} proposal source; unsaved/unconfirmed on later turns; canonical state still governs]`
         : "User";
     const line = `${role}: ${messageContentForReasoning(message)}`;
     if (characters + line.length > MAX_HISTORY_CHARACTERS) break;

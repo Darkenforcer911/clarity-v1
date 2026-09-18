@@ -379,6 +379,60 @@ export type Database = {
           },
         ]
       }
+      clarity_action_create_proposals: {
+        Row: {
+          created_at: string
+          due_local_date: string | null
+          due_local_time: string | null
+          estimated_minutes: number | null
+          local_date: string
+          proposal_id: string
+          result_daily_action_id: string | null
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          due_local_date?: string | null
+          due_local_time?: string | null
+          estimated_minutes?: number | null
+          local_date: string
+          proposal_id: string
+          result_daily_action_id?: string | null
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          due_local_date?: string | null
+          due_local_time?: string | null
+          estimated_minutes?: number | null
+          local_date?: string
+          proposal_id?: string
+          result_daily_action_id?: string | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clarity_action_create_proposals_proposal_owner_fkey"
+            columns: ["proposal_id", "user_id"]
+            isOneToOne: true
+            referencedRelation: "clarity_change_proposals"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "clarity_action_create_proposals_result_owner_fkey"
+            columns: ["result_daily_action_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "daily_actions"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
+      }
       clarity_change_proposals: {
         Row: {
           confirmed_at: string | null
@@ -2817,6 +2871,36 @@ export type Database = {
           proposal_id: string
         }[]
       }
+      append_clarity_response_v3: {
+        Args: {
+          p_action_due_local_date?: string
+          p_action_due_local_time?: string
+          p_action_estimated_minutes?: number
+          p_action_local_date?: string
+          p_action_title?: string
+          p_content: string
+          p_effective_on?: string
+          p_input_tokens?: number
+          p_latency_ms: number
+          p_model_provider: string
+          p_model_version: string
+          p_next_move_type: string
+          p_output_tokens?: number
+          p_proposal_rationale?: string
+          p_proposal_summary?: string
+          p_proposal_type?: Database["public"]["Enums"]["clarity_change_proposal_type"]
+          p_replacement_statement?: string
+          p_structured_metadata: Json
+          p_target_memory_item_id?: string
+          p_user_message_id: string
+        }
+        Returns: {
+          conversation_id: string
+          created_at: string
+          message_id: string
+          proposal_id: string
+        }[]
+      }
       append_clarity_user_message_v1: {
         Args: {
           p_content: string
@@ -3188,6 +3272,21 @@ export type Database = {
         Args: { p_proposal_id: string }
         Returns: Database["public"]["Enums"]["clarity_change_proposal_status"]
       }
+      edit_clarity_action_create_proposal_v1: {
+        Args: {
+          p_due_local_date?: string
+          p_due_local_time?: string
+          p_estimated_minutes?: number
+          p_expected_revision: number
+          p_proposal_id: string
+          p_title: string
+        }
+        Returns: {
+          proposal_id: string
+          revision: number
+          status: Database["public"]["Enums"]["clarity_change_proposal_status"]
+        }[]
+      }
       edit_clarity_memory_update_proposal_v1: {
         Args: {
           p_effective_on?: string
@@ -3204,6 +3303,15 @@ export type Database = {
       end_current_context: {
         Args: { p_current_context_id: string; p_ended_on?: string }
         Returns: undefined
+      }
+      execute_clarity_action_create_proposal_v1: {
+        Args: { p_proposal_id: string }
+        Returns: {
+          execution_failure_code: string
+          proposal_id: string
+          result_daily_action_id: string
+          status: Database["public"]["Enums"]["clarity_change_proposal_status"]
+        }[]
       }
       execute_clarity_memory_update_proposal_v1: {
         Args: { p_proposal_id: string }
@@ -3823,7 +3931,7 @@ export type Database = {
         | "expired"
         | "executed"
         | "execution_failed"
-      clarity_change_proposal_type: "memory_update"
+      clarity_change_proposal_type: "memory_update" | "action_create"
       clarity_memory_class: "durable_memory" | "current_state"
       clarity_memory_confidence: "low" | "medium" | "high"
       clarity_memory_materiality: "low" | "medium" | "high"
@@ -4045,7 +4153,7 @@ export const Constants = {
         "executed",
         "execution_failed",
       ],
-      clarity_change_proposal_type: ["memory_update"],
+      clarity_change_proposal_type: ["memory_update", "action_create"],
       clarity_memory_class: ["durable_memory", "current_state"],
       clarity_memory_confidence: ["low", "medium", "high"],
       clarity_memory_materiality: ["low", "medium", "high"],

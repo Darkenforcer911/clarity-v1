@@ -9,10 +9,12 @@ import type { ClarityMessageAttachment } from "./clarity-attachments";
 import {
   loadClarityProposalsForAssistantMessages,
 } from "./clarity-proposal-service";
-import type { ClarityMemoryUpdateProposal } from "./clarity-proposal";
+import type {
+  ClarityChangeProposal,
+  ValidatedClarityProposalCandidate,
+} from "./clarity-proposal";
 import type {
   ClarityConversationResponse,
-  ClarityMemoryUpdateCandidate,
 } from "./clarity-response-schema";
 import type {
   ClarityInvocationDescriptor,
@@ -45,7 +47,7 @@ type StoredClarityConversationMessage = z.infer<typeof storedMessageSchema>;
 
 export type ClarityConversationMessage = StoredClarityConversationMessage & {
   attachments: ClarityMessageAttachment[];
-  proposal: ClarityMemoryUpdateProposal | null;
+  proposal: ClarityChangeProposal | null;
 };
 
 export type ClarityConversation = {
@@ -135,7 +137,7 @@ export async function appendClarityResponse(
   userMessageId: string,
   response: ClarityConversationResponse,
   providerResult: ClarityProviderResult,
-  proposalCandidate: ClarityMemoryUpdateCandidate | null = null,
+  proposalCandidate: ValidatedClarityProposalCandidate | null = null,
 ) {
   const { supabase } = await getAuthenticatedUserAndProfile();
   const metadata = {
@@ -152,7 +154,13 @@ export async function appendClarityResponse(
       latencyMs: 0,
     },
   } satisfies Json;
-  const { data, error } = await supabase.rpc("append_clarity_response_v2", {
+  const memoryCandidate = proposalCandidate?.type === "memory_update"
+    ? proposalCandidate
+    : null;
+  const actionCandidate = proposalCandidate?.type === "action_create"
+    ? proposalCandidate
+    : null;
+  const { data, error } = await supabase.rpc("append_clarity_response_v3", {
     p_user_message_id: userMessageId,
     p_content: response.response,
     p_model_provider: providerResult.provider,
@@ -161,11 +169,17 @@ export async function appendClarityResponse(
     p_structured_metadata: metadata,
     p_latency_ms: providerResult.latencyMs,
     p_proposal_type: proposalCandidate?.type,
-    p_target_memory_item_id: proposalCandidate?.targetMemoryItemId,
-    p_replacement_statement: proposalCandidate?.replacementStatement,
-    p_effective_on: proposalCandidate?.effectiveOn ?? undefined,
+    p_target_memory_item_id: memoryCandidate?.targetMemoryItemId,
+    p_replacement_statement: memoryCandidate?.replacementStatement,
+    p_effective_on: memoryCandidate?.effectiveOn ?? undefined,
     p_proposal_summary: proposalCandidate?.summary,
     p_proposal_rationale: proposalCandidate?.rationale,
+    p_action_title: actionCandidate?.title,
+    p_action_local_date: actionCandidate?.actionLocalDate,
+    p_action_due_local_date: actionCandidate?.dueLocalDate ?? undefined,
+    p_action_due_local_time: actionCandidate?.dueLocalTime ?? undefined,
+    p_action_estimated_minutes:
+      actionCandidate?.durationMinutes ?? undefined,
     ...(providerResult.usage.inputTokens === null
       ? {}
       : { p_input_tokens: providerResult.usage.inputTokens }),

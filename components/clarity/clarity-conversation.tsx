@@ -43,6 +43,7 @@ import {
   type ClarityViewerImage,
 } from "@/components/clarity/clarity-image-viewer";
 import { ClarityMemoryProposalCard } from "@/components/clarity/clarity-memory-proposal-card";
+import { ClarityActionProposalCard } from "@/components/clarity/clarity-action-proposal-card";
 import { initialClarityConversationActionState } from "@/lib/clarity/ai/clarity-conversation-action-state";
 import {
   appendDictationTranscript,
@@ -132,10 +133,12 @@ export function ClarityConversation({
   messages,
   invocation,
   subjectLabel,
+  profileLocalDate,
 }: {
   messages: ClarityConversationMessage[];
   invocation: ClarityInvocationDescriptor;
   subjectLabel: string | null;
+  profileLocalDate: string;
 }) {
   useAppShellConversationRoute();
   const router = useRouter();
@@ -1269,10 +1272,18 @@ export function ClarityConversation({
                   onOpenImages={openImageViewer}
                 />
                 {item.role === "clarity" && item.proposal && (
-                  <ClarityMemoryProposalCard
-                    key={`${item.proposal.id}:${item.proposal.revision}:${item.proposal.status}`}
-                    proposal={item.proposal}
-                  />
+                  item.proposal.type === "memory_update" ? (
+                    <ClarityMemoryProposalCard
+                      key={`${item.proposal.id}:${item.proposal.revision}:${item.proposal.status}`}
+                      proposal={item.proposal}
+                    />
+                  ) : (
+                    <ClarityActionProposalCard
+                      key={`${item.proposal.id}:${item.proposal.revision}:${item.proposal.status}`}
+                      proposal={item.proposal}
+                      profileLocalDate={profileLocalDate}
+                    />
+                  )
                 )}
               </div>
             ))}
